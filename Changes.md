@@ -1,5 +1,9 @@
 ## Parse-Stack Changelog
 
+### 1.10.0
+
+- Adds support for Ruby 3+ style hash and block arguments.
+
 ### 1.9.0
 
 - Support for ActiveModel and ActiveSupport 6.0.

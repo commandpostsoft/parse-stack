@@ -15,9 +15,9 @@ module Parse
 
     # Supporting the `all` class method to be used in scope chaining with queries.
     # @!visibility private
-    def all(expressions = { limit: :max })
+    def all(expressions = { limit: :max }, &block)
       conditions(expressions)
-      return results(&Proc.new) if block_given?
+      return results(&block) if block_given?
       results
     end
 
@@ -35,7 +35,7 @@ module Parse
 
     # Supporting the `save_all` method to be used in scope chaining with queries.
     # @!visibility private
-    def save_all(expressions = {})
+    def save_all(expressions = {}, &block)
       conditions(expressions)
       klass = Parse::Model.find_class self.table
       if klass.blank?
@@ -43,7 +43,7 @@ module Parse
       end
       hash_constraints = constraints(true)
 
-      klass.save_all(hash_constraints, &Proc.new) if block_given?
+      klass.save_all(hash_constraints, &block) if block_given?
       klass.save_all(hash_constraints)
     end
   end
@@ -193,7 +193,7 @@ module Parse
         #  end
         # @note You cannot use *:updated_at* as a constraint.
         # @return [Boolean] true if all saves succeeded and there were no errors.
-        def save_all(constraints = {})
+        def save_all(constraints = {}, &block)
           invalid_constraints = constraints.keys.any? do |k|
             (k == :updated_at || k == :updatedAt) ||
             (k.is_a?(Parse::Operation) && (k.operand == :updated_at || k.operand == :updatedAt))
@@ -207,7 +207,7 @@ module Parse
           batch_size = 250
           iterator_block = nil
           if block_given?
-            iterator_block = Proc.new
+            iterator_block = block
             force ||= false
           else
             # if no block given, assume you want to just save all objects
