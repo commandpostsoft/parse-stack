@@ -1,5 +1,8 @@
 ## Parse-Stack Changelog
 
+### 1.10.3
+- Fixes potential crash caused by activerecord gem version 6+
+
 ### 1.10.0
 
 - Adds support for Ruby 3+ style hash and block arguments.
