@@ -1,5 +1,8 @@
 ## Parse-Stack Changelog
 
+### 1.11.0
+- Adds create_or_update! method
+
 ### 1.10.3
 - Fixes potential crash caused by activerecord gem version 6+
 

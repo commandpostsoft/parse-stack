@@ -176,6 +176,20 @@ module Parse
           obj
         end
 
+        # Finds the first object matching the query conditions and updates it with the attributes, 
+        # or creates a new *saved* object with the attributes. 
+        # @example
+        #   Parse::User.create_or_update!({ ..query conditions..}, {.. resource_attrs ..})
+        # @param query_attrs [Hash] a set of query constraints that also are applied.
+        # @param resource_attrs [Hash] a set of attribute values to be applied if an object was not found.
+        # @return [Parse::Object] a Parse::Object, whether found by the query or newly created.
+        # @raise {Parse::RecordNotSaved} if the save fails
+        def create_or_update!(query_attrs = {}, resource_attrs = {})
+          obj = first_or_create!(query_attrs, resource_attrs)
+          obj.save!
+          obj
+        end
+
         # Auto save all objects matching the query constraints. This method is
         # meant to be used with a block. Any objects that are modified in the block
         # will be batched for a save operation. This uses the `updated_at` field to
