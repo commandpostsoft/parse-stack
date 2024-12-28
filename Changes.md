@@ -1,5 +1,8 @@
 ## Parse-Stack Changelog
 
+### 1.11.1
+- Always applies attribute changes in first_or_create resource_attrs argument
+
 ### 1.11.0
 - Adds create_or_update! method
 

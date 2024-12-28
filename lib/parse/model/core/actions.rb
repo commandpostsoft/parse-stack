@@ -154,8 +154,9 @@ module Parse
 
           if obj.blank?
             obj = self.new query_attrs
-            obj.apply_attributes!(resource_attrs, dirty_track: true)
           end
+          obj.apply_attributes!(resource_attrs, dirty_track: true)
+          
           obj
         end
 
