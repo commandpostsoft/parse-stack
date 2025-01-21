@@ -186,7 +186,7 @@ module Parse
         # @return [Parse::Object] a Parse::Object, whether found by the query or newly created.
         # @raise {Parse::RecordNotSaved} if the save fails
         def create_or_update!(query_attrs = {}, resource_attrs = {})
-          obj = first_or_create!(query_attrs, resource_attrs)
+          obj = first_or_create(query_attrs, resource_attrs)
           obj.save!
           obj
         end
