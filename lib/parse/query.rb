@@ -480,6 +480,11 @@ module Parse
       self # chaining
     end
 
+    # alias for includes
+    def include(*fields)
+      includes(**fields)
+    end
+
     # Combine a list of {Parse::Constraint} objects
     # @param list [Array<Parse::Constraint>] an array of Parse::Constraint subclasses.
     # @return [self]
