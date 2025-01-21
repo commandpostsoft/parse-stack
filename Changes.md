@@ -1,5 +1,9 @@
 ## Parse-Stack Changelog
 
+### 1.11.3
+- Adds "empty" query constraint option
+- Adds "include" alias for "includes" query method
+
 ### 1.11.1
 - Always applies attribute changes in first_or_create resource_attrs argument
 
