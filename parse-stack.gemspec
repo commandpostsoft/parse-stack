@@ -31,10 +31,9 @@ Gem::Specification.new do |spec|
   spec.add_runtime_dependency "active_model_serializers", [">= 0.9", "< 1"]
   spec.add_runtime_dependency "activesupport", [">= 5", "< 7"]
   spec.add_runtime_dependency "parallel", [">= 1.6", "< 2"]
-  spec.add_runtime_dependency "faraday", "< 1"
-  spec.add_runtime_dependency "faraday_middleware", [">= 0.9", "< 2"]
+  spec.add_runtime_dependency "faraday", "~> 2.0"
   spec.add_runtime_dependency "moneta", "< 2"
-  spec.add_runtime_dependency "rack", ">= 2.0.6", "< 3"
+  spec.add_runtime_dependency "rack", ">= 2.0.6", "< 4"
 
   #   spec.post_install_message = <<UPGRADE
   #
