@@ -783,5 +783,107 @@ module Parse
         { @operation.operand => { :$text => { :$search => params } } }
       end
     end
+
+    # Equivalent to the `$select` Parse query operation but for key matching.
+    # This matches objects where a field's value equals another field's value from a different query.
+    # Useful for performing join-like operations where fields from different classes match.
+    #
+    #  # Find users where user.company equals customer.company
+    #  customer_query = Customer.where(:active => true)
+    #  user_query = User.where(:company.matches_key => { key: "company", query: customer_query })
+    #
+    #  # If the local field has the same name as the remote field, you can omit the key
+    #  # assumes key: 'company'
+    #  user_query = User.where(:company.matches_key => customer_query)
+    #
+    class MatchesKeyInQueryConstraint < Constraint
+      # @!method matches_key_in_query
+      # A registered method on a symbol to create the constraint.
+      # @example
+      #  q.where :field.matches_key_in_query => { key: "remote_field", query: query }
+      #  q.where :field.matches_key_in_query => query # assumes same field name
+      # @return [MatchesKeyInQueryConstraint]
+
+      # @!method matches_key
+      # Alias for {matches_key_in_query}
+      # @return [MatchesKeyInQueryConstraint]
+      contraint_keyword :$select
+      register :matches_key_in_query
+      register :matches_key
+
+      # @return [Hash] the compiled constraint.
+      def build
+        remote_field_name = @operation.operand
+        query = nil
+        
+        if @value.is_a?(Hash)
+          res = @value.symbolize_keys
+          remote_field_name = res[:key] || remote_field_name
+          query = res[:query]
+          unless query.is_a?(Parse::Query)
+            raise ArgumentError, "Invalid Parse::Query object provided in :query field of value: #{@operation.operand}.matches_key_in_query => #{@value}"
+          end
+          query = query.compile(encode: false, includeClassName: true)
+        elsif @value.is_a?(Parse::Query)
+          # if its a query, then assume key is the same name as operand.
+          query = @value.compile(encode: false, includeClassName: true)
+        else
+          raise ArgumentError, "Invalid `:matches_key_in_query` query constraint. It should follow the format: :field.matches_key_in_query => { key: 'key', query: '<Parse::Query>' }"
+        end
+        
+        { @operation.operand => { :$select => { key: remote_field_name, query: query } } }
+      end
+    end
+
+    # Equivalent to the `$dontSelect` Parse query operation but for key matching.
+    # This matches objects where a field's value does NOT equal another field's value from a different query.
+    # This is the inverse of the {MatchesKeyInQueryConstraint}.
+    #
+    #  # Find users where user.company does NOT equal customer.company
+    #  customer_query = Customer.where(:active => true)
+    #  user_query = User.where(:company.does_not_match_key => { key: "company", query: customer_query })
+    #
+    #  # If the local field has the same name as the remote field, you can omit the key
+    #  # assumes key: 'company'
+    #  user_query = User.where(:company.does_not_match_key => customer_query)
+    #
+    class DoesNotMatchKeyInQueryConstraint < Constraint
+      # @!method does_not_match_key_in_query
+      # A registered method on a symbol to create the constraint.
+      # @example
+      #  q.where :field.does_not_match_key_in_query => { key: "remote_field", query: query }
+      #  q.where :field.does_not_match_key_in_query => query # assumes same field name
+      # @return [DoesNotMatchKeyInQueryConstraint]
+
+      # @!method does_not_match_key
+      # Alias for {does_not_match_key_in_query}
+      # @return [DoesNotMatchKeyInQueryConstraint]
+      contraint_keyword :$dontSelect
+      register :does_not_match_key_in_query
+      register :does_not_match_key
+
+      # @return [Hash] the compiled constraint.
+      def build
+        remote_field_name = @operation.operand
+        query = nil
+        
+        if @value.is_a?(Hash)
+          res = @value.symbolize_keys
+          remote_field_name = res[:key] || remote_field_name
+          query = res[:query]
+          unless query.is_a?(Parse::Query)
+            raise ArgumentError, "Invalid Parse::Query object provided in :query field of value: #{@operation.operand}.does_not_match_key_in_query => #{@value}"
+          end
+          query = query.compile(encode: false, includeClassName: true)
+        elsif @value.is_a?(Parse::Query)
+          # if its a query, then assume key is the same name as operand.
+          query = @value.compile(encode: false, includeClassName: true)
+        else
+          raise ArgumentError, "Invalid `:does_not_match_key_in_query` query constraint. It should follow the format: :field.does_not_match_key_in_query => { key: 'key', query: '<Parse::Query>' }"
+        end
+        
+        { @operation.operand => { :$dontSelect => { key: remote_field_name, query: query } } }
+      end
+    end
   end
 end

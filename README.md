@@ -2049,6 +2049,38 @@ q.where :field.excludes => query
 q.where :field.not_in_query => query # alias
 ```
 
+#### Matches Key in Query
+Equivalent to using the `$select` Parse query operation for joining queries where fields from different classes match. This is useful for performing join-like operations where you want to find objects where a field's value equals another field's value from a different query.
+
+```ruby
+# Find users where user.company equals customer.company
+customer_query = Customer.where(:active => true)
+user_query = User.where(:company.matches_key => { key: "company", query: customer_query })
+
+# If the local field has the same name as the remote field, you can omit the key
+# assumes key: 'company'  
+user_query = User.where(:company.matches_key => customer_query)
+
+# Alias methods
+q.where :field.matches_key_in_query => query
+```
+
+#### Does Not Match Key in Query  
+Equivalent to using the `$dontSelect` Parse query operation for joining queries where fields from different classes do NOT match. This is the inverse of the "Matches Key in Query" constraint.
+
+```ruby
+# Find users where user.company does NOT equal customer.company
+customer_query = Customer.where(:active => true)
+user_query = User.where(:company.does_not_match_key => { key: "company", query: customer_query })
+
+# If the local field has the same name as the remote field, you can omit the key
+# assumes key: 'company'
+user_query = User.where(:company.does_not_match_key => customer_query)
+
+# Alias methods
+q.where :field.does_not_match_key_in_query => query
+```
+
 #### Matches Object Id
 Sometimes you want to find rows where a particular Parse object exists. You can do so by passing a the Parse::Object subclass or a Parse::Pointer. In some cases you may only have the "objectId" of the record you are looking for. For convenience, you can also use the `id` constraint. This will assume that the name of the field matches a particular Parse class you have defined. Assume the following:
 
