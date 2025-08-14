@@ -2389,27 +2389,77 @@ If you would like to turn off automatic scope generation for property types, set
 ## Calling Cloud Code Functions
 You can call on your defined Cloud Code functions using the `call_function()` method. The result will be `nil` in case of errors or the value of the `result` field in the Parse response.
 
-```ruby
- params = {}
- # use the explicit name of the function
- result = Parse.call_function 'functionName', params
+### Basic Usage
 
- # to get the raw Response object
- response = Parse.call_function 'functionName', params, raw: true
- response.result unless response.error?
+```ruby
+params = {}
+# use the explicit name of the function
+result = Parse.call_function 'functionName', params
+
+# to get the raw Response object
+response = Parse.call_function 'functionName', params, raw: true
+response.result unless response.error?
+```
+
+### Authenticated Cloud Function Calls
+
+You can call cloud functions with user session tokens for authenticated requests:
+
+```ruby
+# Using session token option
+user = Parse::User.login("username", "password")
+result = Parse.call_function('functionName', params, session_token: user.session_token)
+
+# Using convenience method
+result = Parse.call_function_with_session('functionName', params, user.session_token)
+
+# Using master key for administrative operations
+result = Parse.call_function('functionName', params, master_key: true)
+```
+
+### Advanced Options
+
+```ruby
+# Using a specific client connection
+result = Parse.call_function('functionName', params, client: :my_client)
+
+# Combining options
+result = Parse.call_function('functionName', params, 
+  session_token: user.session_token,
+  raw: true,
+  client: :default
+)
 ```
 
 ## Calling Background Jobs
 You can trigger background jobs that you have configured in your Parse application as follows.
 
-```ruby
- params = {}
- # use explicit name of the job
- result = Parse.trigger_job :myJobName, params
+### Basic Usage
 
- # to get the raw Response object
- response = Parse.trigger_job :myJobName, params, raw: true
- response.result unless response.error?
+```ruby
+params = {}
+# use explicit name of the job
+result = Parse.trigger_job :myJobName, params
+
+# to get the raw Response object
+response = Parse.trigger_job :myJobName, params, raw: true
+response.result unless response.error?
+```
+
+### Authenticated Job Triggers
+
+Background jobs can also be triggered with authentication:
+
+```ruby
+# Using session token option
+user = Parse::User.login("username", "password")
+result = Parse.trigger_job('myJobName', params, session_token: user.session_token)
+
+# Using convenience method
+result = Parse.trigger_job_with_session('myJobName', params, user.session_token)
+
+# Using master key for administrative operations
+result = Parse.trigger_job('myJobName', params, master_key: true)
 ```
 
 ## Active Model Callbacks
