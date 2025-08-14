@@ -63,8 +63,8 @@ module Parse
       # @return [Parse::Response]
       # @see Parse::Query
       def aggregate_pipeline(className, pipeline = [], headers: {}, **opts)
-        body = { pipeline: pipeline }
-        response = request :post, aggregate_uri_path(className), body: body, headers: headers, opts: opts
+        query = { pipeline: pipeline.to_json }
+        response = request :get, aggregate_uri_path(className), query: query, headers: headers, opts: opts
         response.parse_class = className if response.present?
         response
       end

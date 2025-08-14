@@ -214,7 +214,19 @@ module Parse
         clauses.reduce({}) do |clause, subclause|
           #puts "Merging Subclause: #{subclause.as_json}"
 
-          clause.deep_merge!(subclause.as_json || {})
+          subclause_json = subclause.as_json || {}
+          
+          # Special handling for aggregation pipeline constraints
+          # Instead of overwriting, concatenate the pipeline arrays
+          if clause.key?("__aggregation_pipeline") && subclause_json.key?("__aggregation_pipeline")
+            clause["__aggregation_pipeline"].concat(subclause_json["__aggregation_pipeline"])
+            # Don't merge the __aggregation_pipeline key using deep_merge
+            subclause_without_pipeline = subclause_json.reject { |k, v| k == "__aggregation_pipeline" }
+            clause.deep_merge!(subclause_without_pipeline)
+          else
+            clause.deep_merge!(subclause_json)
+          end
+          
           clause
         end
       end
@@ -693,11 +705,13 @@ module Parse
       # Add match stage if there are where conditions
       compiled_where = compile_where
       if compiled_where.present?
-        pipeline.unshift({ "$match" => compiled_where })
+        # Convert symbols to strings for MongoDB aggregation
+        stringified_where = JSON.parse(compiled_where.to_json)
+        pipeline.unshift({ "$match" => stringified_where })
       end
 
       # Execute the pipeline aggregation
-      response = client.aggregate_pipeline(@table, pipeline, **_opts)
+      response = client.aggregate_pipeline(@table, pipeline, headers: {}, **_opts)
       
       # Extract the count from the response
       if response.success? && response.result.is_a?(Array) && response.result.first
@@ -848,7 +862,7 @@ module Parse
       if @results.nil?
         if block_given?
           max_results(raw: raw, &block)
-        elsif @limit.is_a?(Numeric)
+        elsif @limit.is_a?(Numeric) || requires_aggregation_pipeline?
           # Check if this query requires aggregation pipeline processing
           if requires_aggregation_pipeline?
             response = execute_aggregation_pipeline
@@ -886,7 +900,7 @@ module Parse
     # @return [Parse::Response] the response from the aggregation pipeline
     def execute_aggregation_pipeline
       pipeline = build_aggregation_pipeline
-      client.aggregate_pipeline(@table, pipeline, **_opts)
+      client.aggregate_pipeline(@table, pipeline, headers: {}, **_opts)
     end
 
     # Build the complete aggregation pipeline from constraints
@@ -902,7 +916,9 @@ module Parse
       
       # Add regular constraints as initial $match stage if present
       if regular_constraints.any?
-        pipeline << { "$match" => regular_constraints }
+        # Convert symbols to strings for MongoDB aggregation
+        stringified_constraints = JSON.parse(regular_constraints.to_json)
+        pipeline << { "$match" => stringified_constraints }
       end
       
       # Extract and add aggregation pipeline stages

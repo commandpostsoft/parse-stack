@@ -77,7 +77,7 @@ module Parse
       # Set the keyword for this Constaint. Subclasses should use this method.
       # @param keyword [Symbol]
       # @return (see key)
-      def contraint_keyword(keyword)
+      def constraint_keyword(keyword)
         @key = keyword
       end
 

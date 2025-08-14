@@ -170,4 +170,120 @@ class TestEqualsLinkedPointer < Minitest::Test
     assert pipeline.any? { |stage| stage.key?("$limit") && stage["$limit"] == 10 }
     assert pipeline.any? { |stage| stage.key?("$skip") && stage["$skip"] == 5 }
   end
+
+  # ===== Tests for DoesNotEqualLinkedPointerConstraint =====
+
+  def test_does_not_equal_linked_pointer_constraint_exists
+    # Test that the constraint is properly registered
+    operation = :project.does_not_equal_linked_pointer({ through: :capture, field: :project })
+    assert_instance_of Parse::Constraint::DoesNotEqualLinkedPointerConstraint, operation
+  end
+
+  def test_does_not_equal_constraint_build_with_valid_parameters
+    constraint = Parse::Constraint::DoesNotEqualLinkedPointerConstraint.new(
+      :project, 
+      { through: :capture, field: :project }
+    )
+    
+    result = constraint.build
+    
+    # Should return aggregation pipeline marker
+    assert result.key?("__aggregation_pipeline")
+    
+    pipeline = result["__aggregation_pipeline"]
+    assert_instance_of Array, pipeline
+    assert_equal 2, pipeline.length
+    
+    # Check $lookup stage
+    lookup_stage = pipeline[0]
+    assert lookup_stage.key?("$lookup")
+    assert_equal "Capture", lookup_stage["$lookup"]["from"]
+    assert_equal "capture", lookup_stage["$lookup"]["localField"]
+    assert_equal "_id", lookup_stage["$lookup"]["foreignField"]
+    assert_equal "capture_data", lookup_stage["$lookup"]["as"]
+    
+    # Check $match stage with $expr using $ne (not equal)
+    match_stage = pipeline[1]
+    assert match_stage.key?("$match")
+    assert match_stage["$match"].key?("$expr")
+    
+    expr = match_stage["$match"]["$expr"]
+    assert expr.key?("$ne")  # Should use $ne instead of $eq
+    assert_equal 2, expr["$ne"].length
+    assert_equal({ "$arrayElemAt" => ["$capture_data.project", 0] }, expr["$ne"][0])
+    assert_equal "$project", expr["$ne"][1]
+  end
+
+  def test_does_not_equal_constraint_validation_missing_through
+    constraint = Parse::Constraint::DoesNotEqualLinkedPointerConstraint.new(
+      :project,
+      { field: :project }
+    )
+    
+    assert_raises(ArgumentError) do
+      constraint.build
+    end
+  end
+
+  def test_does_not_equal_constraint_validation_missing_field
+    constraint = Parse::Constraint::DoesNotEqualLinkedPointerConstraint.new(
+      :project,
+      { through: :capture }
+    )
+    
+    assert_raises(ArgumentError) do
+      constraint.build
+    end
+  end
+
+  def test_does_not_equal_constraint_validation_invalid_value
+    constraint = Parse::Constraint::DoesNotEqualLinkedPointerConstraint.new(
+      :project,
+      "invalid"
+    )
+    
+    assert_raises(ArgumentError) do
+      constraint.build
+    end
+  end
+
+  def test_query_with_does_not_equal_linked_pointer_constraint
+    query = Parse::Query.new("Asset")
+    query.where(:project.does_not_equal_linked_pointer => { through: :capture, field: :project })
+    
+    # Should require aggregation pipeline
+    assert query.requires_aggregation_pipeline?
+    
+    pipeline = query.build_aggregation_pipeline
+    assert_instance_of Array, pipeline
+    assert_equal 2, pipeline.length
+    
+    # Should contain the lookup and match stages with $ne
+    lookup_stage = pipeline[0]
+    assert lookup_stage.key?("$lookup")
+    
+    match_stage = pipeline[1]
+    assert match_stage.key?("$match")
+    assert match_stage["$match"].key?("$expr")
+    assert match_stage["$match"]["$expr"].key?("$ne")
+  end
+
+  def test_mixed_equals_and_does_not_equal_constraints
+    # Test that both constraint types work together (though this would be an unusual case)
+    query = Parse::Query.new("Asset")
+    query.where(:status => "active")
+    query.where(:project.equals_linked_pointer => { through: :capture, field: :owner })
+    query.where(:creator.does_not_equal_linked_pointer => { through: :capture, field: :creator })
+    
+    assert query.requires_aggregation_pipeline?
+    
+    pipeline = query.build_aggregation_pipeline
+    # Should have initial $match + 2 lookup stages + 2 match stages = 5 stages
+    assert pipeline.length >= 4  # At least initial match + some pipeline stages
+    
+    # Should have initial $match for regular constraints
+    initial_match = pipeline[0]
+    assert initial_match.key?("$match")
+    assert_equal "active", initial_match["$match"]["status"]
+  end
 end
