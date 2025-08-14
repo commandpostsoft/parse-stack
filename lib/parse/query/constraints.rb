@@ -1009,5 +1009,68 @@ module Parse
         } }
       end
     end
+
+    # A constraint for comparing pointer fields through linked objects using MongoDB aggregation.
+    # This allows comparing ObjectA.field1 with ObjectA.linkedObject.field2 where both are pointers.
+    #
+    #  # Find ObjectA where ObjectA.author equals ObjectA.project.owner
+    #  ObjectA.where(:author.equals_linked_pointer => { through: :project, field: :owner })
+    #  
+    #  # This generates a MongoDB aggregation pipeline with $lookup and $expr
+    #  # to compare pointer fields across linked documents
+    #
+    class PointerEqualsLinkedPointerConstraint < Constraint
+      # @!method equals_linked_pointer
+      # A registered method on a symbol to create the constraint.
+      # @example
+      #  q.where :field.equals_linked_pointer => { through: :linked_field, field: :target_field }
+      # @return [PointerEqualsLinkedPointerConstraint]
+      register :equals_linked_pointer
+
+      # @return [Hash] the compiled constraint.
+      def build
+        unless @value.is_a?(Hash) && @value[:through] && @value[:field]
+          raise ArgumentError, "equals_linked_pointer requires: { through: :linked_field, field: :target_field }"
+        end
+
+        through_field = @value[:through]
+        target_field = @value[:field]
+        local_field = @operation.operand
+
+        # Format field names according to Parse conventions
+        formatted_through = Parse::Query.format_field(through_field)
+        formatted_target = Parse::Query.format_field(target_field)
+        formatted_local = Parse::Query.format_field(local_field)
+
+        # Determine the target collection name from the through field
+        # Use classify to convert field name to class name (e.g., :project -> "Project")
+        target_collection = through_field.to_s.classify
+
+        # Build the aggregation pipeline
+        pipeline = [
+          {
+            "$lookup" => {
+              "from" => target_collection,
+              "localField" => formatted_through,
+              "foreignField" => "_id", 
+              "as" => "#{formatted_through}_data"
+            }
+          },
+          {
+            "$match" => {
+              "$expr" => {
+                "$eq" => [
+                  { "$arrayElemAt" => ["$#{formatted_through}_data.#{formatted_target}", 0] },
+                  "$#{formatted_local}"
+                ]
+              }
+            }
+          }
+        ]
+
+        # Return a special marker that indicates this needs aggregation pipeline processing
+        { "__aggregation_pipeline" => pipeline }
+      end
+    end
   end
 end

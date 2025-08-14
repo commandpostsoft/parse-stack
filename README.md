@@ -1748,6 +1748,25 @@ non-zero value. However, if you need to perform a count query, use `count()` met
 
 ```
 
+### Count Distinct
+Counts the number of distinct values for a specified field using MongoDB aggregation pipeline. This is more efficient than getting distinct values and counting them, especially for large datasets.
+
+```ruby
+ # get count of unique genres for songs with play_count > 100
+ distinct_genres_count = Song.count_distinct(:genre, :play_count.gt => 100)
+
+ # get total number of unique artists
+ unique_artists = Song.count_distinct(:artist)
+
+ # same using query instance
+ query = Parse::Query.new("Song") 
+ query.where(:play_count.gt => 1000)
+ query.count_distinct(:artist)
+ # => 15
+```
+
+**Note:** This feature requires MongoDB aggregation pipeline support in Parse Server.
+
 ### Distinct Aggregation
 Finds the distinct values for a specified field across a single collection or
 view and returns the results in an array. You may mix this with additional query constraints.

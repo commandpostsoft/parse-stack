@@ -664,6 +664,49 @@ module Parse
       res
     end
 
+    # Perform a count distinct query using MongoDB aggregation pipeline.
+    # This counts the number of distinct values for a given field.
+    # @param field [Symbol|String] The name of the field to count distinct values for.
+    # @example
+    #  # get number of distinct genres in songs
+    #  Song.count_distinct(:genre)
+    #  # same using query instance
+    #  query = Parse::Query.new("Song")
+    #  query.where(:play_count.gt => 10)
+    #  query.count_distinct(:artist)
+    # @return [Integer] the count of distinct values
+    # @note This feature requires MongoDB aggregation pipeline support in Parse Server.
+    def count_distinct(field)
+      if field.nil? || !field.respond_to?(:to_s)
+        raise ArgumentError, "Invalid field name passed to `count_distinct`."
+      end
+
+      # Format field name according to Parse conventions
+      formatted_field = Query.format_field(field)
+      
+      # Build the aggregation pipeline
+      pipeline = [
+        { "$group" => { "_id" => "$#{formatted_field}" } },
+        { "$count" => "distinctCount" }
+      ]
+
+      # Add match stage if there are where conditions
+      compiled_where = compile_where
+      if compiled_where.present?
+        pipeline.unshift({ "$match" => compiled_where })
+      end
+
+      # Execute the pipeline aggregation
+      response = client.aggregate_pipeline(@table, pipeline, **_opts)
+      
+      # Extract the count from the response
+      if response.success? && response.result.is_a?(Array) && response.result.first
+        response.result.first["distinctCount"] || 0
+      else
+        0
+      end
+    end
+
     # @yield a block yield for each object in the result
     # @return [Array]
     # @see Array#each
@@ -806,7 +849,12 @@ module Parse
         if block_given?
           max_results(raw: raw, &block)
         elsif @limit.is_a?(Numeric)
-          response = fetch!(compile)
+          # Check if this query requires aggregation pipeline processing
+          if requires_aggregation_pipeline?
+            response = execute_aggregation_pipeline
+          else
+            response = fetch!(compile)
+          end
           return [] if response.error?
           items = raw ? response.results : decode(response.results)
           return items.each(&block) if block_given?
@@ -816,6 +864,63 @@ module Parse
         end
       end
       @results
+    end
+
+    # Check if this query contains constraints that require aggregation pipeline processing
+    # @return [Boolean] true if aggregation pipeline is required
+    def requires_aggregation_pipeline?
+      return false if @where.empty?
+      
+      compiled_where = compile_where
+      
+      # Check if the compiled where itself has aggregation pipeline marker
+      return true if compiled_where.key?("__aggregation_pipeline")
+      
+      # Check if any of the constraint values has aggregation pipeline marker
+      compiled_where.values.any? { |constraint| 
+        constraint.is_a?(Hash) && constraint.key?("__aggregation_pipeline")
+      }
+    end
+
+    # Execute an aggregation pipeline for queries with pipeline constraints
+    # @return [Parse::Response] the response from the aggregation pipeline
+    def execute_aggregation_pipeline
+      pipeline = build_aggregation_pipeline
+      client.aggregate_pipeline(@table, pipeline, **_opts)
+    end
+
+    # Build the complete aggregation pipeline from constraints
+    # @return [Array] MongoDB aggregation pipeline stages
+    def build_aggregation_pipeline
+      pipeline = []
+      compiled_where = compile_where
+      
+      # Extract regular constraints (everything except __aggregation_pipeline)
+      regular_constraints = compiled_where.reject { |field, constraint|
+        field == "__aggregation_pipeline"
+      }
+      
+      # Add regular constraints as initial $match stage if present
+      if regular_constraints.any?
+        pipeline << { "$match" => regular_constraints }
+      end
+      
+      # Extract and add aggregation pipeline stages
+      if compiled_where.key?("__aggregation_pipeline")
+        pipeline.concat(compiled_where["__aggregation_pipeline"])
+      end
+      
+      # Add limit if specified
+      if @limit.is_a?(Numeric) && @limit > 0
+        pipeline << { "$limit" => @limit }
+      end
+      
+      # Add skip if specified  
+      if @skip > 0
+        pipeline << { "$skip" => @skip }
+      end
+      
+      pipeline
     end
 
     alias_method :result, :results
