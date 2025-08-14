@@ -2081,6 +2081,58 @@ user_query = User.where(:company.does_not_match_key => customer_query)
 q.where :field.does_not_match_key_in_query => query
 ```
 
+#### Starts With
+Equivalent to using the `$regex` Parse query operation with a prefix pattern. This is useful for autocomplete functionality and prefix matching.
+
+```ruby
+# Find users whose name starts with "John"
+User.where(:name.starts_with => "John")
+# Generates: "name": { "$regex": "^John", "$options": "i" }
+
+# Case-insensitive prefix matching with special characters
+User.where(:email.starts_with => "john.doe+")
+# Automatically escapes special regex characters
+```
+
+#### Contains
+Equivalent to using the `$regex` Parse query operation with a contains pattern. This is useful for case-insensitive text search within fields.
+
+```ruby
+# Find posts whose title contains "parse"
+Post.where(:title.contains => "parse")
+# Generates: "title": { "$regex": ".*parse.*", "$options": "i" }
+
+# Search in descriptions
+Post.where(:description.contains => "server setup")
+# Automatically escapes special regex characters
+```
+
+#### Array Size
+Equivalent to the `$size` Parse query operation. This checks the size of an array field, useful for finding objects where an array field has a specific number of elements.
+
+```ruby
+# Find posts with exactly 3 tags
+Post.where(:tags.size => 3)
+# Generates: "tags": { "$size": 3 }
+
+# Find users with no friends
+User.where(:friends.size => 0)
+```
+
+#### Date Range
+A convenience constraint that combines greater-than-or-equal and less-than-or-equal constraints for date/time range queries.
+
+```ruby
+# Find events between two dates
+start_date = DateTime.new(2023, 1, 1)
+end_date = DateTime.new(2023, 12, 31)
+Event.where(:created_at.between_dates => [start_date, end_date])
+# Generates: "created_at": { "$gte": start_date, "$lte": end_date }
+
+# Works with Time objects too
+Event.where(:updated_at.between_dates => [1.week.ago, Time.now])
+```
+
 #### Matches Object Id
 Sometimes you want to find rows where a particular Parse object exists. You can do so by passing a the Parse::Object subclass or a Parse::Pointer. In some cases you may only have the "objectId" of the record you are looking for. For convenience, you can also use the `id` constraint. This will assume that the name of the field matches a particular Parse class you have defined. Assume the following:
 

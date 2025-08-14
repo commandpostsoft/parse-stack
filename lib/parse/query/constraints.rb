@@ -885,5 +885,129 @@ module Parse
         { @operation.operand => { :$dontSelect => { key: remote_field_name, query: query } } }
       end
     end
+
+    # Equivalent to using the `$regex` Parse query operation with a prefix pattern.
+    # This is useful for autocomplete functionality and prefix matching.
+    #
+    #  # Find users whose name starts with "John"
+    #  User.where(:name.starts_with => "John")
+    #  # Generates: "name": { "$regex": "^John", "$options": "i" }
+    #
+    class StartsWithConstraint < Constraint
+      # @!method starts_with
+      # A registered method on a symbol to create the constraint. Maps to Parse operator "$regex".
+      # @example
+      #  q.where :field.starts_with => "prefix"
+      # @return [StartsWithConstraint]
+      contraint_keyword :$regex
+      register :starts_with
+
+      # @return [Hash] the compiled constraint.
+      def build
+        value = formatted_value
+        unless value.is_a?(String)
+          raise ArgumentError, "#{self.class}: Value must be a string for starts_with constraint"
+        end
+        
+        # Escape special regex characters in the prefix
+        escaped_value = Regexp.escape(value)
+        regex_pattern = "^#{escaped_value}"
+        
+        { @operation.operand => { :$regex => regex_pattern, :$options => "i" } }
+      end
+    end
+
+    # Equivalent to using the `$regex` Parse query operation with a contains pattern.
+    # This is useful for case-insensitive text search within fields.
+    #
+    #  # Find posts whose title contains "parse"
+    #  Post.where(:title.contains => "parse")
+    #  # Generates: "title": { "$regex": ".*parse.*", "$options": "i" }
+    #
+    class ContainsConstraint < Constraint
+      # @!method contains
+      # A registered method on a symbol to create the constraint. Maps to Parse operator "$regex".
+      # @example
+      #  q.where :field.contains => "text"
+      # @return [ContainsConstraint]
+      contraint_keyword :$regex
+      register :contains
+
+      # @return [Hash] the compiled constraint.
+      def build
+        value = formatted_value
+        unless value.is_a?(String)
+          raise ArgumentError, "#{self.class}: Value must be a string for contains constraint"
+        end
+        
+        # Escape special regex characters in the search text
+        escaped_value = Regexp.escape(value)
+        regex_pattern = ".*#{escaped_value}.*"
+        
+        { @operation.operand => { :$regex => regex_pattern, :$options => "i" } }
+      end
+    end
+
+    # Equivalent to the `$size` Parse query operation. This checks the size of an array field.
+    # Useful for finding objects where an array field has a specific number of elements.
+    #
+    #  # Find posts with exactly 3 tags
+    #  Post.where(:tags.size => 3)
+    #  # Generates: "tags": { "$size": 3 }
+    #
+    class ArraySizeConstraint < Constraint
+      # @!method size
+      # A registered method on a symbol to create the constraint. Maps to Parse operator "$size".
+      # @example
+      #  q.where :field.size => 3
+      # @return [ArraySizeConstraint]
+      contraint_keyword :$size
+      register :size
+
+      # @return [Hash] the compiled constraint.
+      def build
+        value = formatted_value
+        unless value.is_a?(Integer) && value >= 0
+          raise ArgumentError, "#{self.class}: Value must be a non-negative integer for size constraint"
+        end
+        
+        { @operation.operand => { :$size => value } }
+      end
+    end
+
+    # A convenience constraint that combines greater-than-or-equal and less-than-or-equal
+    # constraints for date/time range queries. This is equivalent to using both $gte and $lte.
+    #
+    #  # Find events between two dates
+    #  Event.where(:created_at.between_dates => [start_date, end_date])
+    #  # Generates: "created_at": { "$gte": start_date, "$lte": end_date }
+    #
+    class TimeRangeConstraint < Constraint
+      # @!method between_dates
+      # A registered method on a symbol to create the constraint.
+      # @example
+      #  q.where :field.between_dates => [start_date, end_date]
+      # @return [TimeRangeConstraint]
+      register :between_dates
+
+      # @return [Hash] the compiled constraint.
+      def build
+        value = formatted_value
+        unless value.is_a?(Array) && value.length == 2
+          raise ArgumentError, "#{self.class}: Value must be an array with exactly 2 elements [start_date, end_date]"
+        end
+        
+        start_date, end_date = value
+        
+        # Format the dates using Parse's date formatting
+        formatted_start = Parse::Constraint.formatted_value(start_date)
+        formatted_end = Parse::Constraint.formatted_value(end_date)
+        
+        { @operation.operand => { 
+          Parse::Constraint::GreaterThanOrEqualConstraint.key => formatted_start,
+          Parse::Constraint::LessThanOrEqualConstraint.key => formatted_end
+        } }
+      end
+    end
   end
 end
