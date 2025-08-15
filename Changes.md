@@ -1,5 +1,67 @@
 ## Parse-Stack Changelog
 
+### 1.12.0
+
+#### Breaking Changes
+- **BREAKING**: `distinct` method now returns object IDs directly by default for pointer fields instead of full pointer hash objects like `{"__type"=>"Pointer", "className"=>"Team", "objectId"=>"abc123"}`. Use `distinct(field, return_pointers: true)` to get Parse::Pointer objects.
+- **BREAKING**: Minimum Ruby version is now 3.2+ (dropped support for Ruby < 3.2)
+- **BREAKING**: Updated to Faraday 2.x and removed `faraday_middleware` dependency
+- **BREAKING**: Fixed typo "constaint" to "constraint" throughout codebase
+
+#### New Aggregation Functions
+- NEW: `sum(field)` - Calculate sum of numeric values across matching records
+- NEW: `min(field)` - Find minimum value for a field  
+- NEW: `max(field)` - Find maximum value for a field
+- NEW: `average(field)` / `avg(field)` - Calculate average value for numeric fields
+- NEW: `count_distinct(field)` - Count unique values using MongoDB aggregation pipeline
+
+#### Enhanced Group By Operations  
+- NEW: `group_by(field, options)` - Group records by field value with aggregation support
+- NEW: `group_by_date(field, interval, options)` - Group by date intervals (:year, :month, :week, :day, :hour)
+- NEW: `group_objects_by(field, options)` - Group actual object instances (not aggregated)
+- NEW: Sortable grouping with `sortable: true` option and `SortableGroupBy`/`SortableGroupByDate` classes
+- NEW: Array flattening with `flatten_arrays: true` for multi-value fields
+- NEW: Pointer optimization with `return_pointers: true` for memory efficiency
+
+#### Advanced Query Constraints
+- NEW: `equals_linked_pointer` - Compare pointer fields across linked objects using aggregation
+- NEW: `does_not_equal_linked_pointer` - Negative comparison of linked pointers  
+- NEW: `between_dates` - Query records within date/time ranges
+- NEW: `matches_key_in_query` - Matches key in subquery
+- NEW: `does_not_match_key_in_query` - Does not match key in subquery
+- NEW: `starts_with` - String prefix matching constraint
+- NEW: `contains` - String substring matching constraint
+- NEW: `array_size` - Array length constraint
+
+#### New Utility Methods
+- NEW: `pluck(field)` - Extract values for single field from all matching records
+- NEW: `to_table(columns, options)` - Format results as ASCII/CSV/JSON tables with sorting
+- NEW: `verbose_aggregate` - Debug flag for MongoDB aggregation pipeline details
+- NEW: `keys(*fields)` / `select_fields(*fields)` - Field selection optimization
+- NEW: `result_pointers` - Get Parse::Pointer objects instead of full objects
+- NEW: `distinct_objects(field)` - Get distinct values with populated objects
+
+#### Enhanced Cloud Functions
+- NEW: `call_function_with_session(name, body, session_token)` - Call cloud functions with session context
+- NEW: `trigger_job_with_session(name, body, session_token)` - Trigger background jobs with session token
+- NEW: Enhanced authentication options and master key support for cloud functions
+
+#### Result Processing & Display
+- NEW: `GroupedResult` class with built-in sorting capabilities (`sort_by_key_asc/desc`, `sort_by_value_asc/desc`)
+- NEW: Table formatting with custom headers, sorting, and multiple output formats (ASCII, CSV, JSON)
+- NEW: Enhanced result processing with pointer optimization across all aggregation methods
+
+#### Pointer & Object Handling Improvements
+- IMPROVED: Enhanced `distinct` with automatic detection and conversion of MongoDB pointer strings
+- IMPROVED: `return_pointers` option available across multiple methods for memory optimization
+- IMPROVED: Server-side object population in aggregation pipelines
+- IMPROVED: Automatic handling of `ClassName$objectId` format conversion
+
+#### Dependency Updates
+- UPDATED: ActiveModel and ActiveSupport to latest compatible versions
+- UPDATED: Rack dependency
+- UPDATED: Modernized for Ruby 3.2+ compatibility
+
 ### 1.11.3
 - Adds "empty" query constraint option
 - Adds "include" alias for "includes" query method

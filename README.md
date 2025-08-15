@@ -205,6 +205,9 @@ result = Parse.call_function :myFunctionName, {param: value}
 - [Advanced Querying](#advanced-querying)
   - [Results Caching](#results-caching)
   - [Counting](#counting)
+  - [Count Distinct](#count-distinct)
+  - [Aggregation Functions](#aggregation-functions)
+  - [Group By Operations](#group-by-operations)
   - [Distinct Aggregation](#distinct-aggregation)
   - [Query Expressions](#query-expressions)
     - [:order](#order)
@@ -1767,9 +1770,77 @@ Counts the number of distinct values for a specified field using MongoDB aggrega
 
 **Note:** This feature requires MongoDB aggregation pipeline support in Parse Server.
 
+### Aggregation Functions
+
+Parse-Stack supports MongoDB aggregation functions for performing calculations across collections. These functions are efficient server-side operations.
+
+```ruby
+# Calculate sum of all scores
+total_score = User.sum(:score)
+# => 1547
+
+# Find minimum and maximum values
+min_age = User.min(:age)      # => 18
+max_age = User.max(:age)      # => 65
+
+# Calculate average rating
+avg_rating = Product.average(:rating)  # => 4.2
+# Or use the alias
+avg_rating = Product.avg(:rating)      # => 4.2
+
+# With query constraints
+high_scores = User.where(:level.gt => 5).sum(:score)
+recent_avg = Post.where(:created_at.after => 1.week.ago).avg(:views)
+```
+
+**Note:** These features require MongoDB aggregation pipeline support in Parse Server.
+
+### Group By Operations
+
+Group records by field values and perform aggregations on each group. Supports both server-side aggregation and client-side object grouping.
+
+```ruby
+# Basic grouping with count
+User.group_by(:department).count
+# => {"Engineering" => 45, "Marketing" => 23, "Sales" => 67}
+
+# Group with other aggregations
+User.group_by(:department).sum(:salary)
+# => {"Engineering" => 450000, "Marketing" => 230000, "Sales" => 670000}
+
+User.group_by(:department).avg(:salary)
+# => {"Engineering" => 10000, "Marketing" => 10000, "Sales" => 10000}
+
+# Group by date intervals
+Post.group_by_date(:created_at, :month).count
+# => {"2024-01" => 45, "2024-02" => 32, "2024-03" => 28}
+
+Post.group_by_date(:created_at, :day).sum(:views)
+# => {"2024-03-01" => 1200, "2024-03-02" => 950, ...}
+
+# Sortable grouping (returns GroupedResult with sorting methods)
+result = User.group_by(:city, sortable: true).count
+result.sort_by_key_asc     # Sort by city name
+result.sort_by_value_desc  # Sort by count (highest first)
+result.to_table           # Display as formatted table
+
+# Group actual objects (not aggregated - returns full Parse objects)
+users_by_city = User.group_objects_by(:city)
+# => {"New York" => [user1, user2, ...], "Austin" => [user3, user4, ...]}
+
+# Advanced options
+User.group_by(:tags, flatten_arrays: true).count  # Flatten array fields
+User.group_by(:team, return_pointers: true).count # Use pointers for efficiency
+```
+
+**Available aggregation methods:** `count`, `sum(field)`, `min(field)`, `max(field)`, `avg(field)`
+**Date intervals:** `:year`, `:month`, `:week`, `:day`, `:hour`
+
 ### Distinct Aggregation
 Finds the distinct values for a specified field across a single collection or
 view and returns the results in an array. You may mix this with additional query constraints.
+
+**⚠️ Breaking Change in v1.12.0**: For pointer fields, `distinct` now returns object IDs directly by default instead of full pointer hash objects like `{"__type"=>"Pointer", "className"=>"Team", "objectId"=>"abc123"}`. Use `return_pointers: true` to get Parse::Pointer objects.
 
 ```ruby
  # Return a list of unique city names
@@ -1777,7 +1848,18 @@ view and returns the results in an array. You may mix this with additional query
  User.distinct :city, :created_at.after => 10.days.ago
  # ex. ["San Diego", "Los Angeles", "San Juan"]
 
- # same
+ # For pointer fields, now returns object IDs by default (v1.12.0+)
+ Asset.distinct(:author_team)
+ # => ["team1", "team2", "team3"]  # Just the object IDs
+
+ # Pre-v1.12.0 behavior returned full pointer hashes:
+ # [{"__type"=>"Pointer", "className"=>"Team", "objectId"=>"team1"}, ...]
+ 
+ # To get Parse::Pointer objects in v1.12.0+
+ Asset.distinct(:author_team, return_pointers: true)
+ # => [#<Parse::Pointer @parse_class="Team" @id="team1">, ...]
+
+ # same using query instance
  query = Parse::Query.new("_User")
  query.where :created_at.after => 10.days.ago
  query.distinct(:city) #=> ["San Diego", "Los Angeles", "San Juan"]
