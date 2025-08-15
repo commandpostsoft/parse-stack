@@ -1896,13 +1896,26 @@ module Parse
     def convert_constraints_for_aggregation(constraints)
       return constraints unless constraints.is_a?(Hash)
       
-      constraints.transform_keys do |field|
+      result = {}
+      constraints.each do |field, value|
         # Skip special Parse operators
-        next field if field.to_s.start_with?('$')
+        if field.to_s.start_with?('$')
+          result[field] = value
+          next
+        end
         
         # Convert field name to aggregation format 
-        format_aggregation_field(field)
+        aggregation_field = format_aggregation_field(field)
+        
+        # Convert pointer values to MongoDB format (ClassName$objectId)
+        if value.is_a?(Hash) && value["__type"] == "Pointer"
+          result[aggregation_field] = "#{value['className']}$#{value['objectId']}"
+        else
+          result[aggregation_field] = value
+        end
       end
+      
+      result
     end
 
     # Convert Ruby Date/Time objects to MongoDB date format for aggregation pipelines
