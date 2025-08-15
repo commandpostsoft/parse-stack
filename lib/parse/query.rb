@@ -149,7 +149,7 @@ module Parse
     #  @raise ArgumentError if a non-nil value is passed that doesn't provide a session token string.
     #  @note Using a session_token automatically disables sending the master key in the request.
     #  @return [String] the session token to send with this API request.
-    attr_accessor :table, :client, :key, :cache, :use_master_key, :session_token
+    attr_accessor :table, :client, :key, :cache, :use_master_key, :session_token, :verbose_aggregate
 
     # We have a special class method to handle field formatting. This turns
     # the symbol keys in an operand from one key to another. For example, we can
@@ -309,6 +309,7 @@ module Parse
       @table = table
       @cache = true
       @use_master_key = true
+      @verbose_aggregate = false
       conditions constraints
     end # initialize
 
@@ -719,7 +720,19 @@ module Parse
       end
 
       # Execute the pipeline aggregation
+      if @verbose_aggregate
+        puts "[VERBOSE AGGREGATE] Pipeline for count_distinct(:#{field}):"
+        puts JSON.pretty_generate(pipeline)
+        puts "[VERBOSE AGGREGATE] Sending to: #{@table}"
+      end
+      
       response = client.aggregate_pipeline(@table, pipeline, headers: {}, **_opts)
+      
+      if @verbose_aggregate
+        puts "[VERBOSE AGGREGATE] Response success?: #{response.success?}"
+        puts "[VERBOSE AGGREGATE] Response result: #{response.result.inspect}"
+        puts "[VERBOSE AGGREGATE] Response error: #{response.error.inspect}" unless response.success?
+      end
       
       # Extract the count from the response
       if response.success? && response.result.is_a?(Array) && response.result.first
@@ -908,7 +921,22 @@ module Parse
     # @return [Parse::Response] the response from the aggregation pipeline
     def execute_aggregation_pipeline
       pipeline = build_aggregation_pipeline
-      client.aggregate_pipeline(@table, pipeline, headers: {}, **_opts)
+      
+      if @verbose_aggregate
+        puts "[VERBOSE AGGREGATE] Pipeline for linked pointer constraints:"
+        puts JSON.pretty_generate(pipeline)
+        puts "[VERBOSE AGGREGATE] Sending to: #{@table}"
+      end
+      
+      response = client.aggregate_pipeline(@table, pipeline, headers: {}, **_opts)
+      
+      if @verbose_aggregate
+        puts "[VERBOSE AGGREGATE] Response success?: #{response.success?}"
+        puts "[VERBOSE AGGREGATE] Response result: #{response.result.inspect}"
+        puts "[VERBOSE AGGREGATE] Response error: #{response.error.inspect}" unless response.success?
+      end
+      
+      response
     end
 
     # Build the complete aggregation pipeline from constraints
