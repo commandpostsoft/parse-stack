@@ -2100,6 +2100,53 @@ module Parse
       @return_pointers = return_pointers
     end
 
+    # Returns the MongoDB aggregation pipeline that would be used for a count operation.
+    # This is useful for debugging and understanding the generated pipeline.
+    # @return [Array<Hash>] the MongoDB aggregation pipeline
+    # @example
+    #   Capture.where(:author_team.eq => team).group_by(:last_action).pipeline
+    #   # => [{"$match"=>{"authorTeam"=>"Team$abc123"}}, {"$group"=>{"_id"=>"$lastAction", "count"=>{"$sum"=>1}}}, {"$project"=>{"_id"=>0, "objectId"=>"$_id", "count"=>1}}]
+    def pipeline
+      # Format the group field name
+      formatted_group_field = @query.send(:format_aggregation_field, @group_field)
+      
+      # Build the aggregation pipeline (same logic as execute_group_aggregation)
+      pipeline = []
+      
+      # Add match stage if there are where conditions
+      compiled_where = @query.send(:compile_where)
+      if compiled_where.present?
+        # Convert field names for aggregation context and handle dates
+        aggregation_where = @query.send(:convert_constraints_for_aggregation, compiled_where)
+        stringified_where = @query.send(:convert_dates_for_aggregation, JSON.parse(aggregation_where.to_json))
+        pipeline << { "$match" => stringified_where }
+      end
+      
+      # Add unwind stage if flatten_arrays is enabled
+      if @flatten_arrays
+        pipeline << { "$unwind" => "$#{formatted_group_field}" }
+      end
+      
+      # Add group and project stages (using count as example aggregation)
+      pipeline.concat([
+        { 
+          "$group" => { 
+            "_id" => "$#{formatted_group_field}", 
+            "count" => { "$sum" => 1 } 
+          } 
+        },
+        {
+          "$project" => {
+            "_id" => 0,
+            "objectId" => "$_id",
+            "count" => 1
+          }
+        }
+      ])
+      
+      pipeline
+    end
+
     # Returns raw unprocessed aggregation results 
     # @param operation [String] the aggregation operation
     # @param aggregation_expr [Hash] the MongoDB aggregation expression
@@ -2491,6 +2538,77 @@ module Parse
       @date_field = date_field
       @interval = interval
       @return_pointers = return_pointers
+    end
+
+    # Returns the MongoDB aggregation pipeline that would be used for a count operation.
+    # This is useful for debugging and understanding the generated pipeline.
+    # @return [Array<Hash>] the MongoDB aggregation pipeline
+    # @example
+    #   Capture.where(:author_team.eq => team).group_by_date(:created_at, :month).pipeline
+    #   # => [{"$match"=>{"authorTeam"=>"Team$abc123"}}, {"$group"=>{"_id"=>{"year"=>{"$year"=>"$createdAt"}, "month"=>{"$month"=>"$createdAt"}}, "count"=>{"$sum"=>1}}}, {"$project"=>{"_id"=>0, "objectId"=>"$_id", "count"=>1}}]
+    def pipeline
+      # Format the date field name
+      formatted_date_field = @query.send(:format_aggregation_field, @date_field)
+      
+      # Build the aggregation pipeline (same logic as execute_date_aggregation)
+      pipeline = []
+      
+      # Add match stage if there are where conditions
+      compiled_where = @query.send(:compile_where)
+      if compiled_where.present?
+        # Convert field names for aggregation context and handle dates
+        aggregation_where = @query.send(:convert_constraints_for_aggregation, compiled_where)
+        stringified_where = @query.send(:convert_dates_for_aggregation, JSON.parse(aggregation_where.to_json))
+        pipeline << { "$match" => stringified_where }
+      end
+      
+      # Create date grouping expression based on interval
+      date_expr = case @interval
+      when :year
+        { "year" => { "$year" => "$#{formatted_date_field}" } }
+      when :month
+        { 
+          "year" => { "$year" => "$#{formatted_date_field}" },
+          "month" => { "$month" => "$#{formatted_date_field}" }
+        }
+      when :week
+        { 
+          "year" => { "$year" => "$#{formatted_date_field}" },
+          "week" => { "$week" => "$#{formatted_date_field}" }
+        }
+      when :day
+        { 
+          "year" => { "$year" => "$#{formatted_date_field}" },
+          "month" => { "$month" => "$#{formatted_date_field}" },
+          "day" => { "$dayOfMonth" => "$#{formatted_date_field}" }
+        }
+      when :hour
+        { 
+          "year" => { "$year" => "$#{formatted_date_field}" },
+          "month" => { "$month" => "$#{formatted_date_field}" },
+          "day" => { "$dayOfMonth" => "$#{formatted_date_field}" },
+          "hour" => { "$hour" => "$#{formatted_date_field}" }
+        }
+      end
+      
+      # Add group and project stages (using count as example aggregation)
+      pipeline.concat([
+        { 
+          "$group" => { 
+            "_id" => date_expr, 
+            "count" => { "$sum" => 1 } 
+          } 
+        },
+        {
+          "$project" => {
+            "_id" => 0,
+            "objectId" => "$_id",
+            "count" => 1
+          }
+        }
+      ])
+      
+      pipeline
     end
 
     # Count the number of items in each time period.

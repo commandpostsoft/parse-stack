@@ -307,4 +307,50 @@ class TestQueryAggregationFeatures < Minitest::Test
     assert_equal "Team", pointers.first.parse_class
     assert_equal "team1", pointers.first.id
   end
+
+  # Test pipeline method on GroupBy
+  def test_group_by_pipeline_method
+    group_by = @query.group_by(:category)
+    
+    assert_respond_to group_by, :pipeline
+    pipeline = group_by.pipeline
+    
+    assert_kind_of Array, pipeline
+    assert pipeline.any? { |stage| stage.key?("$group") }
+    assert pipeline.any? { |stage| stage.key?("$project") }
+  end
+
+  # Test pipeline method on GroupByDate  
+  def test_group_by_date_pipeline_method
+    group_by_date = @query.group_by_date(:created_at, :month)
+    
+    assert_respond_to group_by_date, :pipeline
+    pipeline = group_by_date.pipeline
+    
+    assert_kind_of Array, pipeline
+    assert pipeline.any? { |stage| stage.key?("$group") }
+    assert pipeline.any? { |stage| stage.key?("$project") }
+  end
+
+  # Test pipeline method on SortableGroupBy
+  def test_sortable_group_by_pipeline_method
+    sortable_group_by = @query.group_by(:category, sortable: true)
+    
+    assert_respond_to sortable_group_by, :pipeline
+    pipeline = sortable_group_by.pipeline
+    
+    assert_kind_of Array, pipeline
+    assert pipeline.any? { |stage| stage.key?("$group") }
+  end
+
+  # Test pipeline method on SortableGroupByDate
+  def test_sortable_group_by_date_pipeline_method
+    sortable_group_by_date = @query.group_by_date(:created_at, :month, sortable: true)
+    
+    assert_respond_to sortable_group_by_date, :pipeline
+    pipeline = sortable_group_by_date.pipeline
+    
+    assert_kind_of Array, pipeline
+    assert pipeline.any? { |stage| stage.key?("$group") }
+  end
 end
