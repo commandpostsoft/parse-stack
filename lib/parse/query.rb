@@ -717,25 +717,31 @@ module Parse
       # Extract values from the results
       values = raw_results.map { |item| item["value"] }.compact
       
-      if return_pointers
-        # Convert to Parse::Pointer objects
-        to_pointers(values)
-      else
-        # Auto-detect if this is a pointer field by checking for MongoDB format strings
-        # If values contain strings like "ClassName$objectId", convert to Parse::Pointer objects
-        if values.any? { |v| v.is_a?(String) && v.include?('$') && v.match(/^[A-Za-z]\w*\$[\w\d]+$/) }
-          # Convert MongoDB pointer strings to Parse::Pointer objects
-          values.map do |value|
-            if value.is_a?(String) && value.include?('$')
-              class_name, object_id = value.split('$', 2)
-              Parse::Pointer.new(class_name, object_id)
-            else
-              value
-            end
-          end.compact
+      # Auto-detect if this is a pointer field by checking for MongoDB format strings
+      # All strings should have the same className prefix for a distinct field
+      if values.any? && values.first.is_a?(String) && values.first.include?('$') && values.first.match(/^[A-Za-z]\w*\$[\w\d]+$/)
+        # Extract className from first value to check consistency
+        first_class_name = values.first.split('$', 2)[0]
+        
+        # Check if all values are pointer strings with the same className
+        if values.all? { |v| v.is_a?(String) && v.start_with?("#{first_class_name}$") }
+          if return_pointers
+            # Convert to Parse::Pointer objects when explicitly requested
+            to_pointers(values)
+          else
+            # By default, just return the object IDs (strip the className$ prefix)
+            values.map { |value| value.split('$', 2)[1] }
+          end
         else
+          # Mixed or inconsistent format, return as-is
           values
         end
+      elsif return_pointers
+        # Explicit conversion requested for non-pointer fields
+        to_pointers(values)
+      else
+        # Return values as-is for non-pointer fields
+        values
       end
     end
 

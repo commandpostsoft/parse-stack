@@ -44,22 +44,17 @@ class TestDistinctConversion < Minitest::Test
 
   def test_distinct_auto_detects_pointer_strings_and_converts
     # Test the auto-detection logic in distinct method
-    values = ["Team$abc123", "Team$def456", "User$ghi789"]
+    values = ["Team$abc123", "Team$def456", "Team$ghi789"]
     
     # Mock the internal workings to test just the conversion logic
     @query.stub :compile_where, {} do
       @query.stub :aggregate, mock_aggregation(values) do
-        # This should auto-detect pointer format and convert
+        # This should auto-detect pointer format and return object IDs by default
         result = @query.distinct(:project)
         
         assert_equal 3, result.size
-        assert_kind_of Parse::Pointer, result.first
-        assert_equal "Team", result[0].parse_class
-        assert_equal "abc123", result[0].id
-        assert_equal "Team", result[1].parse_class
-        assert_equal "def456", result[1].id
-        assert_equal "User", result[2].parse_class
-        assert_equal "ghi789", result[2].id
+        assert_equal ["abc123", "def456", "ghi789"], result
+        assert_kind_of String, result.first
       end
     end
   end
@@ -95,22 +90,17 @@ class TestDistinctConversion < Minitest::Test
   end
 
   def test_distinct_mixed_pointer_and_regular_strings
-    # Test with mix of valid pointers and regular strings
-    values = ["Team$abc123", "regular-string", "User$def456"]
+    # Test with mix of different pointer classes - should return as-is due to inconsistency
+    values = ["Team$abc123", "User$def456", "Project$ghi789"]
     
     @query.stub :compile_where, {} do
       @query.stub :aggregate, mock_aggregation(values) do
         result = @query.distinct(:mixed_field)
         
-        # Should convert valid pointers but leave regular strings as-is
+        # Should return original strings since they don't all have the same className prefix
         assert_equal 3, result.size
-        assert_kind_of Parse::Pointer, result[0]
-        assert_equal "Team", result[0].parse_class
-        assert_equal "abc123", result[0].id
-        assert_equal "regular-string", result[1]  # String unchanged
-        assert_kind_of Parse::Pointer, result[2] 
-        assert_equal "User", result[2].parse_class
-        assert_equal "def456", result[2].id
+        assert_equal ["Team$abc123", "User$def456", "Project$ghi789"], result
+        assert_kind_of String, result.first
       end
     end
   end
