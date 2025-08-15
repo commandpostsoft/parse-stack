@@ -643,7 +643,7 @@ module Parse
     # @note This feature requires use of the Master Key in the API.
     # @param field [Symbol|String] The name of the field used for filtering.
     # @version 1.8.0
-    def distinct(field)
+    def distinct(field, return_pointers: false)
       if field.nil? == false && field.respond_to?(:to_s)
         # disable counting if it was enabled.
         old_count_value = @count
@@ -653,7 +653,14 @@ module Parse
         compile_query[:distinct] = Query.format_field(field).to_sym
         @count = old_count_value
         # perform aggregation
-        return client.aggregate_objects(@table, compile_query.as_json, **_opts).result
+        raw_results = client.aggregate_objects(@table, compile_query.as_json, **_opts).result
+        
+        if return_pointers
+          # Convert to Parse::Pointer objects
+          to_pointers(raw_results)
+        else
+          raw_results
+        end
       else
         raise ArgumentError, "Invalid field name passed to `distinct`."
       end
@@ -783,7 +790,7 @@ module Parse
     # max_results is used to iterate through as many API requests as possible using
     # :skip and :limit paramter.
     # @!visibility private
-    def max_results(raw: false, on_batch: nil, discard_results: false, &block)
+    def max_results(raw: false, return_pointers: false, on_batch: nil, discard_results: false, &block)
       compiled_query = compile
       batch_size = 1_000
       results = []
@@ -805,7 +812,13 @@ module Parse
         break if response.error? || response.results.empty?
 
         items = response.results
-        items = decode(items) unless raw
+        items = if raw
+                  items
+                elsif return_pointers
+                  to_pointers(items)
+                else
+                  decode(items)
+                end
         # if a block is provided, we do not keep the results after processing.
         if block_given?
           items.each(&block)
@@ -879,10 +892,10 @@ module Parse
     # @yield a block to iterate for each object that matched the query.
     # @return [Array<Hash>] if raw is set to true, a set of Parse JSON hashes.
     # @return [Array<Parse::Object>] if raw is set to false, a list of matching Parse::Object subclasses.
-    def results(raw: false, &block)
+    def results(raw: false, return_pointers: false, &block)
       if @results.nil?
         if block_given?
-          max_results(raw: raw, &block)
+          max_results(raw: raw, return_pointers: return_pointers, &block)
         elsif @limit.is_a?(Numeric) || requires_aggregation_pipeline?
           # Check if this query requires aggregation pipeline processing
           if requires_aggregation_pipeline?
@@ -891,11 +904,17 @@ module Parse
             response = fetch!(compile)
           end
           return [] if response.error?
-          items = raw ? response.results : decode(response.results)
+          items = if raw
+                    response.results
+                  elsif return_pointers
+                    to_pointers(response.results)
+                  else
+                    decode(response.results)
+                  end
           return items.each(&block) if block_given?
           @results = items
         else
-          @results = max_results(raw: raw)
+          @results = max_results(raw: raw, return_pointers: return_pointers)
         end
       end
       @results
@@ -995,6 +1014,23 @@ module Parse
     # @return [Array<Parse::Object>] an array of Parse::Object subclasses.
     def decode(list)
       list.map { |m| Parse::Object.build(m, @table) }.compact
+    end
+
+    # Builds Parse::Pointer objects based on the set of Parse JSON hashes in an array.
+    # @param list [Array<Hash>] a list of Parse JSON hashes
+    # @return [Array<Parse::Pointer>] an array of Parse::Pointer instances.
+    def to_pointers(list)
+      list.map do |m|
+        if m.is_a?(Hash)
+          if m["objectId"]
+            # Standard Parse object with objectId
+            Parse::Pointer.new(@table, m["objectId"])
+          elsif m["__type"] == "Pointer" && m["className"] && m["objectId"]
+            # Parse pointer object
+            Parse::Pointer.new(m["className"], m["objectId"])
+          end
+        end
+      end.compact
     end
 
     # @return [Hash]
@@ -1165,7 +1201,91 @@ module Parse
       GroupByDate.new(self, field, interval.to_sym)
     end
 
+    # Enhanced distinct method that automatically populates Parse pointer objects at the server level.
+    # Uses aggregation pipeline to efficiently populate objects instead of post-processing.
+    # @param field [Symbol, String] the field name to get distinct values for.
+    # @return [Array] array of distinct values, with Parse pointers populated as full objects.
+    # @example
+    #   # Basic usage (returns raw values for non-pointer fields)
+    #   Asset.query.distinct_objects(:media_format)
+    #   # => ["video", "audio", "photo"]
+    #   
+    #   # Auto-populate Parse pointer objects (much faster than manual conversion)
+    #   Asset.query.distinct_objects(:author_team)
+    #   # => [#<Team:0x123 @attributes={"name"=>"Team A", ...}>, ...]
+    def distinct_objects(field, return_pointers: false)
+      if field.nil? || !field.respond_to?(:to_s)
+        raise ArgumentError, "Invalid field name passed to `distinct_objects`."
+      end
+
+      # Use aggregation pipeline to get distinct values with populated objects
+      execute_distinct_with_population(field, return_pointers: return_pointers)
+    end
+
     private
+
+    # Execute distinct aggregation with object population at server level.
+    # @param field [Symbol, String] the field name to get distinct values for.
+    # @param return_pointers [Boolean] whether to return Parse::Pointer objects instead of full objects.
+    # @return [Array] array of distinct values with populated objects or pointers.
+    def execute_distinct_with_population(field, return_pointers: false)
+      # Format field name according to Parse conventions
+      formatted_field = format_aggregation_field(field)
+      
+      # Build aggregation pipeline for distinct with population
+      pipeline = [
+        {
+          "$group" => {
+            "_id" => "$#{formatted_field}",
+            "distinctValue" => { "$first" => "$#{formatted_field}" }
+          }
+        },
+        {
+          "$replaceRoot" => {
+            "newRoot" => "$distinctValue"
+          }
+        }
+      ]
+
+      # Add match stage if there are where conditions
+      compiled_where = compile_where
+      if compiled_where.present?
+        stringified_where = convert_dates_for_aggregation(JSON.parse(compiled_where.to_json))
+        pipeline.unshift({ "$match" => stringified_where })
+      end
+
+      # Execute the pipeline aggregation
+      if @verbose_aggregate
+        puts "[VERBOSE AGGREGATE] Pipeline for distinct_objects(:#{field}):"
+        puts JSON.pretty_generate(pipeline)
+        puts "[VERBOSE AGGREGATE] Sending to: #{@table}"
+      end
+      
+      response = client.aggregate_pipeline(@table, pipeline, headers: {}, **_opts)
+      
+      if @verbose_aggregate
+        puts "[VERBOSE AGGREGATE] Response success?: #{response.success?}"
+        puts "[VERBOSE AGGREGATE] Response result: #{response.result.inspect}"
+        puts "[VERBOSE AGGREGATE] Response error: #{response.error.inspect}" unless response.success?
+      end
+      
+      # Parse Server should return populated objects directly
+      if response.success? && response.result.is_a?(Array)
+        # Run uniq on raw results first for better performance
+        unique_results = response.result.uniq
+        
+        if return_pointers
+          # Convert to Parse::Pointer objects instead of full objects
+          to_pointers(unique_results)
+        else
+          # Use the existing decode method to convert Parse JSON to Parse::Object instances
+          decode(unique_results)
+        end
+      else
+        []
+      end
+    end
+
 
     # Execute a basic aggregation pipeline and extract the result
     # @param pipeline [Array] the base pipeline stages (without $match)
