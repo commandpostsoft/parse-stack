@@ -11,7 +11,7 @@ module Parse
   module Associations
     # This association creates a one-to-one association with another Parse model.
     # BelongsTo relation is the simplies association in which the local
-    # Parse table constains a column that has a Parse::Pointer to a foreign table record.
+    # Parse table constrains a column that has a Parse::Pointer to a foreign table record.
     #
     # This association says that this class contains a foreign pointer column
     # which references a different class. Utilizing the `belongs_to` method in

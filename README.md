@@ -205,6 +205,9 @@ result = Parse.call_function :myFunctionName, {param: value}
 - [Advanced Querying](#advanced-querying)
   - [Results Caching](#results-caching)
   - [Counting](#counting)
+  - [Count Distinct](#count-distinct)
+  - [Aggregation Functions](#aggregation-functions)
+  - [Group By Operations](#group-by-operations)
   - [Distinct Aggregation](#distinct-aggregation)
   - [Query Expressions](#query-expressions)
     - [:order](#order)
@@ -1748,9 +1751,96 @@ non-zero value. However, if you need to perform a count query, use `count()` met
 
 ```
 
+### Count Distinct
+Counts the number of distinct values for a specified field using MongoDB aggregation pipeline. This is more efficient than getting distinct values and counting them, especially for large datasets.
+
+```ruby
+ # get count of unique genres for songs with play_count > 100
+ distinct_genres_count = Song.count_distinct(:genre, :play_count.gt => 100)
+
+ # get total number of unique artists
+ unique_artists = Song.count_distinct(:artist)
+
+ # same using query instance
+ query = Parse::Query.new("Song") 
+ query.where(:play_count.gt => 1000)
+ query.count_distinct(:artist)
+ # => 15
+```
+
+**Note:** This feature requires MongoDB aggregation pipeline support in Parse Server.
+
+### Aggregation Functions
+
+Parse-Stack supports MongoDB aggregation functions for performing calculations across collections. These functions are efficient server-side operations.
+
+```ruby
+# Calculate sum of all scores
+total_score = User.sum(:score)
+# => 1547
+
+# Find minimum and maximum values
+min_age = User.min(:age)      # => 18
+max_age = User.max(:age)      # => 65
+
+# Calculate average rating
+avg_rating = Product.average(:rating)  # => 4.2
+# Or use the alias
+avg_rating = Product.avg(:rating)      # => 4.2
+
+# With query constraints
+high_scores = User.where(:level.gt => 5).sum(:score)
+recent_avg = Post.where(:created_at.after => 1.week.ago).avg(:views)
+```
+
+**Note:** These features require MongoDB aggregation pipeline support in Parse Server.
+
+### Group By Operations
+
+Group records by field values and perform aggregations on each group. Supports both server-side aggregation and client-side object grouping.
+
+```ruby
+# Basic grouping with count
+User.group_by(:department).count
+# => {"Engineering" => 45, "Marketing" => 23, "Sales" => 67}
+
+# Group with other aggregations
+User.group_by(:department).sum(:salary)
+# => {"Engineering" => 450000, "Marketing" => 230000, "Sales" => 670000}
+
+User.group_by(:department).avg(:salary)
+# => {"Engineering" => 10000, "Marketing" => 10000, "Sales" => 10000}
+
+# Group by date intervals
+Post.group_by_date(:created_at, :month).count
+# => {"2024-01" => 45, "2024-02" => 32, "2024-03" => 28}
+
+Post.group_by_date(:created_at, :day).sum(:views)
+# => {"2024-03-01" => 1200, "2024-03-02" => 950, ...}
+
+# Sortable grouping (returns GroupedResult with sorting methods)
+result = User.group_by(:city, sortable: true).count
+result.sort_by_key_asc     # Sort by city name
+result.sort_by_value_desc  # Sort by count (highest first)
+result.to_table           # Display as formatted table
+
+# Group actual objects (not aggregated - returns full Parse objects)
+users_by_city = User.group_objects_by(:city)
+# => {"New York" => [user1, user2, ...], "Austin" => [user3, user4, ...]}
+
+# Advanced options
+User.group_by(:tags, flatten_arrays: true).count  # Flatten array fields
+User.group_by(:team, return_pointers: true).count # Use pointers for efficiency
+```
+
+**Available aggregation methods:** `count`, `sum(field)`, `min(field)`, `max(field)`, `avg(field)`
+**Date intervals:** `:year`, `:month`, `:week`, `:day`, `:hour`
+
 ### Distinct Aggregation
 Finds the distinct values for a specified field across a single collection or
 view and returns the results in an array. You may mix this with additional query constraints.
+
+**⚠️ Breaking Change in v1.12.0**: For pointer fields, `distinct` now returns object IDs directly by default instead of full pointer hash objects like `{"__type"=>"Pointer", "className"=>"Team", "objectId"=>"abc123"}`. Use `return_pointers: true` to get Parse::Pointer objects.
 
 ```ruby
  # Return a list of unique city names
@@ -1758,7 +1848,18 @@ view and returns the results in an array. You may mix this with additional query
  User.distinct :city, :created_at.after => 10.days.ago
  # ex. ["San Diego", "Los Angeles", "San Juan"]
 
- # same
+ # For pointer fields, now returns object IDs by default (v1.12.0+)
+ Asset.distinct(:author_team)
+ # => ["team1", "team2", "team3"]  # Just the object IDs
+
+ # Pre-v1.12.0 behavior returned full pointer hashes:
+ # [{"__type"=>"Pointer", "className"=>"Team", "objectId"=>"team1"}, ...]
+ 
+ # To get Parse::Pointer objects in v1.12.0+
+ Asset.distinct(:author_team, return_pointers: true)
+ # => [#<Parse::Pointer @parse_class="Team" @id="team1">, ...]
+
+ # same using query instance
  query = Parse::Query.new("_User")
  query.where :created_at.after => 10.days.ago
  query.distinct(:city) #=> ["San Diego", "Los Angeles", "San Juan"]
@@ -2049,6 +2150,79 @@ q.where :field.excludes => query
 q.where :field.not_in_query => query # alias
 ```
 
+#### Matches Key in Query
+Equivalent to using the `$select` Parse query operation for joining queries where fields from different classes match. This is useful for performing join-like operations where you want to find objects where a field's value equals another field's value from a different query.
+
+```ruby
+# Find users where user.company equals customer.company
+customer_query = Customer.where(:active => true)
+user_query = User.where(:company.matches_key => { key: "company", query: customer_query })
+
+# If the local field has the same name as the remote field, you can omit the key
+# assumes key: 'company'  
+user_query = User.where(:company.matches_key => customer_query)
+
+# Alias methods
+q.where :field.matches_key_in_query => query
+```
+
+#### Does Not Match Key in Query  
+Equivalent to using the `$dontSelect` Parse query operation for joining queries where fields from different classes do NOT match. This is the inverse of the "Matches Key in Query" constraint.
+
+```ruby
+# Find users where user.company does NOT equal customer.company
+customer_query = Customer.where(:active => true)
+user_query = User.where(:company.does_not_match_key => { key: "company", query: customer_query })
+
+# If the local field has the same name as the remote field, you can omit the key
+# assumes key: 'company'
+user_query = User.where(:company.does_not_match_key => customer_query)
+
+# Alias methods
+q.where :field.does_not_match_key_in_query => query
+```
+
+#### Starts With
+Equivalent to using the `$regex` Parse query operation with a prefix pattern. This is useful for autocomplete functionality and prefix matching.
+
+```ruby
+# Find users whose name starts with "John"
+User.where(:name.starts_with => "John")
+# Generates: "name": { "$regex": "^John", "$options": "i" }
+
+# Case-insensitive prefix matching with special characters
+User.where(:email.starts_with => "john.doe+")
+# Automatically escapes special regex characters
+```
+
+#### Contains
+Equivalent to using the `$regex` Parse query operation with a contains pattern. This is useful for case-insensitive text search within fields.
+
+```ruby
+# Find posts whose title contains "parse"
+Post.where(:title.contains => "parse")
+# Generates: "title": { "$regex": ".*parse.*", "$options": "i" }
+
+# Search in descriptions
+Post.where(:description.contains => "server setup")
+# Automatically escapes special regex characters
+```
+
+
+#### Date Range
+A convenience constraint that combines greater-than-or-equal and less-than-or-equal constraints for date/time range queries.
+
+```ruby
+# Find events between two dates
+start_date = DateTime.new(2023, 1, 1)
+end_date = DateTime.new(2023, 12, 31)
+Event.where(:created_at.between_dates => [start_date, end_date])
+# Generates: "created_at": { "$gte": start_date, "$lte": end_date }
+
+# Works with Time objects too
+Event.where(:updated_at.between_dates => [1.week.ago, Time.now])
+```
+
 #### Matches Object Id
 Sometimes you want to find rows where a particular Parse object exists. You can do so by passing a the Parse::Object subclass or a Parse::Pointer. In some cases you may only have the "objectId" of the record you are looking for. For convenience, you can also use the `id` constraint. This will assume that the name of the field matches a particular Parse class you have defined. Assume the following:
 
@@ -2305,27 +2479,77 @@ If you would like to turn off automatic scope generation for property types, set
 ## Calling Cloud Code Functions
 You can call on your defined Cloud Code functions using the `call_function()` method. The result will be `nil` in case of errors or the value of the `result` field in the Parse response.
 
-```ruby
- params = {}
- # use the explicit name of the function
- result = Parse.call_function 'functionName', params
+### Basic Usage
 
- # to get the raw Response object
- response = Parse.call_function 'functionName', params, raw: true
- response.result unless response.error?
+```ruby
+params = {}
+# use the explicit name of the function
+result = Parse.call_function 'functionName', params
+
+# to get the raw Response object
+response = Parse.call_function 'functionName', params, raw: true
+response.result unless response.error?
+```
+
+### Authenticated Cloud Function Calls
+
+You can call cloud functions with user session tokens for authenticated requests:
+
+```ruby
+# Using session token option
+user = Parse::User.login("username", "password")
+result = Parse.call_function('functionName', params, session_token: user.session_token)
+
+# Using convenience method
+result = Parse.call_function_with_session('functionName', params, user.session_token)
+
+# Using master key for administrative operations
+result = Parse.call_function('functionName', params, master_key: true)
+```
+
+### Advanced Options
+
+```ruby
+# Using a specific client connection
+result = Parse.call_function('functionName', params, client: :my_client)
+
+# Combining options
+result = Parse.call_function('functionName', params, 
+  session_token: user.session_token,
+  raw: true,
+  client: :default
+)
 ```
 
 ## Calling Background Jobs
 You can trigger background jobs that you have configured in your Parse application as follows.
 
-```ruby
- params = {}
- # use explicit name of the job
- result = Parse.trigger_job :myJobName, params
+### Basic Usage
 
- # to get the raw Response object
- response = Parse.trigger_job :myJobName, params, raw: true
- response.result unless response.error?
+```ruby
+params = {}
+# use explicit name of the job
+result = Parse.trigger_job :myJobName, params
+
+# to get the raw Response object
+response = Parse.trigger_job :myJobName, params, raw: true
+response.result unless response.error?
+```
+
+### Authenticated Job Triggers
+
+Background jobs can also be triggered with authentication:
+
+```ruby
+# Using session token option
+user = Parse::User.login("username", "password")
+result = Parse.trigger_job('myJobName', params, session_token: user.session_token)
+
+# Using convenience method
+result = Parse.trigger_job_with_session('myJobName', params, user.session_token)
+
+# Using master key for administrative operations
+result = Parse.trigger_job('myJobName', params, master_key: true)
 ```
 
 ## Active Model Callbacks

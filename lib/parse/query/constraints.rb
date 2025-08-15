@@ -92,7 +92,7 @@ module Parse
     #  query.or_where :field => value
     #
     class CompoundQueryConstraint < Constraint
-      contraint_keyword :$or
+      constraint_keyword :$or
       register :or
 
       # @return [Hash] the compiled constraint.
@@ -122,7 +122,7 @@ module Parse
       # @!method on_or_before
       # Alias for {lte} that provides better readability when constraining dates.
       # @return [LessThanOrEqualConstraint]
-      contraint_keyword :$lte
+      constraint_keyword :$lte
       register :lte
       register :less_than_or_equal
       register :on_or_before
@@ -147,7 +147,7 @@ module Parse
       # @!method before
       # Alias for {lt} that provides better readability when constraining dates.
       # @return [LessThanConstraint]
-      contraint_keyword :$lt
+      constraint_keyword :$lt
       register :lt
       register :less_than
       register :before
@@ -173,7 +173,7 @@ module Parse
       # @!method after
       # Alias for {gt} that provides better readability when constraining dates.
       # @return [GreaterThanConstraint]
-      contraint_keyword :$gt
+      constraint_keyword :$gt
       register :gt
       register :greater_than
       register :after
@@ -199,7 +199,7 @@ module Parse
       # @!method on_or_after
       # Alias for {gte} that provides better readability when constraining dates.
       # @return [GreaterThanOrEqualConstraint]
-      contraint_keyword :$gte
+      constraint_keyword :$gte
       register :gte
       register :greater_than_or_equal
       register :on_or_after
@@ -217,7 +217,7 @@ module Parse
       # @!method ne
       # # Alias for {not}.
       # @return [NotEqualConstraint]
-      contraint_keyword :$ne
+      constraint_keyword :$ne
       register :not
       register :ne
     end
@@ -238,7 +238,7 @@ module Parse
       # @example
       #  q.where :field.null => true
       # @return [NullabilityConstraint]
-      contraint_keyword :$exists
+      constraint_keyword :$exists
       register :null
 
       # @return [Hash] the compiled constraint.
@@ -272,7 +272,7 @@ module Parse
       # @example
       #  q.where :field.exists => true
       # @return [ExistsConstraint]
-      contraint_keyword :$exists
+      constraint_keyword :$exists
       register :exists
 
       # @return [Hash] the compiled constraint.
@@ -298,7 +298,7 @@ module Parse
       # @example
       #  q.where :field.empty => true
       # @return [ExistsConstraint]
-      contraint_keyword :$exists
+      constraint_keyword :$exists
       register :empty
 
       # @return [Hash] the compiled constraint.
@@ -333,7 +333,7 @@ module Parse
       # @!method contained_in
       # Alias for {in}
       # @return [ContainedInConstraint]
-      contraint_keyword :$in
+      constraint_keyword :$in
       register :in
       register :contained_in
 
@@ -369,7 +369,7 @@ module Parse
       # @!method not_contained_in
       # Alias for {not_in}
       # @return [NotContainedInConstraint]
-      contraint_keyword :$nin
+      constraint_keyword :$nin
       register :not_in
       register :nin
       register :not_contained_in
@@ -401,7 +401,7 @@ module Parse
       # @!method contains_all
       # Alias for {all}
       # @return [ContainsAllConstraint]
-      contraint_keyword :$all
+      constraint_keyword :$all
       register :all
       register :contains_all
 
@@ -429,7 +429,7 @@ module Parse
       # @!method select
       # A registered method on a symbol to create the constraint. Maps to Parse operator "$select".
       # @return [SelectionConstraint]
-      contraint_keyword :$select
+      constraint_keyword :$select
       register :select
 
       # @return [Hash] the compiled constraint.
@@ -480,7 +480,7 @@ module Parse
       # @!method reject
       # Alias for {dont_select}
       # @return [RejectionConstraint]
-      contraint_keyword :$dontSelect
+      constraint_keyword :$dontSelect
       register :reject
       register :dont_select
 
@@ -526,7 +526,7 @@ module Parse
       # @!method regex
       # Alias for {like}
       # @return [RegularExpressionConstraint]
-      contraint_keyword :$regex
+      constraint_keyword :$regex
       register :like
       register :regex
     end
@@ -550,7 +550,7 @@ module Parse
       # @!method rel
       # Alias for {related_to}
       # @return [RelationQueryConstraint]
-      contraint_keyword :$relatedTo
+      constraint_keyword :$relatedTo
       register :related_to
       register :rel
 
@@ -581,7 +581,7 @@ module Parse
       # @!method in_query
       # Alias for {matches}
       # @return [InQueryConstraint]
-      contraint_keyword :$inQuery
+      constraint_keyword :$inQuery
       register :matches
       register :in_query
     end
@@ -604,7 +604,7 @@ module Parse
       # @!method not_in_query
       # Alias for {excludes}
       # @return [NotInQueryConstraint]
-      contraint_keyword :$notInQuery
+      constraint_keyword :$notInQuery
       register :excludes
       register :not_in_query
     end
@@ -636,7 +636,7 @@ module Parse
       #  q.where :field.near => geopoint
       #  q.where :field.near => geopoint.max_miles(distance)
       # @return [NearSphereQueryConstraint]
-      contraint_keyword :$nearSphere
+      constraint_keyword :$nearSphere
       register :near
 
       # @return [Hash] the compiled constraint.
@@ -674,7 +674,7 @@ module Parse
       # @example
       #  q.where :field.within_box => [soutwestGeoPoint, northeastGeoPoint]
       # @return [WithinGeoBoxQueryConstraint]
-      contraint_keyword :$within
+      constraint_keyword :$within
       register :within_box
 
       # @return [Hash] the compiled constraint.
@@ -716,7 +716,7 @@ module Parse
       #  q.where :field.within_polygon => [geopoint1, geopoint2, geopoint3]
       # @return [WithinPolygonQueryConstraint]
       # @version 1.7.0 (requires Server v2.4.2 or later)
-      contraint_keyword :$geoWithin
+      constraint_keyword :$geoWithin
       register :within_polygon
 
       # @return [Hash] the compiled constraint.
@@ -753,7 +753,7 @@ module Parse
       # hash if it doesn't already have it.
       # @return [WithinPolygonQueryConstraint]
       # @version 1.8.0 (requires Server v2.5.0 or later)
-      contraint_keyword :$text
+      constraint_keyword :$text
       register :text_search
 
       # @return [Hash] the compiled constraint.
@@ -781,6 +781,389 @@ module Parse
         end
 
         { @operation.operand => { :$text => { :$search => params } } }
+      end
+    end
+
+    # Equivalent to the `$select` Parse query operation but for key matching.
+    # This matches objects where a field's value equals another field's value from a different query.
+    # Useful for performing join-like operations where fields from different classes match.
+    #
+    #  # Find users where user.company equals customer.company
+    #  customer_query = Customer.where(:active => true)
+    #  user_query = User.where(:company.matches_key => { key: "company", query: customer_query })
+    #
+    #  # If the local field has the same name as the remote field, you can omit the key
+    #  # assumes key: 'company'
+    #  user_query = User.where(:company.matches_key => customer_query)
+    #
+    class MatchesKeyInQueryConstraint < Constraint
+      # @!method matches_key_in_query
+      # A registered method on a symbol to create the constraint.
+      # @example
+      #  q.where :field.matches_key_in_query => { key: "remote_field", query: query }
+      #  q.where :field.matches_key_in_query => query # assumes same field name
+      # @return [MatchesKeyInQueryConstraint]
+
+      # @!method matches_key
+      # Alias for {matches_key_in_query}
+      # @return [MatchesKeyInQueryConstraint]
+      constraint_keyword :$select
+      register :matches_key_in_query
+      register :matches_key
+
+      # @return [Hash] the compiled constraint.
+      def build
+        remote_field_name = @operation.operand
+        query = nil
+        
+        if @value.is_a?(Hash)
+          res = @value.symbolize_keys
+          remote_field_name = res[:key] || remote_field_name
+          query = res[:query]
+          unless query.is_a?(Parse::Query)
+            raise ArgumentError, "Invalid Parse::Query object provided in :query field of value: #{@operation.operand}.matches_key_in_query => #{@value}"
+          end
+          query = query.compile(encode: false, includeClassName: true)
+        elsif @value.is_a?(Parse::Query)
+          # if its a query, then assume key is the same name as operand.
+          query = @value.compile(encode: false, includeClassName: true)
+        else
+          raise ArgumentError, "Invalid `:matches_key_in_query` query constraint. It should follow the format: :field.matches_key_in_query => { key: 'key', query: '<Parse::Query>' }"
+        end
+        
+        { @operation.operand => { :$select => { key: remote_field_name, query: query } } }
+      end
+    end
+
+    # Equivalent to the `$dontSelect` Parse query operation but for key matching.
+    # This matches objects where a field's value does NOT equal another field's value from a different query.
+    # This is the inverse of the {MatchesKeyInQueryConstraint}.
+    #
+    #  # Find users where user.company does NOT equal customer.company
+    #  customer_query = Customer.where(:active => true)
+    #  user_query = User.where(:company.does_not_match_key => { key: "company", query: customer_query })
+    #
+    #  # If the local field has the same name as the remote field, you can omit the key
+    #  # assumes key: 'company'
+    #  user_query = User.where(:company.does_not_match_key => customer_query)
+    #
+    class DoesNotMatchKeyInQueryConstraint < Constraint
+      # @!method does_not_match_key_in_query
+      # A registered method on a symbol to create the constraint.
+      # @example
+      #  q.where :field.does_not_match_key_in_query => { key: "remote_field", query: query }
+      #  q.where :field.does_not_match_key_in_query => query # assumes same field name
+      # @return [DoesNotMatchKeyInQueryConstraint]
+
+      # @!method does_not_match_key
+      # Alias for {does_not_match_key_in_query}
+      # @return [DoesNotMatchKeyInQueryConstraint]
+      constraint_keyword :$dontSelect
+      register :does_not_match_key_in_query
+      register :does_not_match_key
+
+      # @return [Hash] the compiled constraint.
+      def build
+        remote_field_name = @operation.operand
+        query = nil
+        
+        if @value.is_a?(Hash)
+          res = @value.symbolize_keys
+          remote_field_name = res[:key] || remote_field_name
+          query = res[:query]
+          unless query.is_a?(Parse::Query)
+            raise ArgumentError, "Invalid Parse::Query object provided in :query field of value: #{@operation.operand}.does_not_match_key_in_query => #{@value}"
+          end
+          query = query.compile(encode: false, includeClassName: true)
+        elsif @value.is_a?(Parse::Query)
+          # if its a query, then assume key is the same name as operand.
+          query = @value.compile(encode: false, includeClassName: true)
+        else
+          raise ArgumentError, "Invalid `:does_not_match_key_in_query` query constraint. It should follow the format: :field.does_not_match_key_in_query => { key: 'key', query: '<Parse::Query>' }"
+        end
+        
+        { @operation.operand => { :$dontSelect => { key: remote_field_name, query: query } } }
+      end
+    end
+
+    # Equivalent to using the `$regex` Parse query operation with a prefix pattern.
+    # This is useful for autocomplete functionality and prefix matching.
+    #
+    #  # Find users whose name starts with "John"
+    #  User.where(:name.starts_with => "John")
+    #  # Generates: "name": { "$regex": "^John", "$options": "i" }
+    #
+    class StartsWithConstraint < Constraint
+      # @!method starts_with
+      # A registered method on a symbol to create the constraint. Maps to Parse operator "$regex".
+      # @example
+      #  q.where :field.starts_with => "prefix"
+      # @return [StartsWithConstraint]
+      constraint_keyword :$regex
+      register :starts_with
+
+      # @return [Hash] the compiled constraint.
+      def build
+        value = formatted_value
+        unless value.is_a?(String)
+          raise ArgumentError, "#{self.class}: Value must be a string for starts_with constraint"
+        end
+        
+        # Escape special regex characters in the prefix
+        escaped_value = Regexp.escape(value)
+        regex_pattern = "^#{escaped_value}"
+        
+        { @operation.operand => { :$regex => regex_pattern, :$options => "i" } }
+      end
+    end
+
+    # Equivalent to using the `$regex` Parse query operation with a contains pattern.
+    # This is useful for case-insensitive text search within fields.
+    #
+    #  # Find posts whose title contains "parse"
+    #  Post.where(:title.contains => "parse")
+    #  # Generates: "title": { "$regex": ".*parse.*", "$options": "i" }
+    #
+    class ContainsConstraint < Constraint
+      # @!method contains
+      # A registered method on a symbol to create the constraint. Maps to Parse operator "$regex".
+      # @example
+      #  q.where :field.contains => "text"
+      # @return [ContainsConstraint]
+      constraint_keyword :$regex
+      register :contains
+
+      # @return [Hash] the compiled constraint.
+      def build
+        value = formatted_value
+        unless value.is_a?(String)
+          raise ArgumentError, "#{self.class}: Value must be a string for contains constraint"
+        end
+        
+        # Escape special regex characters in the search text
+        escaped_value = Regexp.escape(value)
+        regex_pattern = ".*#{escaped_value}.*"
+        
+        { @operation.operand => { :$regex => regex_pattern, :$options => "i" } }
+      end
+    end
+
+
+    # A convenience constraint that combines greater-than-or-equal and less-than-or-equal
+    # constraints for date/time range queries. This is equivalent to using both $gte and $lte.
+    #
+    #  # Find events between two dates
+    #  Event.where(:created_at.between_dates => [start_date, end_date])
+    #  # Generates: "created_at": { "$gte": start_date, "$lte": end_date }
+    #
+    class TimeRangeConstraint < Constraint
+      # @!method between_dates
+      # A registered method on a symbol to create the constraint.
+      # @example
+      #  q.where :field.between_dates => [start_date, end_date]
+      # @return [TimeRangeConstraint]
+      register :between_dates
+
+      # @return [Hash] the compiled constraint.
+      def build
+        value = formatted_value
+        unless value.is_a?(Array) && value.length == 2
+          raise ArgumentError, "#{self.class}: Value must be an array with exactly 2 elements [start_date, end_date]"
+        end
+        
+        start_date, end_date = value
+        
+        # Format the dates using Parse's date formatting
+        formatted_start = Parse::Constraint.formatted_value(start_date)
+        formatted_end = Parse::Constraint.formatted_value(end_date)
+        
+        { @operation.operand => { 
+          Parse::Constraint::GreaterThanOrEqualConstraint.key => formatted_start,
+          Parse::Constraint::LessThanOrEqualConstraint.key => formatted_end
+        } }
+      end
+    end
+
+    # A constraint for comparing pointer fields through linked objects using MongoDB aggregation.
+    # This allows comparing ObjectA.field1 with ObjectA.linkedObject.field2 where both are pointers.
+    #
+    #  # Find ObjectA where ObjectA.author equals ObjectA.project.owner
+    #  ObjectA.where(:author.equals_linked_pointer => { through: :project, field: :owner })
+    #  
+    #  # This generates a MongoDB aggregation pipeline with $lookup and $expr
+    #  # to compare pointer fields across linked documents
+    #
+    class PointerEqualsLinkedPointerConstraint < Constraint
+      # @!method equals_linked_pointer
+      # A registered method on a symbol to create the constraint.
+      # @example
+      #  q.where :field.equals_linked_pointer => { through: :linked_field, field: :target_field }
+      # @return [PointerEqualsLinkedPointerConstraint]
+      register :equals_linked_pointer
+
+      # @return [Hash] the compiled constraint.
+      def build
+        unless @value.is_a?(Hash) && @value[:through] && @value[:field]
+          raise ArgumentError, "equals_linked_pointer requires: { through: :linked_field, field: :target_field }"
+        end
+
+        through_field = @value[:through]
+        target_field = @value[:field]
+        local_field = @operation.operand
+
+        # Format field names according to Parse conventions
+        # Pointer fields in MongoDB are stored with _p_ prefix
+        formatted_through = "_p_" + Parse::Query.format_field(through_field)
+        formatted_target = "_p_" + Parse::Query.format_field(target_field)
+        formatted_local = "_p_" + Parse::Query.format_field(local_field)
+
+        # Determine the target collection name from the through field
+        # Use classify to convert field name to class name (e.g., :project -> "Project")
+        target_collection = through_field.to_s.classify
+
+        # Build the aggregation pipeline
+        # Use clean alias name without _p_ prefix for readability
+        lookup_alias = "#{through_field.to_s.camelize(:lower)}_data"
+        
+        # Parse stores pointers as "ClassName$objectId" strings
+        # We need to extract just the objectId part after the $
+        pipeline = [
+          {
+            "$addFields" => {
+              "#{formatted_through}_id" => {
+                "$substr" => [
+                  "$#{formatted_through}",
+                  target_collection.length + 1,  # Skip "ClassName$"
+                  -1  # Rest of string
+                ]
+              }
+            }
+          },
+          {
+            "$lookup" => {
+              "from" => target_collection,
+              "localField" => "#{formatted_through}_id",
+              "foreignField" => "_id", 
+              "as" => lookup_alias
+            }
+          },
+          {
+            "$match" => {
+              "$expr" => {
+                "$eq" => [
+                  { "$arrayElemAt" => ["$#{lookup_alias}.#{formatted_target}", 0] },
+                  "$#{formatted_local}"
+                ]
+              }
+            }
+          }
+        ]
+
+        # Return a special marker that indicates this needs aggregation pipeline processing
+        { "__aggregation_pipeline" => pipeline }
+      end
+    end
+
+    # Constraint for comparing pointer fields where they do NOT equal through linked objects.
+    # Uses MongoDB's $lookup to join collections and $expr with $ne to compare fields.
+    #
+    # Usage:
+    #   Asset.where(:project.does_not_equal_linked_pointer => { through: :capture, field: :project })
+    #
+    # This generates a MongoDB aggregation pipeline that:
+    # 1. Uses $lookup to join the linked collection
+    # 2. Uses $match with $expr and $ne to find records where fields do NOT match
+    #
+    # @example Find assets where the project does not equal the capture's project
+    #   Asset.where(:project.does_not_equal_linked_pointer => { 
+    #     through: :capture, 
+    #     field: :project 
+    #   })
+    class DoesNotEqualLinkedPointerConstraint < Constraint
+      register :does_not_equal_linked_pointer
+
+      # Builds the MongoDB aggregation pipeline for the does-not-equal-linked-pointer constraint
+      # @return [Hash] Hash containing the aggregation pipeline
+      # @raise [ArgumentError] if required parameters are missing or invalid
+      def build
+        # Validate that value is a hash with required keys
+        unless @value.is_a?(Hash) && @value[:through] && @value[:field]
+          raise ArgumentError, "DoesNotEqualLinkedPointerConstraint requires a hash with :through and :field keys"
+        end
+
+        through_field = @value[:through]
+        target_field = @value[:field]
+        
+        # Convert field names to Parse format (snake_case to camelCase) with _p_ prefix for pointers
+        local_field_name = format_field_name(@operation.operand, is_pointer: true)
+        through_field_name = format_field_name(through_field, is_pointer: true)
+        target_field_name = format_field_name(target_field, is_pointer: true)
+        
+        # Determine the collection name for the lookup (Rails pluralization)
+        through_class_name = through_field.to_s.classify
+        lookup_collection = through_class_name
+        
+        # Generate unique alias name for the joined data (use clean name without _p_ prefix)
+        lookup_alias = "#{through_field.to_s.camelize(:lower)}_data"
+        
+        # Build the MongoDB aggregation pipeline
+        pipeline = []
+        
+        # Parse stores pointers as "ClassName$objectId" strings
+        # We need to extract just the objectId part after the $
+        # Stage 1: Add field with extracted objectId
+        add_fields_stage = {
+          "$addFields" => {
+            "#{through_field_name}_id" => {
+              "$substr" => [
+                "$#{through_field_name}",
+                lookup_collection.length + 1,  # Skip "ClassName$"
+                -1  # Rest of string
+              ]
+            }
+          }
+        }
+        pipeline << add_fields_stage
+        
+        # Stage 2: $lookup to join the linked collection
+        lookup_stage = {
+          "$lookup" => {
+            "from" => lookup_collection,
+            "localField" => "#{through_field_name}_id",
+            "foreignField" => "_id", 
+            "as" => lookup_alias
+          }
+        }
+        pipeline << lookup_stage
+        
+        # Stage 2: $match with $expr to compare the fields using $ne (not equal)
+        match_stage = {
+          "$match" => {
+            "$expr" => {
+              "$ne" => [
+                { "$arrayElemAt" => ["$#{lookup_alias}.#{target_field_name}", 0] },
+                "$#{local_field_name}"
+              ]
+            }
+          }
+        }
+        pipeline << match_stage
+        
+        # Return a special marker that indicates this needs aggregation pipeline processing
+        { "__aggregation_pipeline" => pipeline }
+      end
+      
+      private
+      
+      # Converts field names from snake_case to camelCase for Parse Server compatibility
+      # and adds _p_ prefix for pointer fields in MongoDB
+      # @param field [Symbol, String] the field name to format
+      # @param is_pointer [Boolean] whether this field is a pointer field
+      # @return [String] the formatted field name
+      def format_field_name(field, is_pointer: true)
+        formatted = field.to_s.camelize(:lower)
+        # Add _p_ prefix for pointer fields as they're stored that way in MongoDB
+        is_pointer ? "_p_#{formatted}" : formatted
       end
     end
   end

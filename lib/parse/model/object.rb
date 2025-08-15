@@ -541,7 +541,7 @@ end
 class Array
   # This helper method selects or converts all objects in an array that are either inherit from
   # Parse::Pointer or are a JSON Parse hash. If it is a hash, a Pare::Object will be built from it
-  # if it constains the proper fields. Non-convertible objects will be removed.
+  # if it constrains the proper fields. Non-convertible objects will be removed.
   # If the className is not contained or known, you can pass a table name as an argument
   # @param className [String] the name of the Parse class if it could not be detected.
   # @return [Array<Parse::Object>] an array of Parse::Object subclasses.
