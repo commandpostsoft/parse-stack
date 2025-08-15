@@ -694,7 +694,15 @@ module Parse
       end
 
       # Format field name according to Parse conventions
-      formatted_field = Query.format_field(field)
+      # Handle special MongoDB field mappings for aggregation
+      formatted_field = case field.to_s
+                        when 'created_at', 'createdAt'
+                          '_created_at'
+                        when 'updated_at', 'updatedAt'  
+                          '_updated_at'
+                        else
+                          Query.format_field(field)
+                        end
       
       # Build the aggregation pipeline
       pipeline = [
