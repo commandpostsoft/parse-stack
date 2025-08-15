@@ -491,7 +491,10 @@ class TestQueryAggregationFeatures < Minitest::Test
     puts "After constraint conversion: #{aggregation_where.inspect}"
     
     stringified_where = query.send(:convert_dates_for_aggregation, aggregation_where)
-    puts "After date conversion: #{stringified_where.inspect}"
+    
+    aggregation_where = query.send(:convert_constraints_for_aggregation, compiled_where)
+    
+    stringified_where = query.send(:convert_dates_for_aggregation, aggregation_where)
     
     # The final match stage should have ISO string dates, not Parse objects
     created_at_constraint = stringified_where["createdAt"] || stringified_where["_created_at"]
