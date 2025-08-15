@@ -170,4 +170,98 @@ class TestTableFeatures < Minitest::Test
       assert_match(/true/, table)
     end
   end
+
+  def test_table_sorting_by_column_name
+    data = [
+      { "objectId" => "obj3", "name" => "Charlie", "count" => 5 },
+      { "objectId" => "obj1", "name" => "Alice", "count" => 10 },
+      { "objectId" => "obj2", "name" => "Bob", "count" => 3 }
+    ]
+    
+    @query.stub :results, data do
+      # Sort by name ascending
+      table = @query.to_table([:name, :count], sort_by: :name, sort_order: :asc)
+      
+      # Alice should come before Bob, Bob before Charlie
+      alice_pos = table.index("Alice")
+      bob_pos = table.index("Bob")
+      charlie_pos = table.index("Charlie")
+      
+      assert alice_pos < bob_pos
+      assert bob_pos < charlie_pos
+    end
+  end
+
+  def test_table_sorting_by_column_index
+    data = [
+      { "objectId" => "obj1", "name" => "Alice", "count" => 10 },
+      { "objectId" => "obj2", "name" => "Bob", "count" => 3 },
+      { "objectId" => "obj3", "name" => "Charlie", "count" => 5 }
+    ]
+    
+    @query.stub :results, data do
+      # Sort by count (column index 1) descending
+      table = @query.to_table([:name, :count], sort_by: 1, sort_order: :desc)
+      
+      # Should be ordered: Alice (10), Charlie (5), Bob (3)
+      alice_pos = table.index("Alice")
+      charlie_pos = table.index("Charlie")
+      bob_pos = table.index("Bob")
+      
+      assert alice_pos < charlie_pos
+      assert charlie_pos < bob_pos
+    end
+  end
+
+  def test_table_sorting_by_header_name
+    data = [
+      { "objectId" => "obj1", "name" => "Alice", "count" => 10 },
+      { "objectId" => "obj2", "name" => "Bob", "count" => 3 },
+      { "objectId" => "obj3", "name" => "Charlie", "count" => 5 }
+    ]
+    
+    @query.stub :results, data do
+      # Sort by "Count" header descending
+      table = @query.to_table([:name, :count], sort_by: "Count", sort_order: :desc)
+      
+      # Should be ordered by count: Alice (10), Charlie (5), Bob (3)
+      lines = table.split("\n")
+      data_lines = lines.select { |line| line.include?("Alice") || line.include?("Bob") || line.include?("Charlie") }
+      
+      assert_match(/Alice.*10/, data_lines[0])
+      assert_match(/Charlie.*5/, data_lines[1]) 
+      assert_match(/Bob.*3/, data_lines[2])
+    end
+  end
+
+  def test_table_sorting_with_invalid_column
+    data = create_simple_data
+    
+    @query.stub :results, data do
+      assert_raises(ArgumentError) do
+        @query.to_table([:name, :count], sort_by: :nonexistent)
+      end
+    end
+  end
+
+  def test_table_sorting_with_numeric_values
+    data = [
+      { "objectId" => "obj1", "score" => "100" },
+      { "objectId" => "obj2", "score" => "25" },
+      { "objectId" => "obj3", "score" => "5" }
+    ]
+    
+    @query.stub :results, data do
+      # Sort by score - should be numeric sort, not string sort
+      table = @query.to_table([:object_id, :score], sort_by: :score, sort_order: :desc)
+      
+      # Should be ordered: 100, 25, 5 (not 5, 25, 100 as string sort would do)
+      lines = table.split("\n")
+      data_lines = lines.select { |line| line.include?("obj") }
+      
+      assert_match(/obj1.*100/, data_lines[0])
+      assert_match(/obj2.*25/, data_lines[1])
+      assert_match(/obj3.*5/, data_lines[2])
+    end
+  end
 end

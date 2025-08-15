@@ -1348,7 +1348,7 @@ module Parse
     #     { field: :address, header: "Project Address" },
     #     { block: ->(p) { p.notes&.count || 0 }, header: "Note Count" }
     #   ])
-    def to_table(columns = nil, format: :ascii, headers: nil)
+    def to_table(columns = nil, format: :ascii, headers: nil, sort_by: nil, sort_order: :asc)
       objects = results
       return format_empty_table(format) if objects.empty?
       
@@ -1359,6 +1359,11 @@ module Parse
       
       # Build table data
       table_data = build_table_data(objects, columns, headers)
+      
+      # Sort table data if sort_by is specified
+      if sort_by
+        sort_table_data!(table_data, sort_by, sort_order)
+      end
       
       # Format based on requested format
       case format
@@ -1566,6 +1571,76 @@ module Parse
       
       # Return pointer representation if resolution failed
       pointer
+    end
+
+    # Sort table data by specified column.
+    # @param table_data [Hash] hash with :headers and :rows keys
+    # @param sort_by [String, Symbol, Integer] column to sort by (name, index, or header text)
+    # @param sort_order [Symbol] :asc or :desc
+    def sort_table_data!(table_data, sort_by, sort_order)
+      headers = table_data[:headers]
+      rows = table_data[:rows]
+      
+      # Find the column index to sort by
+      sort_index = case sort_by
+      when Integer
+        raise ArgumentError, "Column index #{sort_by} out of range" if sort_by < 0 || sort_by >= headers.size
+        sort_by
+      when String, Symbol
+        # Try to find by header name first
+        index = headers.find_index { |h| h.downcase == sort_by.to_s.downcase }
+        
+        # If not found by header, try by formatted field name
+        if index.nil?
+          formatted_sort_by = sort_by.to_s.gsub('_', ' ').split.map(&:capitalize).join(' ')
+          index = headers.find_index { |h| h.downcase == formatted_sort_by.downcase }
+        end
+        
+        if index.nil?
+          raise ArgumentError, "Column '#{sort_by}' not found. Available columns: #{headers.join(', ')}"
+        end
+        
+        index
+      else
+        raise ArgumentError, "sort_by must be a column name, header text, or column index"
+      end
+      
+      # Sort rows by the specified column
+      sorted_rows = rows.sort do |a, b|
+        val_a = a[sort_index]
+        val_b = b[sort_index]
+        
+        # Handle different data types for comparison
+        comparison = compare_table_values(val_a, val_b)
+        sort_order == :desc ? -comparison : comparison
+      end
+      
+      table_data[:rows] = sorted_rows
+    end
+
+    # Compare two values for table sorting.
+    # @param a [Object] first value
+    # @param b [Object] second value  
+    # @return [Integer] -1, 0, or 1 for comparison
+    def compare_table_values(a, b)
+      # Handle nil values
+      return 0 if a.nil? && b.nil?
+      return -1 if a.nil?
+      return 1 if b.nil?
+      
+      # Convert to strings and try numeric comparison first
+      a_str = a.to_s
+      b_str = b.to_s
+      
+      # Try to parse as numbers for proper numeric sorting
+      a_num = Float(a_str) rescue nil
+      b_num = Float(b_str) rescue nil
+      
+      if a_num && b_num
+        a_num <=> b_num
+      else
+        a_str.downcase <=> b_str.downcase
+      end
     end
 
     # Format a value for table display.
