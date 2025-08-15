@@ -1948,7 +1948,7 @@ module Parse
       when Hash
         # Handle Parse's JSON date format: {"__type": "Date", "iso": "..."}
         if obj["__type"] == "Date" && obj["iso"]
-          # For Parse Server aggregation, use raw ISO string (Parse Server converts to Date)
+          # For Parse Server aggregation, use raw ISO string
           obj["iso"]
         else
           # Also handle field name mapping for built-in Parse fields
