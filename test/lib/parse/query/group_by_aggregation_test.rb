@@ -21,7 +21,7 @@ class TestGroupByAggregation < Minitest::Test
     mock_response.expect :success?, true
     mock_response.expect :result, []
     
-    @mock_client.expect :aggregate_pipeline, mock_response do |table, pipeline, *args|
+    @mock_client.expect :aggregate_pipeline, mock_response do |table, pipeline, **kwargs|
       table == "Asset" && pipeline == expected_pipeline
     end
     
@@ -41,15 +41,11 @@ class TestGroupByAggregation < Minitest::Test
     mock_response.expect :success?, true
     mock_response.expect :result, []
     
-    @mock_client.expect :aggregate_pipeline, mock_response, [
-      "Asset",
-      ->(pipeline) {
-        pipeline.any? { |stage| 
-          stage["$group"] && stage["$group"]["count"]["$sum"] == "$fileSize"
-        }
-      },
-      { headers: {}, **{} }
-    ]
+    @mock_client.expect :aggregate_pipeline, mock_response do |table, pipeline, **kwargs|
+      table == "Asset" && pipeline.any? { |stage| 
+        stage["$group"] && stage["$group"]["count"]["$sum"] == "$fileSize"
+      }
+    end
     
     group_by.sum(:file_size)
     @mock_client.verify
@@ -62,15 +58,11 @@ class TestGroupByAggregation < Minitest::Test
     mock_response.expect :success?, true
     mock_response.expect :result, []
     
-    @mock_client.expect :aggregate_pipeline, mock_response, [
-      "Asset",
-      ->(pipeline) {
-        pipeline.any? { |stage| 
-          stage["$group"] && stage["$group"]["count"]["$avg"] == "$duration"
-        }
-      },
-      { headers: {}, **{} }
-    ]
+    @mock_client.expect :aggregate_pipeline, mock_response do |table, pipeline, **kwargs|
+      table == "Asset" && pipeline.any? { |stage| 
+        stage["$group"] && stage["$group"]["count"]["$avg"] == "$duration"
+      }
+    end
     
     group_by.average(:duration)
     @mock_client.verify
@@ -84,15 +76,11 @@ class TestGroupByAggregation < Minitest::Test
     mock_response_min.expect :success?, true
     mock_response_min.expect :result, [{ "objectId" => "video", "count" => 30 }]
     
-    @mock_client.expect :aggregate_pipeline, mock_response_min, [
-      "Asset",
-      ->(pipeline) {
-        pipeline.any? { |stage| 
-          stage["$group"] && stage["$group"]["count"]["$min"]
-        }
-      },
-      { headers: {}, **{} }
-    ]
+    @mock_client.expect :aggregate_pipeline, mock_response_min do |table, pipeline, **kwargs|
+      table == "Asset" && pipeline.any? { |stage| 
+        stage["$group"] && stage["$group"]["count"]["$min"]
+      }
+    end
     
     result = group_by.min(:duration)
     assert_equal({ "video" => 30 }, result)
@@ -102,15 +90,11 @@ class TestGroupByAggregation < Minitest::Test
     mock_response_max.expect :success?, true
     mock_response_max.expect :result, [{ "objectId" => "video", "count" => 180 }]
     
-    @mock_client.expect :aggregate_pipeline, mock_response_max, [
-      "Asset",
-      ->(pipeline) {
-        pipeline.any? { |stage| 
-          stage["$group"] && stage["$group"]["count"]["$max"]
-        }
-      },
-      { headers: {}, **{} }
-    ]
+    @mock_client.expect :aggregate_pipeline, mock_response_max do |table, pipeline, **kwargs|
+      table == "Asset" && pipeline.any? { |stage| 
+        stage["$group"] && stage["$group"]["count"]["$max"]
+      }
+    end
     
     result = group_by.max(:duration)
     assert_equal({ "video" => 180 }, result)
@@ -129,18 +113,16 @@ class TestGroupByAggregation < Minitest::Test
       { "objectId" => "city", "count" => 3 }
     ]
     
-    @mock_client.expect :aggregate_pipeline, mock_response, [
-      "Asset",
-      ->(pipeline) {
+    @mock_client.expect :aggregate_pipeline, mock_response do |table, pipeline, **kwargs|
+      table == "Asset" && begin
         # Should have $unwind stage before $group
         unwind_index = pipeline.find_index { |stage| stage.key?("$unwind") }
         group_index = pipeline.find_index { |stage| stage.key?("$group") }
         
         unwind_index && group_index && unwind_index < group_index &&
         pipeline[unwind_index]["$unwind"] == "$tags"
-      },
-      { headers: {}, **{} }
-    ]
+      end
+    end
     
     result = group_by.count
     assert_equal({ "nature" => 5, "city" => 3 }, result)
@@ -156,15 +138,10 @@ class TestGroupByAggregation < Minitest::Test
     mock_response.expect :success?, true
     mock_response.expect :result, []
     
-    @mock_client.expect :aggregate_pipeline, mock_response, [
-      "Asset",
-      ->(pipeline) {
-        # Should have $match as first stage
-        pipeline.first.key?("$match") && 
-        pipeline.first["$match"]["status"] == "active"
-      },
-      { headers: {}, **{} }
-    ]
+    @mock_client.expect :aggregate_pipeline, mock_response do |table, pipeline, **kwargs|
+      table == "Asset" && pipeline.first.key?("$match") && 
+      pipeline.first["$match"]["status"] == "active"
+    end
     
     group_by.count
     @mock_client.verify
@@ -187,9 +164,9 @@ class TestGroupByAggregation < Minitest::Test
       }
     ]
     
-    @mock_client.expect :aggregate_pipeline, mock_response, [
-      "Asset", Array, { headers: {}, **{} }
-    ]
+    @mock_client.expect :aggregate_pipeline, mock_response do |table, pipeline, **kwargs|
+      table == "Asset" && pipeline.is_a?(Array)
+    end
     
     result = group_by.count
     
@@ -215,9 +192,9 @@ class TestGroupByAggregation < Minitest::Test
       { "objectId" => "value", "count" => 2 }
     ]
     
-    @mock_client.expect :aggregate_pipeline, mock_response, [
-      "Asset", Array, { headers: {}, **{} }
-    ]
+    @mock_client.expect :aggregate_pipeline, mock_response do |table, pipeline, **kwargs|
+      table == "Asset" && pipeline.is_a?(Array)
+    end
     
     result = group_by.count
     
@@ -246,16 +223,14 @@ class TestGroupByAggregation < Minitest::Test
       { "objectId" => { "year" => 2024, "month" => 11 }, "count" => 45 }
     ]
     
-    @mock_client.expect :aggregate_pipeline, mock_response, [
-      "Asset",
-      ->(pipeline) {
+    @mock_client.expect :aggregate_pipeline, mock_response do |table, pipeline, **kwargs|
+      table == "Asset" && begin
         # Should have $group with date operators
         group_stage = pipeline.find { |stage| stage.key?("$group") }
         group_stage && group_stage["$group"]["_id"]["year"] && 
         group_stage["$group"]["_id"]["month"]
-      },
-      { headers: {}, **{} }
-    ]
+      end
+    end
     
     result = group_by_date.count
     

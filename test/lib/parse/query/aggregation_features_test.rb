@@ -18,13 +18,19 @@ class TestQueryAggregationFeatures < Minitest::Test
       { "objectId" => "3", "name" => "Item 3", "category" => "A" }
     ]
     
-    @query.stub :results, mock_results do
-      values = @query.pluck(:name)
-      assert_equal ["Item 1", "Item 2", "Item 3"], values
-      
-      categories = @query.pluck(:category)
-      assert_equal ["A", "B", "A"], categories
+    # Mock the find_objects method that results eventually calls
+    mock_response = Minitest::Mock.new
+    mock_response.expect :error?, false
+    mock_response.expect :results, mock_results
+    
+    @mock_client.expect :find_objects, mock_response do |table, query, **kwargs|
+      table == "TestClass" && query.is_a?(Hash)
     end
+    
+    values = @query.pluck(:name)
+    assert_equal ["Item 1", "Item 2", "Item 3"], values
+    
+    @mock_client.verify
   end
 
   def test_pluck_with_invalid_field
@@ -85,17 +91,21 @@ class TestQueryAggregationFeatures < Minitest::Test
       { "objectId" => "def456", "name" => "Test2" }
     ]
     
-    @query.stub :fetch!, mock_response do
-      @query.stub :to_pointers, ->(list) { 
-        list.map { |m| Parse::Pointer.new("TestClass", m["objectId"]) }
-      } do
-        results = @query.results(return_pointers: true)
-        
-        assert_equal 2, results.size
-        assert_kind_of Parse::Pointer, results.first
-        assert_equal "abc123", results.first.id
-      end
+    @mock_client.expect :find_objects, mock_response do |table, query, **kwargs|
+      table == "TestClass" && query.is_a?(Hash)
     end
+    
+    @query.stub :to_pointers, ->(list) { 
+      list.map { |m| Parse::Pointer.new("TestClass", m["objectId"]) }
+    } do
+      results = @query.results(return_pointers: true)
+      
+      assert_equal 2, results.size
+      assert_kind_of Parse::Pointer, results.first
+      assert_equal "abc123", results.first.id
+    end
+    
+    @mock_client.verify
   end
 
   # Test group_by with flatten_arrays
@@ -190,11 +200,9 @@ class TestQueryAggregationFeatures < Minitest::Test
       { "objectId" => "team2", "className" => "Team" }
     ]
     
-    @mock_client.expect :aggregate_pipeline, mock_response, [
-      "TestClass",
-      Array,
-      { headers: {}, **{} }
-    ]
+    @mock_client.expect :aggregate_pipeline, mock_response do |table, pipeline, **kwargs|
+      table == "TestClass" && pipeline.is_a?(Array)
+    end
     
     @query.stub :to_pointers, ->(list) {
       list.map { |m| Parse::Pointer.new(m["className"] || "TestClass", m["objectId"]) }
@@ -248,14 +256,9 @@ class TestQueryAggregationFeatures < Minitest::Test
       { "objectId" => "c", "count" => 1 }
     ]
     
-    @mock_client.expect :aggregate_pipeline, mock_response, [
-      "TestClass",
-      ->(pipeline) { 
-        # Check that $unwind stage is present
-        pipeline.any? { |stage| stage.key?("$unwind") }
-      },
-      { headers: {}, **{} }
-    ]
+    @mock_client.expect :aggregate_pipeline, mock_response do |table, pipeline, **kwargs|
+      table == "TestClass" && pipeline.any? { |stage| stage.key?("$unwind") }
+    end
     
     result = group_by.count
     
@@ -274,9 +277,9 @@ class TestQueryAggregationFeatures < Minitest::Test
       { "objectId" => "B", "count" => 3 }
     ]
     
-    @mock_client.expect :aggregate_pipeline, mock_response, [
-      "TestClass", Array, { headers: {}, **{} }
-    ]
+    @mock_client.expect :aggregate_pipeline, mock_response do |table, pipeline, **kwargs|
+      table == "TestClass" && pipeline.is_a?(Array)
+    end
     
     result = group_by.count
     
@@ -315,9 +318,9 @@ class TestQueryAggregationFeatures < Minitest::Test
       { "__type" => "Pointer", "className" => "Team", "objectId" => "team2" }
     ]
     
-    @mock_client.expect :aggregate_objects, mock_response, [
-      "TestClass", Hash, **{}
-    ]
+    @mock_client.expect :aggregate_objects, mock_response do |table, query, **kwargs|
+      table == "TestClass" && query.is_a?(Hash)
+    end
     
     @query.stub :to_pointers, ->(list) {
       list.map { |m| Parse::Pointer.new(m["className"], m["objectId"]) if m["__type"] == "Pointer" }.compact

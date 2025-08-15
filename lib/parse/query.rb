@@ -1862,7 +1862,31 @@ module Parse
       when 'updated_at', 'updatedAt'  
         'updatedAt'  # Parse Server uses updatedAt for aggregation
       else
-        Query.format_field(field)
+        formatted = Query.format_field(field)
+        # For pointer fields, MongoDB stores them with _p_ prefix
+        # Check if this field is defined as a pointer in the Parse class
+        parse_class = Parse::Model.const_get(@table) rescue nil
+        if parse_class && is_pointer_field?(parse_class, field, formatted)
+          "_p_#{formatted}"
+        else
+          formatted
+        end
+      end
+    end
+
+    # Check if a field is a pointer field by looking at the Parse class definition
+    # @param parse_class [Class] the Parse::Object subclass
+    # @param field [Symbol, String] the original field name (e.g., :author_team)
+    # @param formatted_field [String] the formatted field name (e.g., "authorTeam")
+    # @return [Boolean] true if the field is a pointer field
+    def is_pointer_field?(parse_class, field, formatted_field)
+      return false unless parse_class.respond_to?(:fields)
+      
+      # Check both the original field name and the formatted field name
+      fields_to_check = [field.to_s, field.to_sym, formatted_field.to_s, formatted_field.to_sym]
+      
+      fields_to_check.any? do |f|
+        parse_class.fields[f] == :pointer
       end
     end
 
