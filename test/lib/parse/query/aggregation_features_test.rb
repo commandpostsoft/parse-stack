@@ -353,4 +353,90 @@ class TestQueryAggregationFeatures < Minitest::Test
     assert_kind_of Array, pipeline
     assert pipeline.any? { |stage| stage.key?("$group") }
   end
+
+  # Test convert_constraints_for_aggregation function
+  def test_convert_constraints_for_aggregation_with_pointer
+    pointer_constraint = {
+      "_p_authorTeam" => {
+        "__type" => "Pointer",
+        "className" => "Team", 
+        "objectId" => "abc123"
+      }
+    }
+    
+    result = @query.send(:convert_constraints_for_aggregation, pointer_constraint)
+    
+    # The field name gets formatted to aggregation format
+    aggregation_field = @query.send(:format_aggregation_field, "_p_authorTeam")
+    
+    assert_equal "Team$abc123", result[aggregation_field]
+  end
+
+  def test_convert_constraints_for_aggregation_with_nested_pointer
+    nested_constraint = {
+      "_p_authorTeam" => {
+        "$eq" => {
+          "__type" => "Pointer",
+          "className" => "Team",
+          "objectId" => "abc123"
+        }
+      }
+    }
+    
+    result = @query.send(:convert_constraints_for_aggregation, nested_constraint)
+    
+    # The field name gets formatted to aggregation format
+    aggregation_field = @query.send(:format_aggregation_field, "_p_authorTeam")
+    
+    assert_equal "Team$abc123", result[aggregation_field]["$eq"]
+  end
+
+  def test_convert_constraints_for_aggregation_with_regular_field
+    regular_constraint = {
+      "name" => "test",
+      "age" => { "$gt" => 18 }
+    }
+    
+    result = @query.send(:convert_constraints_for_aggregation, regular_constraint)
+    
+    assert_equal "test", result["name"]
+    assert_equal({ "$gt" => 18 }, result["age"])
+  end
+
+  def test_convert_constraints_for_aggregation_preserves_operators
+    operator_constraint = {
+      "$or" => [
+        { "name" => "test1" },
+        { "name" => "test2" }
+      ]
+    }
+    
+    result = @query.send(:convert_constraints_for_aggregation, operator_constraint)
+    
+    assert_equal operator_constraint["$or"], result["$or"]
+  end
+
+  # Test that pipeline output shows correct MongoDB pointer format
+  def test_pipeline_output_uses_mongodb_pointer_format
+    # Create a mock team pointer
+    team = Parse::Pointer.new("Team", "OlnmSD0woC")
+    
+    # Create query with pointer constraint 
+    query = Parse::Query.new("Capture")
+    query.where(:author_team.eq => team)
+    
+    # Get the pipeline and check the $match stage
+    pipeline = query.group_by(:last_action).pipeline
+    match_stage = pipeline.find { |stage| stage.key?("$match") }
+    
+    assert match_stage, "Pipeline should contain $match stage"
+    
+    # Check that the pointer is in MongoDB string format, not Parse object format
+    author_team_constraint = match_stage["$match"]["authorTeam"] || match_stage["$match"]["_p_authorTeam"]
+    
+    # Should be a string like "Team$OlnmSD0woC", not a Parse pointer hash
+    assert_kind_of String, author_team_constraint
+    assert_match(/^Team\$/, author_team_constraint)
+    assert_includes author_team_constraint, "OlnmSD0woC"
+  end
 end

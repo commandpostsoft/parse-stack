@@ -706,7 +706,7 @@ module Parse
       if compiled_where.present?
         # Convert field names for aggregation context and handle dates
         aggregation_where = convert_constraints_for_aggregation(compiled_where)
-        stringified_where = convert_dates_for_aggregation(JSON.parse(aggregation_where.to_json))
+        stringified_where = convert_dates_for_aggregation(aggregation_where)
         pipeline.unshift({ "$match" => stringified_where })
       end
       
@@ -782,7 +782,7 @@ module Parse
       if compiled_where.present?
         # Convert field names for aggregation context and handle dates
         aggregation_where = convert_constraints_for_aggregation(compiled_where)
-        stringified_where = convert_dates_for_aggregation(JSON.parse(aggregation_where.to_json))
+        stringified_where = convert_dates_for_aggregation(aggregation_where)
         pipeline.unshift({ "$match" => stringified_where })
       end
 
@@ -1813,7 +1813,7 @@ module Parse
       if compiled_where.present?
         # Convert field names for aggregation context and handle dates
         aggregation_where = convert_constraints_for_aggregation(compiled_where)
-        stringified_where = convert_dates_for_aggregation(JSON.parse(aggregation_where.to_json))
+        stringified_where = convert_dates_for_aggregation(aggregation_where)
         pipeline.unshift({ "$match" => stringified_where })
       end
 
@@ -1842,7 +1842,7 @@ module Parse
       if compiled_where.present?
         # Convert field names for aggregation context and handle dates
         aggregation_where = convert_constraints_for_aggregation(compiled_where)
-        stringified_where = convert_dates_for_aggregation(JSON.parse(aggregation_where.to_json))
+        stringified_where = convert_dates_for_aggregation(aggregation_where)
         pipeline.unshift({ "$match" => stringified_where })
       end
 
@@ -1916,12 +1916,17 @@ module Parse
         # Convert pointer values to MongoDB format (ClassName$objectId)
         if value.is_a?(Hash) && value["__type"] == "Pointer"
           result[aggregation_field] = "#{value['className']}$#{value['objectId']}"
+        # Handle Parse::Pointer objects
+        elsif value.is_a?(Parse::Pointer)
+          result[aggregation_field] = "#{value.parse_class}$#{value.id}"
         # Handle nested constraint operators (like $in, $ne, etc.)
         elsif value.is_a?(Hash)
           converted_value = {}
           value.each do |op, op_value|
             if op_value.is_a?(Hash) && op_value["__type"] == "Pointer"
               converted_value[op] = "#{op_value['className']}$#{op_value['objectId']}"
+            elsif op_value.is_a?(Parse::Pointer)
+              converted_value[op] = "#{op_value.parse_class}$#{op_value.id}"
             else
               converted_value[op] = op_value
             end
@@ -2129,7 +2134,7 @@ module Parse
       if compiled_where.present?
         # Convert field names for aggregation context and handle dates
         aggregation_where = @query.send(:convert_constraints_for_aggregation, compiled_where)
-        stringified_where = @query.send(:convert_dates_for_aggregation, JSON.parse(aggregation_where.to_json))
+        stringified_where = @query.send(:convert_dates_for_aggregation, aggregation_where)
         pipeline << { "$match" => stringified_where }
       end
       
@@ -2265,7 +2270,7 @@ module Parse
           puts "[DEBUG] Converted constraints: #{aggregation_where.inspect}"
         end
         
-        stringified_where = @query.send(:convert_dates_for_aggregation, JSON.parse(aggregation_where.to_json))
+        stringified_where = @query.send(:convert_dates_for_aggregation, aggregation_where)
         pipeline << { "$match" => stringified_where }
       end
       
@@ -2569,7 +2574,7 @@ module Parse
       if compiled_where.present?
         # Convert field names for aggregation context and handle dates
         aggregation_where = @query.send(:convert_constraints_for_aggregation, compiled_where)
-        stringified_where = @query.send(:convert_dates_for_aggregation, JSON.parse(aggregation_where.to_json))
+        stringified_where = @query.send(:convert_dates_for_aggregation, aggregation_where)
         pipeline << { "$match" => stringified_where }
       end
       
