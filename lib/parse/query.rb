@@ -1946,10 +1946,10 @@ module Parse
     def convert_dates_for_aggregation(obj)
       case obj
       when Hash
-        # Handle Parse's JSON date format: {"__type": "Date", "iso": "..."}
-        if obj["__type"] == "Date" && obj["iso"]
+        # Handle Parse's JSON date format: {"__type": "Date", "iso": "..."} or {:__type => "Date", :iso => "..."}
+        if (obj["__type"] == "Date" || obj[:__type] == "Date") && (obj["iso"] || obj[:iso])
           # For Parse Server aggregation, use raw ISO string
-          obj["iso"]
+          obj["iso"] || obj[:iso]
         else
           # Also handle field name mapping for built-in Parse fields
           converted_hash = {}

@@ -439,4 +439,66 @@ class TestQueryAggregationFeatures < Minitest::Test
     assert_match(/^Team\$/, author_team_constraint)
     assert_includes author_team_constraint, "OlnmSD0woC"
   end
+
+  # Test date conversion for aggregation
+  def test_convert_dates_for_aggregation_with_parse_date
+    parse_date_obj = {
+      "__type" => "Date",
+      "iso" => "2025-08-15T07:00:00.000Z"
+    }
+    
+    result = @query.send(:convert_dates_for_aggregation, parse_date_obj)
+    
+    # Should convert to raw ISO string
+    assert_equal "2025-08-15T07:00:00.000Z", result
+  end
+
+  def test_convert_dates_for_aggregation_with_nested_dates
+    constraint_with_dates = {
+      "createdAt" => {
+        "$gte" => {
+          "__type" => "Date",
+          "iso" => "2025-08-15T07:00:00.000Z"
+        },
+        "$lte" => {
+          "__type" => "Date", 
+          "iso" => "2025-08-16T06:59:59.999Z"
+        }
+      }
+    }
+    
+    result = @query.send(:convert_dates_for_aggregation, constraint_with_dates)
+    
+    # Should convert nested date objects to ISO strings
+    assert_equal "2025-08-15T07:00:00.000Z", result["createdAt"]["$gte"]
+    assert_equal "2025-08-16T06:59:59.999Z", result["createdAt"]["$lte"]
+  end
+
+  # Test actual count_distinct pipeline with date constraints
+  def test_count_distinct_pipeline_with_dates
+    # Create a mock date range (similar to what notes_today would have)
+    start_time = Time.new(2025, 8, 15, 7, 0, 0, "+00:00")
+    end_time = Time.new(2025, 8, 16, 6, 59, 59, "+00:00")
+    
+    query = Parse::Query.new("Capture")
+    query.where(:created_at.gte => start_time, :created_at.lte => end_time)
+    
+    # Mock the count_distinct pipeline generation 
+    compiled_where = query.send(:compile_where)
+    puts "Original compiled where: #{compiled_where.inspect}"
+    
+    aggregation_where = query.send(:convert_constraints_for_aggregation, compiled_where)
+    puts "After constraint conversion: #{aggregation_where.inspect}"
+    
+    stringified_where = query.send(:convert_dates_for_aggregation, aggregation_where)
+    puts "After date conversion: #{stringified_where.inspect}"
+    
+    # The final match stage should have ISO string dates, not Parse objects
+    created_at_constraint = stringified_where["createdAt"] || stringified_where["_created_at"]
+    
+    if created_at_constraint && created_at_constraint["$gte"]
+      assert_kind_of String, created_at_constraint["$gte"], "Date should be converted to ISO string"
+      assert_match(/^\d{4}-\d{2}-\d{2}T/, created_at_constraint["$gte"], "Should be ISO format")
+    end
+  end
 end
