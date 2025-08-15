@@ -1313,6 +1313,66 @@ module Parse
       grouped
     end
 
+    # Convert query results to a formatted table display.
+    # @param columns [Array<Symbol, String, Hash>] column definitions. Can be:
+    #   - Symbol/String: field name (e.g., :object_id, :name) or dot notation (e.g., "project.team.name")
+    #   - Hash: { field: :custom_name, header: "Custom Header" }
+    #   - Hash: { block: ->(obj) { obj.some_calculation }, header: "Calculated" }
+    # @param format [Symbol] output format (:ascii, :csv, :json)
+    # @param headers [Array<String>] custom headers (overrides auto-generated ones)
+    # @return [String] formatted table
+    # @example
+    #   # Basic usage with object fields
+    #   Project.query.to_table([:object_id, :name, :address])
+    #   
+    #   # With dot notation for related objects
+    #   Asset.query.to_table([
+    #     :object_id,
+    #     "project.name",        # Access project name through relationship
+    #     "project.team.name",   # Access team name through project->team relationship
+    #     :file_size
+    #   ])
+    #   
+    #   # With custom headers and calculated columns
+    #   Project.query.to_table([
+    #     { field: :object_id, header: "ID" },
+    #     { field: "team.name", header: "Team Name" },
+    #     { field: :address, header: "Project Address" },
+    #     { block: ->(proj) { proj.notes.count }, header: "Note Count" }
+    #   ])
+    #   
+    #   # Your specific example:
+    #   Project.query.to_table([
+    #     :object_id,
+    #     { field: :name, header: "Project Name" },
+    #     { field: :address, header: "Project Address" },
+    #     { block: ->(p) { p.notes&.count || 0 }, header: "Note Count" }
+    #   ])
+    def to_table(columns = nil, format: :ascii, headers: nil)
+      objects = results
+      return format_empty_table(format) if objects.empty?
+      
+      # Auto-detect columns if not provided
+      if columns.nil?
+        columns = auto_detect_columns(objects.first)
+      end
+      
+      # Build table data
+      table_data = build_table_data(objects, columns, headers)
+      
+      # Format based on requested format
+      case format
+      when :ascii
+        format_ascii_table(table_data)
+      when :csv
+        format_csv_table(table_data)
+      when :json
+        format_json_table(table_data)
+      else
+        raise ArgumentError, "Unsupported format: #{format}. Use :ascii, :csv, or :json"
+      end
+    end
+
     # Group results by a date field at specified time intervals.
     # @param field [Symbol, String] the date field name to group by.
     # @param interval [Symbol] the time interval (:year, :month, :week, :day, :hour).
@@ -1366,6 +1426,255 @@ module Parse
     end
 
     private
+
+    # Auto-detect columns from first object for table display.
+    # @param obj [Parse::Object, Hash] first object to inspect
+    # @return [Array<Symbol>] array of field names
+    def auto_detect_columns(obj)
+      if obj.respond_to?(:attributes)
+        # Parse object - use common fields
+        common_fields = [:object_id]
+        obj.attributes.keys.reject { |k| k.start_with?('_') }.each do |key|
+          common_fields << key.to_sym
+        end
+        common_fields.first(5) # Limit to first 5 fields
+      elsif obj.is_a?(Hash)
+        # Hash object
+        obj.keys.map(&:to_sym).first(5)
+      else
+        [:object_id, :to_s]
+      end
+    end
+
+    # Build table data structure with headers and rows.
+    # @param objects [Array] array of objects to convert
+    # @param columns [Array] column definitions  
+    # @param headers [Array<String>] custom headers
+    # @return [Hash] { headers: [...], rows: [[...], [...]] }
+    def build_table_data(objects, columns, headers)
+      # Generate headers
+      table_headers = headers || columns.map do |col|
+        case col
+        when Symbol, String
+          col.to_s.gsub('_', ' ').split.map(&:capitalize).join(' ')
+        when Hash
+          col[:header] || col[:field]&.to_s&.gsub('_', ' ')&.split&.map(&:capitalize)&.join(' ') || 'Custom'
+        else
+          'Unknown'
+        end
+      end
+
+      # Generate rows
+      table_rows = objects.map do |obj|
+        columns.map do |col|
+          extract_column_value(obj, col)
+        end
+      end
+
+      { headers: table_headers, rows: table_rows }
+    end
+
+    # Extract value for a column from an object.
+    # @param obj [Object] the object to extract from
+    # @param col [Symbol, String, Hash] column definition
+    # @return [String] formatted column value
+    def extract_column_value(obj, col)
+      value = case col
+              when Symbol, String
+                extract_field_value(obj, col)
+              when Hash
+                if col[:block]
+                  # Custom block evaluation
+                  begin
+                    col[:block].call(obj)
+                  rescue => e
+                    "Error: #{e.message}"
+                  end
+                elsif col[:field]
+                  extract_field_value(obj, col[:field])
+                else
+                  'N/A'
+                end
+              else
+                'Unknown'
+              end
+
+      # Format the value for display
+      format_table_value(value)
+    end
+
+    # Extract field value from object (similar to pluck logic).
+    # Supports dot notation for nested attributes (e.g., "project.team.name").
+    # @param obj [Object] object to extract from
+    # @param field [Symbol, String] field name or dot-notation path
+    # @return [Object] field value
+    def extract_field_value(obj, field)
+      field_path = field.to_s.split('.')
+      current_obj = obj
+      
+      field_path.each do |segment|
+        current_obj = extract_single_field_value(current_obj, segment)
+        break if current_obj.nil?
+      end
+      
+      current_obj
+    end
+    
+    # Extract a single field value from an object (no dot notation).
+    # @param obj [Object] object to extract from
+    # @param field [String] single field name
+    # @return [Object] field value
+    def extract_single_field_value(obj, field)
+      if obj.respond_to?(:attributes)
+        # Parse objects - try multiple access patterns
+        value = obj.attributes[field] || 
+                obj.attributes[Query.format_field(field)] ||
+                (obj.respond_to?(field) ? obj.send(field) : nil)
+        
+        # If it's a Parse pointer, try to resolve it
+        if value.is_a?(Hash) && value['__type'] == 'Pointer'
+          resolve_parse_pointer(value)
+        else
+          value
+        end
+      elsif obj.is_a?(Hash)
+        # Hash objects  
+        obj[field] || obj[field.to_sym] ||
+        obj[Query.format_field(field)] || obj[Query.format_field(field).to_sym]
+      else
+        # Other objects
+        obj.respond_to?(field) ? obj.send(field) : nil
+      end
+    end
+    
+    # Attempt to resolve a Parse pointer to the actual object.
+    # @param pointer [Hash] Parse pointer hash
+    # @return [Object] resolved object or pointer hash if resolution fails
+    def resolve_parse_pointer(pointer)
+      return pointer unless pointer['className'] && pointer['objectId']
+      
+      begin
+        # Try to find the model class and fetch the object
+        model_class = Object.const_get(pointer['className'])
+        if model_class < Parse::Object
+          resolved_obj = model_class.find(pointer['objectId'])
+          return resolved_obj if resolved_obj
+        end
+      rescue NameError, Parse::Error => e
+        # If we can't resolve, fall back to displaying pointer info
+      end
+      
+      # Return pointer representation if resolution failed
+      pointer
+    end
+
+    # Format a value for table display.
+    # @param value [Object] value to format
+    # @return [String] formatted string
+    def format_table_value(value)
+      case value
+      when nil
+        'null'
+      when String
+        value.length > 50 ? "#{value[0..47]}..." : value
+      when Parse::Pointer
+        "#{value.parse_class}##{value.id}"
+      when Hash
+        if value['__type'] == 'Pointer'
+          "#{value['className']}##{value['objectId']}"
+        else
+          value.to_s.length > 50 ? "#{value.to_s[0..47]}..." : value.to_s
+        end
+      when Time, DateTime
+        value.strftime('%Y-%m-%d %H:%M')
+      when Numeric
+        value.to_s
+      when Array
+        "[#{value.size} items]"
+      else
+        value.to_s.length > 50 ? "#{value.to_s[0..47]}..." : value.to_s
+      end
+    end
+
+    # Format ASCII table.
+    # @param data [Hash] table data with headers and rows
+    # @return [String] formatted ASCII table
+    def format_ascii_table(data)
+      headers = data[:headers]
+      rows = data[:rows]
+      
+      # Calculate column widths
+      col_widths = headers.map.with_index do |header, i|
+        max_width = [header.length, *rows.map { |row| row[i].to_s.length }].max
+        [max_width, 3].max # Minimum width of 3
+      end
+      
+      # Build table
+      result = []
+      
+      # Top border
+      result << "+" + col_widths.map { |w| "-" * (w + 2) }.join("+") + "+"
+      
+      # Headers
+      header_row = "|" + headers.map.with_index { |h, i| " #{h.ljust(col_widths[i])} " }.join("|") + "|"
+      result << header_row
+      
+      # Header separator
+      result << "+" + col_widths.map { |w| "-" * (w + 2) }.join("+") + "+"
+      
+      # Rows
+      rows.each do |row|
+        row_str = "|" + row.map.with_index { |cell, i| " #{cell.to_s.ljust(col_widths[i])} " }.join("|") + "|"
+        result << row_str
+      end
+      
+      # Bottom border
+      result << "+" + col_widths.map { |w| "-" * (w + 2) }.join("+") + "+"
+      
+      result.join("\n")
+    end
+
+    # Format CSV table.
+    # @param data [Hash] table data with headers and rows  
+    # @return [String] CSV formatted string
+    def format_csv_table(data)
+      require 'csv'
+      
+      csv_string = CSV.generate do |csv|
+        csv << data[:headers]
+        data[:rows].each { |row| csv << row }
+      end
+      
+      csv_string
+    end
+
+    # Format JSON table.
+    # @param data [Hash] table data with headers and rows
+    # @return [String] JSON formatted string  
+    def format_json_table(data)
+      headers = data[:headers]
+      rows = data[:rows]
+      
+      table_objects = rows.map do |row|
+        headers.zip(row).to_h
+      end
+      
+      JSON.pretty_generate(table_objects)
+    end
+
+    # Format empty table for given format.
+    # @param format [Symbol] output format
+    # @return [String] empty table representation
+    def format_empty_table(format)
+      case format
+      when :ascii
+        "No results found."
+      when :csv
+        ""
+      when :json
+        "[]"
+      end
+    end
 
     # Execute distinct aggregation with object population at server level.
     # @param field [Symbol, String] the field name to get distinct values for.
@@ -1738,6 +2047,121 @@ module Parse
     # @return [Hash] sorted results as hash
     def to_sorted_hash(sorted_pairs)
       sorted_pairs.to_h
+    end
+    
+    # Convert grouped results to a formatted table.
+    # @param format [Symbol] output format (:ascii, :csv, :json)
+    # @param headers [Array<String>] custom headers (default: ["Group", "Count"])
+    # @return [String] formatted table
+    # @example
+    #   Asset.group_by(:category, sortable: true).count.to_table
+    #   Asset.group_by(:category).sum(:file_size).to_table(headers: ["Category", "Total Size"])
+    def to_table(format: :ascii, headers: ["Group", "Count"])
+      pairs = @results.to_a
+      
+      # Build table data
+      table_data = {
+        headers: headers,
+        rows: pairs.map { |key, value| [format_group_key(key), format_group_value(value)] }
+      }
+      
+      # Format based on requested format
+      case format
+      when :ascii
+        format_grouped_ascii_table(table_data)
+      when :csv
+        format_grouped_csv_table(table_data)
+      when :json
+        format_grouped_json_table(table_data)
+      else
+        raise ArgumentError, "Unsupported format: #{format}. Use :ascii, :csv, or :json"
+      end
+    end
+    
+    private
+    
+    # Format group key for display
+    def format_group_key(key)
+      case key
+      when Parse::Pointer
+        "#{key.parse_class}##{key.id}"
+      when nil
+        "null"
+      else
+        key.to_s
+      end
+    end
+    
+    # Format group value for display
+    def format_group_value(value)
+      case value
+      when Numeric
+        value.to_s
+      when nil
+        "null"
+      else
+        value.to_s
+      end
+    end
+    
+    # Format ASCII table for grouped results
+    def format_grouped_ascii_table(data)
+      headers = data[:headers]
+      rows = data[:rows]
+      
+      return "No results found." if rows.empty?
+      
+      # Calculate column widths
+      col_widths = headers.map.with_index do |header, i|
+        max_width = [header.length, *rows.map { |row| row[i].to_s.length }].max
+        [max_width, 3].max
+      end
+      
+      # Build table
+      result = []
+      
+      # Top border
+      result << "+" + col_widths.map { |w| "-" * (w + 2) }.join("+") + "+"
+      
+      # Headers
+      header_row = "|" + headers.map.with_index { |h, i| " #{h.ljust(col_widths[i])} " }.join("|") + "|"
+      result << header_row
+      
+      # Header separator
+      result << "+" + col_widths.map { |w| "-" * (w + 2) }.join("+") + "+"
+      
+      # Rows
+      rows.each do |row|
+        row_str = "|" + row.map.with_index { |cell, i| " #{cell.to_s.ljust(col_widths[i])} " }.join("|") + "|"
+        result << row_str
+      end
+      
+      # Bottom border
+      result << "+" + col_widths.map { |w| "-" * (w + 2) }.join("+") + "+"
+      
+      result.join("\n")
+    end
+    
+    # Format CSV table for grouped results
+    def format_grouped_csv_table(data)
+      require 'csv'
+      
+      CSV.generate do |csv|
+        csv << data[:headers]
+        data[:rows].each { |row| csv << row }
+      end
+    end
+    
+    # Format JSON table for grouped results
+    def format_grouped_json_table(data)
+      headers = data[:headers]
+      rows = data[:rows]
+      
+      table_objects = rows.map do |row|
+        headers.zip(row).to_h
+      end
+      
+      JSON.pretty_generate(table_objects)
     end
   end
 
