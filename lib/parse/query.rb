@@ -713,8 +713,8 @@ module Parse
       # Add match stage if there are where conditions
       compiled_where = compile_where
       if compiled_where.present?
-        # Convert symbols to strings for MongoDB aggregation
-        stringified_where = JSON.parse(compiled_where.to_json)
+        # Convert symbols to strings and handle date objects for MongoDB aggregation
+        stringified_where = convert_dates_for_aggregation(JSON.parse(compiled_where.to_json))
         pipeline.unshift({ "$match" => stringified_where })
       end
 
@@ -924,8 +924,8 @@ module Parse
       
       # Add regular constraints as initial $match stage if present
       if regular_constraints.any?
-        # Convert symbols to strings for MongoDB aggregation
-        stringified_constraints = JSON.parse(regular_constraints.to_json)
+        # Convert symbols to strings and handle date objects for MongoDB aggregation
+        stringified_constraints = convert_dates_for_aggregation(JSON.parse(regular_constraints.to_json))
         pipeline << { "$match" => stringified_constraints }
       end
       
@@ -1023,6 +1023,28 @@ module Parse
     # @return [String]
     def pretty
       JSON.pretty_generate(as_json)
+    end
+
+    private
+
+    # Convert Ruby Date/Time objects to MongoDB date format for aggregation pipelines
+    # @param obj [Object] the object to convert (Hash, Array, or value)
+    # @return [Object] the converted object with proper MongoDB dates
+    def convert_dates_for_aggregation(obj)
+      case obj
+      when Hash
+        obj.transform_values { |v| convert_dates_for_aggregation(v) }
+      when Array
+        obj.map { |v| convert_dates_for_aggregation(v) }
+      when Time, DateTime
+        # Convert to MongoDB date format: { "$date": "ISO8601_string" }
+        { "$date" => obj.utc.iso8601(3) }
+      when Date
+        # Convert Date to Time at start of day in UTC, then to MongoDB format
+        { "$date" => obj.to_time.utc.iso8601(3) }
+      else
+        obj
+      end
     end
   end # Query
 end # Parse
