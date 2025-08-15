@@ -688,25 +688,40 @@ module Parse
     # @param field [Symbol|String] The name of the field used for filtering.
     # @version 1.8.0
     def distinct(field, return_pointers: false)
-      if field.nil? == false && field.respond_to?(:to_s)
-        # disable counting if it was enabled.
-        old_count_value = @count
-        @count = nil
-        compile_query = compile # temporary store
-        # add distinct field
-        compile_query[:distinct] = Query.format_field(field).to_sym
-        @count = old_count_value
-        # perform aggregation
-        raw_results = client.aggregate_objects(@table, compile_query.as_json, **_opts).result
-        
-        if return_pointers
-          # Convert to Parse::Pointer objects
-          to_pointers(raw_results)
-        else
-          raw_results
-        end
-      else
+      if field.nil? || !field.respond_to?(:to_s)
         raise ArgumentError, "Invalid field name passed to `distinct`."
+      end
+      
+      # Format field for aggregation
+      formatted_field = format_aggregation_field(field)
+      
+      # Build the aggregation pipeline for distinct values
+      pipeline = [
+        { "$group" => { "_id" => "$#{formatted_field}" } },
+        { "$project" => { "_id" => 0, "value" => "$_id" } }
+      ]
+      
+      # Add match stage if there are where conditions
+      compiled_where = compile_where
+      if compiled_where.present?
+        # Convert field names for aggregation context and handle dates
+        aggregation_where = convert_constraints_for_aggregation(compiled_where)
+        stringified_where = convert_dates_for_aggregation(JSON.parse(aggregation_where.to_json))
+        pipeline.unshift({ "$match" => stringified_where })
+      end
+      
+      # Use the Aggregation class to execute
+      aggregation = aggregate(pipeline, verbose: @verbose_aggregate)
+      raw_results = aggregation.raw
+      
+      # Extract values from the results
+      values = raw_results.map { |item| item["value"] }.compact
+      
+      if return_pointers
+        # Convert to Parse::Pointer objects
+        to_pointers(values)
+      else
+        values
       end
     end
 
@@ -765,29 +780,19 @@ module Parse
       # Add match stage if there are where conditions
       compiled_where = compile_where
       if compiled_where.present?
-        # Convert symbols to strings and handle date objects for MongoDB aggregation
-        stringified_where = convert_dates_for_aggregation(JSON.parse(compiled_where.to_json))
+        # Convert field names for aggregation context and handle dates
+        aggregation_where = convert_constraints_for_aggregation(compiled_where)
+        stringified_where = convert_dates_for_aggregation(JSON.parse(aggregation_where.to_json))
         pipeline.unshift({ "$match" => stringified_where })
       end
 
-      # Execute the pipeline aggregation
-      if @verbose_aggregate
-        puts "[VERBOSE AGGREGATE] Pipeline for count_distinct(:#{field}):"
-        puts JSON.pretty_generate(pipeline)
-        puts "[VERBOSE AGGREGATE] Sending to: #{@table}"
-      end
-      
-      response = client.aggregate_pipeline(@table, pipeline, headers: {}, **_opts)
-      
-      if @verbose_aggregate
-        puts "[VERBOSE AGGREGATE] Response success?: #{response.success?}"
-        puts "[VERBOSE AGGREGATE] Response result: #{response.result.inspect}"
-        puts "[VERBOSE AGGREGATE] Response error: #{response.error.inspect}" unless response.success?
-      end
+      # Use the Aggregation class to execute
+      aggregation = aggregate(pipeline, verbose: @verbose_aggregate)
+      raw_results = aggregation.raw
       
       # Extract the count from the response
-      if response.success? && response.result.is_a?(Array) && response.result.first
-        response.result.first["distinctCount"] || 0
+      if raw_results.is_a?(Array) && raw_results.first
+        raw_results.first["distinctCount"] || 0
       else
         0
       end
@@ -980,26 +985,55 @@ module Parse
       }
     end
 
+    # Returns raw unprocessed results from the query (hash format)
+    # @yield a block to iterate for each raw object that matched the query
+    # @return [Array<Hash>] raw Parse JSON hash results
+    def raw(&block)
+      results(raw: true, &block)
+    end
+
+    # Returns only pointer objects for all matching results
+    # This is memory efficient for large result sets where you only need pointers
+    # @yield a block to iterate for each pointer object that matched the query
+    # @return [Array<Parse::Pointer>] array of Parse::Pointer objects
+    def result_pointers(&block)
+      results(return_pointers: true, &block)
+    end
+
+    # Alias for result_pointers for consistency
+    alias_method :results_pointers, :result_pointers
+
+    # Create an Aggregation object for executing arbitrary MongoDB pipelines
+    # @param pipeline [Array<Hash>] the MongoDB aggregation pipeline stages
+    # @param verbose [Boolean] whether to print verbose debug output for the aggregation
+    # @return [Aggregation] an aggregation object that can be executed
+    # @example
+    #   pipeline = [
+    #     { "$match" => { "status" => "active" } },
+    #     { "$group" => { "_id" => "$category", "count" => { "$sum" => 1 } } }
+    #   ]
+    #   aggregation = Asset.query.aggregate(pipeline)
+    #   results = aggregation.results
+    #   raw_results = aggregation.raw
+    #   pointer_results = aggregation.result_pointers
+    #   
+    #   # With verbose output
+    #   aggregation = Asset.query.aggregate(pipeline, verbose: true)
+    def aggregate(pipeline, verbose: nil)
+      Aggregation.new(self, pipeline, verbose: verbose)
+    end
+
+    # Alias for consistency
+    alias_method :aggregate_pipeline, :aggregate
+
     # Execute an aggregation pipeline for queries with pipeline constraints
     # @return [Parse::Response] the response from the aggregation pipeline
     def execute_aggregation_pipeline
       pipeline = build_aggregation_pipeline
       
-      if @verbose_aggregate
-        puts "[VERBOSE AGGREGATE] Pipeline for linked pointer constraints:"
-        puts JSON.pretty_generate(pipeline)
-        puts "[VERBOSE AGGREGATE] Sending to: #{@table}"
-      end
-      
-      response = client.aggregate_pipeline(@table, pipeline, headers: {}, **_opts)
-      
-      if @verbose_aggregate
-        puts "[VERBOSE AGGREGATE] Response success?: #{response.success?}"
-        puts "[VERBOSE AGGREGATE] Response result: #{response.result.inspect}"
-        puts "[VERBOSE AGGREGATE] Response error: #{response.error.inspect}" unless response.success?
-      end
-      
-      response
+      # Use the Aggregation class to execute and get the internal response
+      aggregation = aggregate(pipeline, verbose: @verbose_aggregate)
+      aggregation.execute!  # This returns the cached response
     end
 
     # Build the complete aggregation pipeline from constraints
@@ -1777,39 +1811,21 @@ module Parse
       # Add match stage if there are where conditions
       compiled_where = compile_where
       if compiled_where.present?
-        stringified_where = convert_dates_for_aggregation(JSON.parse(compiled_where.to_json))
+        # Convert field names for aggregation context and handle dates
+        aggregation_where = convert_constraints_for_aggregation(compiled_where)
+        stringified_where = convert_dates_for_aggregation(JSON.parse(aggregation_where.to_json))
         pipeline.unshift({ "$match" => stringified_where })
       end
 
-      # Execute the pipeline aggregation
-      if @verbose_aggregate
-        puts "[VERBOSE AGGREGATE] Pipeline for distinct_objects(:#{field}):"
-        puts JSON.pretty_generate(pipeline)
-        puts "[VERBOSE AGGREGATE] Sending to: #{@table}"
-      end
+      # Use the Aggregation class to execute
+      aggregation = aggregate(pipeline, verbose: @verbose_aggregate)
       
-      response = client.aggregate_pipeline(@table, pipeline, headers: {}, **_opts)
-      
-      if @verbose_aggregate
-        puts "[VERBOSE AGGREGATE] Response success?: #{response.success?}"
-        puts "[VERBOSE AGGREGATE] Response result: #{response.result.inspect}"
-        puts "[VERBOSE AGGREGATE] Response error: #{response.error.inspect}" unless response.success?
-      end
-      
-      # Parse Server should return populated objects directly
-      if response.success? && response.result.is_a?(Array)
-        # Run uniq on raw results first for better performance
-        unique_results = response.result.uniq
-        
-        if return_pointers
-          # Convert to Parse::Pointer objects instead of full objects
-          to_pointers(unique_results)
-        else
-          # Use the existing decode method to convert Parse JSON to Parse::Object instances
-          decode(unique_results)
-        end
+      if return_pointers
+        # Get pointers directly from aggregation
+        aggregation.result_pointers.uniq
       else
-        []
+        # Get Parse objects from aggregation
+        aggregation.results.uniq
       end
     end
 
@@ -1824,31 +1840,21 @@ module Parse
       # Add match stage if there are where conditions
       compiled_where = compile_where
       if compiled_where.present?
-        # Convert symbols to strings and handle date objects for MongoDB aggregation
-        stringified_where = convert_dates_for_aggregation(JSON.parse(compiled_where.to_json))
+        # Convert field names for aggregation context and handle dates
+        aggregation_where = convert_constraints_for_aggregation(compiled_where)
+        stringified_where = convert_dates_for_aggregation(JSON.parse(aggregation_where.to_json))
         pipeline.unshift({ "$match" => stringified_where })
       end
 
-      # Execute the pipeline aggregation
-      if @verbose_aggregate
-        puts "[VERBOSE AGGREGATE] Pipeline for #{operation}(:#{field}):"
-        puts JSON.pretty_generate(pipeline)
-        puts "[VERBOSE AGGREGATE] Sending to: #{@table}"
-      end
-      
-      response = client.aggregate_pipeline(@table, pipeline, headers: {}, **_opts)
-      
-      if @verbose_aggregate
-        puts "[VERBOSE AGGREGATE] Response success?: #{response.success?}"
-        puts "[VERBOSE AGGREGATE] Response result: #{response.result.inspect}"
-        puts "[VERBOSE AGGREGATE] Response error: #{response.error.inspect}" unless response.success?
-      end
+      # Use the Aggregation class to execute
+      aggregation = aggregate(pipeline, verbose: @verbose_aggregate)
+      raw_results = aggregation.raw
       
       # Extract the result from the response
-      if response.success? && response.result.is_a?(Array) && response.result.first
-        response.result.first[result_key]
+      if raw_results.is_a?(Array) && raw_results.first
+        raw_results.first[result_key]
       else
-        operation == "sum" || operation == "average" ? 0 : nil
+        nil  # Return nil for all operations when there are no results
       end
     end
 
@@ -1952,6 +1958,133 @@ module Parse
     end
   end # Query
 
+  # Helper class for executing arbitrary MongoDB aggregation pipelines.
+  # Provides a consistent interface with results, raw, and result_pointers methods.
+  class Aggregation
+    # @param query [Parse::Query] the base query object
+    # @param pipeline [Array<Hash>] the MongoDB aggregation pipeline stages
+    # @param verbose [Boolean, nil] whether to print verbose output (nil means use query's setting)
+    def initialize(query, pipeline, verbose: nil)
+      @query = query
+      @pipeline = pipeline
+      @cached_response = nil
+      # Use provided verbose setting, or fall back to query's verbose_aggregate setting
+      @verbose = verbose.nil? ? @query.instance_variable_get(:@verbose_aggregate) : verbose
+    end
+
+    # Execute the aggregation pipeline and cache the response
+    # @return [Parse::Response] the aggregation response
+    def execute!
+      return @cached_response if @cached_response
+      
+      if @verbose
+        puts "[VERBOSE AGGREGATE] Custom aggregation pipeline:"
+        puts JSON.pretty_generate(@pipeline)
+        puts "[VERBOSE AGGREGATE] Sending to: #{@query.instance_variable_get(:@table)}"
+      end
+      
+      @cached_response = @query.client.aggregate_pipeline(
+        @query.instance_variable_get(:@table),
+        @pipeline,
+        headers: {},
+        **@query.send(:_opts)
+      )
+      
+      if @verbose
+        puts "[VERBOSE AGGREGATE] Response success?: #{@cached_response.success?}"
+        puts "[VERBOSE AGGREGATE] Response result count: #{@cached_response.result&.count}"
+      end
+      
+      @cached_response
+    end
+
+    # Returns processed Parse objects from the aggregation
+    # @yield a block to iterate for each object in the result
+    # @return [Array<Parse::Object>] array of Parse objects
+    def results(&block)
+      response = execute!
+      return [] if response.error?
+      
+      items = @query.send(:decode, response.result)
+      return items.each(&block) if block_given?
+      items
+    end
+
+    # Alias for results
+    alias_method :all, :results
+
+    # Returns raw unprocessed results from the aggregation
+    # @yield a block to iterate for each raw object in the result
+    # @return [Array<Hash>] raw Parse JSON hash results
+    def raw(&block)
+      response = execute!
+      return [] if response.respond_to?(:error?) && response.error?
+      
+      items = response.respond_to?(:result) ? response.result : response
+      items = [] unless items.is_a?(Array)
+      return items.each(&block) if block_given?
+      items
+    end
+
+    # Returns only pointer objects for all matching results
+    # @yield a block to iterate for each pointer object in the result
+    # @return [Array<Parse::Pointer>] array of Parse::Pointer objects
+    def result_pointers(&block)
+      response = execute!
+      return [] if response.error?
+      
+      items = @query.send(:to_pointers, response.result)
+      return items.each(&block) if block_given?
+      items
+    end
+
+    # Alias for result_pointers
+    alias_method :results_pointers, :result_pointers
+
+    # Returns the first result from the aggregation
+    # @param limit [Integer] number of results to return
+    # @return [Parse::Object, Array<Parse::Object>] the first object(s)
+    def first(limit = 1)
+      items = results.first(limit)
+      limit == 1 ? items.first : items
+    end
+
+    # Returns the count of results
+    # @return [Integer] the number of results
+    def count
+      response = execute!
+      response.error? ? 0 : response.result.count
+    end
+
+    # Check if there are any results
+    # @return [Boolean] true if there are results
+    def any?
+      count > 0
+    end
+
+    # Check if there are no results
+    # @return [Boolean] true if there are no results
+    def empty?
+      count == 0
+    end
+
+    # Add additional pipeline stages
+    # @param stages [Array<Hash>] additional pipeline stages to append
+    # @return [Aggregation] self for chaining
+    def add_stages(*stages)
+      @pipeline.concat(stages.flatten)
+      @cached_response = nil # Clear cache when pipeline changes
+      self
+    end
+
+    # Create a new Aggregation with additional stages (non-mutating)
+    # @param stages [Array<Hash>] additional pipeline stages to append
+    # @return [Aggregation] new aggregation object with combined pipeline
+    def with_stages(*stages)
+      Aggregation.new(@query, @pipeline + stages.flatten, verbose: @verbose)
+    end
+  end
+
   # Helper class for handling group_by aggregations with method chaining.
   # Supports count, sum, average, min, max operations on grouped data.
   # Can optionally flatten array fields before grouping to count individual array elements.
@@ -1965,6 +2098,24 @@ module Parse
       @group_field = group_field
       @flatten_arrays = flatten_arrays
       @return_pointers = return_pointers
+    end
+
+    # Returns raw unprocessed aggregation results 
+    # @param operation [String] the aggregation operation
+    # @param aggregation_expr [Hash] the MongoDB aggregation expression
+    # @return [Array<Hash>] raw aggregation results
+    def raw(operation, aggregation_expr)
+      formatted_group_field = @query.send(:format_aggregation_field, @group_field)
+      pipeline = build_pipeline(formatted_group_field, aggregation_expr)
+      
+      response = @query.client.aggregate_pipeline(
+        @query.instance_variable_get(:@table), 
+        pipeline, 
+        headers: {}, 
+        **@query.send(:_opts)
+      )
+      
+      response.result || []
     end
 
     # Count the number of items in each group.
@@ -2049,6 +2200,13 @@ module Parse
       if compiled_where.present?
         # Convert field names for aggregation context and handle dates
         aggregation_where = @query.send(:convert_constraints_for_aggregation, compiled_where)
+        
+        # Debug output
+        if @query.instance_variable_get(:@verbose_aggregate)
+          puts "[DEBUG] Original constraints: #{compiled_where.inspect}"
+          puts "[DEBUG] Converted constraints: #{aggregation_where.inspect}"
+        end
+        
         stringified_where = @query.send(:convert_dates_for_aggregation, JSON.parse(aggregation_where.to_json))
         pipeline << { "$match" => stringified_where }
       end
@@ -2075,30 +2233,14 @@ module Parse
         }
       ])
 
-      # Execute the pipeline aggregation
-      if @query.instance_variable_get(:@verbose_aggregate)
-        puts "[VERBOSE AGGREGATE] Pipeline for group_by(:#{@group_field}).#{operation}:"
-        puts JSON.pretty_generate(pipeline)
-        puts "[VERBOSE AGGREGATE] Sending to: #{@query.instance_variable_get(:@table)}"
-      end
-      
-      response = @query.client.aggregate_pipeline(
-        @query.instance_variable_get(:@table), 
-        pipeline, 
-        headers: {}, 
-        **@query.send(:_opts)
-      )
-      
-      if @query.instance_variable_get(:@verbose_aggregate)
-        puts "[VERBOSE AGGREGATE] Response success?: #{response.success?}"
-        puts "[VERBOSE AGGREGATE] Response result: #{response.result.inspect}"
-        puts "[VERBOSE AGGREGATE] Response error: #{response.error.inspect}" unless response.success?
-      end
+      # Use the Aggregation class to execute
+      aggregation = @query.aggregate(pipeline, verbose: @query.instance_variable_get(:@verbose_aggregate))
+      raw_results = aggregation.raw
       
       # Convert array of results to hash
-      if response.success? && response.result.is_a?(Array)
+      if raw_results.is_a?(Array)
         result_hash = {}
-        response.result.each do |item|
+        raw_results.each do |item|
           # Parse Server returns group key as "objectId" with $project stage
           key = item["objectId"]
           value = item["count"]
