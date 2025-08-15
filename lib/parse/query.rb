@@ -1063,18 +1063,14 @@ module Parse
       when Hash
         # Handle Parse's JSON date format: {"__type": "Date", "iso": "..."}
         if obj["__type"] == "Date" && obj["iso"]
-          # For Parse Server aggregation, use MongoDB date format
-          { "$date" => obj["iso"] }
+          # For Parse Server aggregation, use raw ISO string (Parse Server converts to Date)
+          obj["iso"]
         else
           # Also handle field name mapping for built-in Parse fields
           converted_hash = {}
           obj.each do |key, value|
-            # Map Parse field names to MongoDB field names
-            mapped_key = case key
-                        when 'createdAt' then '_created_at'
-                        when 'updatedAt' then '_updated_at'
-                        else key
-                        end
+            # For Parse Server aggregation, keep standard Parse field names
+            mapped_key = key
             converted_hash[mapped_key] = convert_dates_for_aggregation(value)
           end
           converted_hash
@@ -1082,11 +1078,11 @@ module Parse
       when Array
         obj.map { |v| convert_dates_for_aggregation(v) }
       when Time, DateTime
-        # For Parse Server aggregation, use MongoDB date format
-        { "$date" => obj.utc.iso8601(3) }
+        # Parse Server automatically converts Ruby Time objects to Date objects
+        obj
       when Date
-        # Convert Date to Time at start of day in UTC, then to MongoDB date format
-        { "$date" => obj.to_time.utc.iso8601(3) }
+        # Parse Server automatically converts Ruby Date objects to Date objects  
+        obj
       else
         obj
       end
