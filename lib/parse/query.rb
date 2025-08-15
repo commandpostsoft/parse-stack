@@ -400,6 +400,50 @@ module Parse
       @results = nil if fields.count > 0
       self # chaining
     end
+    alias_method :select_fields, :keys
+
+    # Extract values for a specific field from all matching objects.
+    # This is similar to keys() but returns an array of the actual field values
+    # instead of objects with only those fields selected.
+    # @param field [Symbol, String] the field name to extract values for.
+    # @return [Array] an array of field values from all matching objects.
+    # @example
+    #   # Get all asset names
+    #   Asset.query.pluck(:name)
+    #   # => ["video1.mp4", "image1.jpg", "audio1.mp3"]
+    #   
+    #   # Get all author team IDs
+    #   Asset.query.pluck(:author_team)
+    #   # => [{"__type"=>"Pointer", "className"=>"Team", "objectId"=>"abc123"}, ...]
+    #   
+    #   # Get created dates
+    #   Asset.query.pluck(:created_at)
+    #   # => [2024-11-24 10:30:00 UTC, 2024-11-25 14:20:00 UTC, ...]
+    def pluck(field)
+      if field.nil? || !field.respond_to?(:to_s)
+        raise ArgumentError, "Invalid field name passed to `pluck`."
+      end
+
+      # Use keys to select only the field we want for efficiency
+      query_with_field = self.dup.keys(field)
+      
+      # Get the results and extract the field values
+      objects = query_with_field.results
+      formatted_field = Query.format_field(field)
+      
+      objects.map do |obj|
+        if obj.respond_to?(:attributes)
+          # For Parse objects, get the attribute value
+          obj.attributes[field.to_s] || obj.attributes[formatted_field.to_s]
+        elsif obj.is_a?(Hash)
+          # For raw JSON objects
+          obj[field.to_s] || obj[formatted_field.to_s]
+        else
+          # Fallback - try to access as method
+          obj.respond_to?(field) ? obj.send(field) : nil
+        end
+      end
+    end
 
     # Add a sorting order for the query.
     # @example
@@ -1168,28 +1212,118 @@ module Parse
 
     # Group results by a specific field and return a GroupBy object for chaining aggregations.
     # @param field [Symbol, String] the field name to group by.
-    # @return [GroupBy] an object that supports chaining aggregation methods.
+    # @param flatten_arrays [Boolean] if true, arrays will be flattened before grouping.
+    #   This allows counting/aggregating individual array elements across all records.
+    # @param sortable [Boolean] if true, returns a SortableGroupBy that supports sorting results.
+    # @param return_pointers [Boolean] if true, converts Parse pointer group keys to Parse::Pointer objects.
+    # @return [GroupBy, SortableGroupBy] an object that supports chaining aggregation methods.
     # @example
     #   Asset.group_by(:category).count
     #   Asset.where(:status => "active").group_by(:project).sum(:file_size)
     #   Asset.group_by(:media_format).average(:duration)
-    def group_by(field)
+    #   
+    #   # Array flattening example:
+    #   # Record 1: tags = ["a", "b"]
+    #   # Record 2: tags = ["b", "c"] 
+    #   Asset.group_by(:tags, flatten_arrays: true).count
+    #   # => {"a" => 1, "b" => 2, "c" => 1}
+    #   
+    #   # Sortable results:
+    #   Asset.group_by(:category, sortable: true).count.sort_by_value_desc
+    #   # => [["video", 45], ["image", 23], ["audio", 12]]
+    #   
+    #   # Return Parse::Pointer objects for pointer fields:
+    #   Asset.group_by(:author_team, return_pointers: true).count
+    #   # => {#<Parse::Pointer @parse_class="Team" @id="team1"> => 5, ...}
+    def group_by(field, flatten_arrays: false, sortable: false, return_pointers: false)
       if field.nil? || !field.respond_to?(:to_s)
         raise ArgumentError, "Invalid field name passed to `group_by`."
       end
 
-      GroupBy.new(self, field)
+      if sortable
+        SortableGroupBy.new(self, field, flatten_arrays: flatten_arrays, return_pointers: return_pointers)
+      else
+        GroupBy.new(self, field, flatten_arrays: flatten_arrays, return_pointers: return_pointers)
+      end
+    end
+
+    # Group Parse objects by a field value and return arrays of actual objects.
+    # Unlike group_by which uses aggregation for counts/sums, this fetches all objects
+    # and groups them in Ruby, returning the actual Parse object instances.
+    # @param field [Symbol, String] the field name to group by.
+    # @param return_pointers [Boolean] if true, returns Parse::Pointer objects instead of full objects.
+    # @return [Hash] a hash with field values as keys and arrays of Parse objects as values.
+    # @example
+    #   # Get arrays of actual Asset objects grouped by category
+    #   Asset.query.group_objects_by(:category)
+    #   # => {
+    #   #   "video" => [#<Asset:video1>, #<Asset:video2>, ...],
+    #   #   "image" => [#<Asset:image1>, #<Asset:image2>, ...],
+    #   #   "audio" => [#<Asset:audio1>, ...]
+    #   # }
+    #   
+    #   # Get Parse::Pointer objects instead (memory efficient)
+    #   Asset.query.group_objects_by(:category, return_pointers: true)
+    #   # => {
+    #   #   "video" => [#<Parse::Pointer>, #<Parse::Pointer>, ...],
+    #   #   "image" => [#<Parse::Pointer>, ...],
+    #   #   "audio" => [#<Parse::Pointer>, ...]
+    #   # }
+    def group_objects_by(field, return_pointers: false)
+      if field.nil? || !field.respond_to?(:to_s)
+        raise ArgumentError, "Invalid field name passed to `group_objects_by`."
+      end
+
+      # Fetch all objects that match the query
+      objects = results(return_pointers: return_pointers)
+      
+      # Group objects by the specified field value
+      grouped = {}
+      objects.each do |obj|
+        # Get the field value for grouping
+        field_value = if obj.respond_to?(:attributes)
+                        # For Parse objects, get the attribute value  
+                        obj.attributes[field.to_s] || obj.attributes[Query.format_field(field)]
+                      elsif obj.is_a?(Hash)
+                        # For raw JSON objects
+                        obj[field.to_s] || obj[Query.format_field(field)]
+                      else
+                        # Fallback - try to access as method
+                        obj.respond_to?(field) ? obj.send(field) : nil
+                      end
+        
+        # Handle nil field values
+        group_key = field_value.nil? ? "null" : field_value
+        
+        # Convert Parse pointer values to readable format for grouping key
+        if group_key.is_a?(Hash) && group_key["__type"] == "Pointer"
+          group_key = "#{group_key['className']}##{group_key['objectId']}"
+        end
+        
+        # Initialize array if this is the first object for this group
+        grouped[group_key] ||= []
+        grouped[group_key] << obj
+      end
+      
+      grouped
     end
 
     # Group results by a date field at specified time intervals.
     # @param field [Symbol, String] the date field name to group by.
     # @param interval [Symbol] the time interval (:year, :month, :week, :day, :hour).
-    # @return [GroupByDate] an object that supports chaining aggregation methods.
+    # @param sortable [Boolean] if true, returns a SortableGroupByDate that supports sorting results.
+    # @param return_pointers [Boolean] if true, converts Parse pointer values to Parse::Pointer objects.
+    #   Note: This is primarily for consistency - date groupings typically use formatted date strings as keys.
+    # @return [GroupByDate, SortableGroupByDate] an object that supports chaining aggregation methods.
     # @example
     #   Capture.group_by_date(:created_at, :day).count
     #   Asset.group_by_date(:created_at, :month).sum(:file_size)
     #   Capture.where(:project => project_id).group_by_date(:created_at, :week).average(:duration)
-    def group_by_date(field, interval)
+    #   
+    #   # Sortable date results:
+    #   Asset.group_by_date(:created_at, :day, sortable: true).count.sort_by_value_desc
+    #   # => [["2024-11-25", 45], ["2024-11-24", 23], ...]
+    def group_by_date(field, interval, sortable: false, return_pointers: false)
       if field.nil? || !field.respond_to?(:to_s)
         raise ArgumentError, "Invalid field name passed to `group_by_date`."
       end
@@ -1198,7 +1332,11 @@ module Parse
         raise ArgumentError, "Invalid interval. Must be one of: :year, :month, :week, :day, :hour"
       end
 
-      GroupByDate.new(self, field, interval.to_sym)
+      if sortable
+        SortableGroupByDate.new(self, field, interval.to_sym, return_pointers: return_pointers)
+      else
+        GroupByDate.new(self, field, interval.to_sym, return_pointers: return_pointers)
+      end
     end
 
     # Enhanced distinct method that automatically populates Parse pointer objects at the server level.
@@ -1375,12 +1513,17 @@ module Parse
 
   # Helper class for handling group_by aggregations with method chaining.
   # Supports count, sum, average, min, max operations on grouped data.
+  # Can optionally flatten array fields before grouping to count individual array elements.
   class GroupBy
     # @param query [Parse::Query] the base query to group
     # @param group_field [Symbol, String] the field to group by
-    def initialize(query, group_field)
+    # @param flatten_arrays [Boolean] whether to flatten array fields before grouping
+    # @param return_pointers [Boolean] whether to return Parse::Pointer objects for pointer values
+    def initialize(query, group_field, flatten_arrays: false, return_pointers: false)
       @query = query
       @group_field = group_field
+      @flatten_arrays = flatten_arrays
+      @return_pointers = return_pointers
     end
 
     # Count the number of items in each group.
@@ -1458,7 +1601,22 @@ module Parse
       formatted_group_field = @query.send(:format_aggregation_field, @group_field)
       
       # Build the aggregation pipeline
-      pipeline = [
+      pipeline = []
+      
+      # Add match stage if there are where conditions (before unwind for efficiency)
+      compiled_where = @query.send(:compile_where)
+      if compiled_where.present?
+        stringified_where = @query.send(:convert_dates_for_aggregation, JSON.parse(compiled_where.to_json))
+        pipeline << { "$match" => stringified_where }
+      end
+      
+      # Add unwind stage if flatten_arrays is enabled
+      if @flatten_arrays
+        pipeline << { "$unwind" => "$#{formatted_group_field}" }
+      end
+      
+      # Add group and project stages
+      pipeline.concat([
         { 
           "$group" => { 
             "_id" => "$#{formatted_group_field}", 
@@ -1472,14 +1630,7 @@ module Parse
             "count" => 1
           }
         }
-      ]
-
-      # Add match stage if there are where conditions
-      compiled_where = @query.send(:compile_where)
-      if compiled_where.present?
-        stringified_where = @query.send(:convert_dates_for_aggregation, JSON.parse(compiled_where.to_json))
-        pipeline.unshift({ "$match" => stringified_where })
-      end
+      ])
 
       # Execute the pipeline aggregation
       if @query.instance_variable_get(:@verbose_aggregate)
@@ -1508,8 +1659,20 @@ module Parse
           # Parse Server returns group key as "objectId" with $project stage
           key = item["objectId"]
           value = item["count"]
+          
           # Handle null/nil group keys
-          key = "null" if key.nil?
+          if key.nil?
+            key = "null"
+          elsif @return_pointers && key.is_a?(Hash)
+            # Convert Parse pointer objects to Parse::Pointer instances
+            if key["__type"] == "Pointer" && key["className"] && key["objectId"]
+              key = Parse::Pointer.new(key["className"], key["objectId"])
+            elsif key["objectId"] && key["className"]
+              # Handle full Parse objects as pointers
+              key = Parse::Pointer.new(key["className"], key["objectId"])
+            end
+          end
+          
           result_hash[key] = value
         end
         result_hash
@@ -1519,16 +1682,159 @@ module Parse
     end
   end
 
+  # Wrapper class for grouped results that provides sorting capabilities.
+  # Allows sorting grouped results by keys (group names) or values (aggregation results)
+  # in ascending or descending order.
+  class GroupedResult
+    include Enumerable
+    
+    # @param results [Hash] the grouped results hash
+    def initialize(results)
+      @results = results
+    end
+    
+    # Return the raw hash results
+    # @return [Hash] the grouped results
+    def to_h
+      @results
+    end
+    
+    # Iterate over each key-value pair
+    def each(&block)
+      @results.each(&block)
+    end
+    
+    # Sort by keys (group names) in ascending order
+    # @return [Array<Array>] array of [key, value] pairs sorted by key ascending
+    def sort_by_key_asc
+      @results.sort_by { |k, v| k }
+    end
+    
+    # Sort by keys (group names) in descending order
+    # @return [Array<Array>] array of [key, value] pairs sorted by key descending
+    def sort_by_key_desc
+      @results.sort_by { |k, v| k }.reverse
+    end
+    
+    # Sort by values (aggregation results) in ascending order
+    # @return [Array<Array>] array of [key, value] pairs sorted by value ascending
+    def sort_by_value_asc
+      @results.sort_by { |k, v| v }
+    end
+    
+    # Sort by values (aggregation results) in descending order
+    # @return [Array<Array>] array of [key, value] pairs sorted by value descending
+    def sort_by_value_desc
+      @results.sort_by { |k, v| v }.reverse
+    end
+    
+    # Convert sorted results back to a hash
+    # @param sorted_pairs [Array<Array>] array of [key, value] pairs
+    # @return [Hash] sorted results as hash
+    def to_sorted_hash(sorted_pairs)
+      sorted_pairs.to_h
+    end
+  end
+
+  # Sortable version of GroupBy that returns GroupedResult objects instead of plain hashes.
+  # Provides the same aggregation methods but with sorting capabilities.
+  class SortableGroupBy < GroupBy
+    # Count the number of items in each group.
+    # @return [GroupedResult] a sortable result object.
+    def count
+      results = super
+      GroupedResult.new(results)
+    end
+
+    # Sum a field for each group.
+    # @param field [Symbol, String] the field to sum within each group.
+    # @return [GroupedResult] a sortable result object.
+    def sum(field)
+      results = super
+      GroupedResult.new(results)
+    end
+
+    # Calculate average of a field for each group.
+    # @param field [Symbol, String] the field to average within each group.
+    # @return [GroupedResult] a sortable result object.
+    def average(field)
+      results = super
+      GroupedResult.new(results)
+    end
+    alias_method :avg, :average
+
+    # Find minimum value of a field for each group.
+    # @param field [Symbol, String] the field to find minimum for within each group.
+    # @return [GroupedResult] a sortable result object.
+    def min(field)
+      results = super
+      GroupedResult.new(results)
+    end
+
+    # Find maximum value of a field for each group.
+    # @param field [Symbol, String] the field to find maximum for within each group.
+    # @return [GroupedResult] a sortable result object.
+    def max(field)
+      results = super
+      GroupedResult.new(results)
+    end
+  end
+
+  # Sortable version of GroupByDate that returns GroupedResult objects instead of plain hashes.
+  # Provides the same aggregation methods but with sorting capabilities.
+  class SortableGroupByDate < GroupByDate
+    # Count the number of items in each time period.
+    # @return [GroupedResult] a sortable result object.
+    def count
+      results = super
+      GroupedResult.new(results)
+    end
+
+    # Sum a field for each time period.
+    # @param field [Symbol, String] the field to sum within each time period.
+    # @return [GroupedResult] a sortable result object.
+    def sum(field)
+      results = super
+      GroupedResult.new(results)
+    end
+
+    # Calculate average of a field for each time period.
+    # @param field [Symbol, String] the field to average within each time period.
+    # @return [GroupedResult] a sortable result object.
+    def average(field)
+      results = super
+      GroupedResult.new(results)
+    end
+    alias_method :avg, :average
+
+    # Find minimum value of a field for each time period.
+    # @param field [Symbol, String] the field to find minimum for within each time period.
+    # @return [GroupedResult] a sortable result object.
+    def min(field)
+      results = super
+      GroupedResult.new(results)
+    end
+
+    # Find maximum value of a field for each time period.
+    # @param field [Symbol, String] the field to find maximum for within each time period.
+    # @return [GroupedResult] a sortable result object.
+    def max(field)
+      results = super
+      GroupedResult.new(results)
+    end
+  end
+
   # Helper class for handling group_by_date aggregations with method chaining.
   # Groups data by time intervals (year, month, week, day, hour) and supports aggregation operations.
   class GroupByDate
     # @param query [Parse::Query] the base query to group
     # @param date_field [Symbol, String] the date field to group by
     # @param interval [Symbol] the time interval (:year, :month, :week, :day, :hour)
-    def initialize(query, date_field, interval)
+    def initialize(query, date_field, interval, return_pointers: false)
       @query = query
       @date_field = date_field
       @interval = interval
+      @return_pointers = return_pointers
     end
 
     # Count the number of items in each time period.
