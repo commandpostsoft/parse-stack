@@ -688,7 +688,7 @@ module Parse
     # @param field [Symbol|String] The name of the field used for filtering.
     # @version 1.8.0
     def distinct(field, return_pointers: false)
-      if field.nil? || !field.respond_to?(:to_s)
+      if field.nil? || !field.respond_to?(:to_s) || field.is_a?(Hash) || field.is_a?(Array)
         raise ArgumentError, "Invalid field name passed to `distinct`."
       end
       
@@ -721,7 +721,21 @@ module Parse
         # Convert to Parse::Pointer objects
         to_pointers(values)
       else
-        values
+        # Auto-detect if this is a pointer field by checking for MongoDB format strings
+        # If values contain strings like "ClassName$objectId", convert to Parse::Pointer objects
+        if values.any? { |v| v.is_a?(String) && v.include?('$') && v.match(/^[A-Za-z]\w*\$[\w\d]+$/) }
+          # Convert MongoDB pointer strings to Parse::Pointer objects
+          values.map do |value|
+            if value.is_a?(String) && value.include?('$')
+              class_name, object_id = value.split('$', 2)
+              Parse::Pointer.new(class_name, object_id)
+            else
+              value
+            end
+          end.compact
+        else
+          values
+        end
       end
     end
 
@@ -1106,6 +1120,12 @@ module Parse
           elsif m["objectId"]
             # Standard Parse object with objectId - use the query table name
             Parse::Pointer.new(@table, m["objectId"])
+          end
+        elsif m.is_a?(String) && m.include?('$')
+          # Handle MongoDB pointer string format: "ClassName$objectId"
+          class_name, object_id = m.split('$', 2)
+          if class_name && object_id
+            Parse::Pointer.new(class_name, object_id)
           end
         end
       end.compact

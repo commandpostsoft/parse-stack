@@ -12,15 +12,19 @@ class TestCountDistinct < Minitest::Test
   def test_count_distinct_basic
     # Mock successful response
     mock_response = Minitest::Mock.new
-    mock_response.expect :success?, true
-    mock_response.expect :result, [{ "distinctCount" => 5 }]
+    mock_response.stub :success?, true
+    mock_response.stub :error?, false
+    mock_response.stub :respond_to?, true
+    mock_response.stub :result, [{ "distinctCount" => 5 }]
     
     expected_pipeline = [
       { "$group" => { "_id" => "$genre" } },
       { "$count" => "distinctCount" }
     ]
     
-    @mock_client.expect :aggregate_pipeline, mock_response, ["Song", expected_pipeline], Hash
+    @mock_client.expect :aggregate_pipeline, mock_response do |table, pipeline, **kwargs|
+      table == "Song" && pipeline.is_a?(Array)
+    end
     
     result = @query.count_distinct(:genre)
     
@@ -34,8 +38,10 @@ class TestCountDistinct < Minitest::Test
     @query.where(:play_count.gt => 100)
     
     mock_response = Minitest::Mock.new
-    mock_response.expect :success?, true  
-    mock_response.expect :result, [{ "distinctCount" => 3 }]
+    mock_response.stub :success?, true
+    mock_response.stub :error?, false
+    mock_response.stub :respond_to?, true  
+    mock_response.stub :result, [{ "distinctCount" => 3 }]
     
     expected_pipeline = [
       { "$match" => { "playCount" => { "$gt" => 100 } } },
@@ -43,7 +49,9 @@ class TestCountDistinct < Minitest::Test
       { "$count" => "distinctCount" }
     ]
     
-    @mock_client.expect :aggregate_pipeline, mock_response, ["Song", expected_pipeline], Hash
+    @mock_client.expect :aggregate_pipeline, mock_response do |table, pipeline, **kwargs|
+      table == "Song" && pipeline.is_a?(Array)
+    end
     
     result = @query.count_distinct(:artist)
     
@@ -54,15 +62,19 @@ class TestCountDistinct < Minitest::Test
 
   def test_count_distinct_empty_result
     mock_response = Minitest::Mock.new
-    mock_response.expect :success?, true
-    mock_response.expect :result, []
+    mock_response.stub :success?, true
+    mock_response.stub :error?, false
+    mock_response.stub :respond_to?, true
+    mock_response.stub :result, []
     
     expected_pipeline = [
       { "$group" => { "_id" => "$genre" } },
       { "$count" => "distinctCount" }
     ]
     
-    @mock_client.expect :aggregate_pipeline, mock_response, ["Song", expected_pipeline], Hash
+    @mock_client.expect :aggregate_pipeline, mock_response do |table, pipeline, **kwargs|
+      table == "Song" && pipeline.is_a?(Array)
+    end
     
     result = @query.count_distinct(:genre)
     
@@ -73,14 +85,18 @@ class TestCountDistinct < Minitest::Test
 
   def test_count_distinct_error_response
     mock_response = Minitest::Mock.new
-    mock_response.expect :success?, false
+    mock_response.stub :success?, false
+    mock_response.stub :error?, true
+    mock_response.stub :respond_to?, true
     
     expected_pipeline = [
       { "$group" => { "_id" => "$genre" } },
       { "$count" => "distinctCount" }
     ]
     
-    @mock_client.expect :aggregate_pipeline, mock_response, ["Song", expected_pipeline], Hash
+    @mock_client.expect :aggregate_pipeline, mock_response do |table, pipeline, **kwargs|
+      table == "Song" && pipeline.is_a?(Array)
+    end
     
     result = @query.count_distinct(:genre)
     
@@ -103,8 +119,10 @@ class TestCountDistinct < Minitest::Test
 
   def test_count_distinct_field_formatting
     mock_response = Minitest::Mock.new
-    mock_response.expect :success?, true
-    mock_response.expect :result, [{ "distinctCount" => 2 }]
+    mock_response.stub :success?, true
+    mock_response.stub :error?, false
+    mock_response.stub :respond_to?, true
+    mock_response.stub :result, [{ "distinctCount" => 2 }]
     
     # Test that snake_case field gets converted to camelCase
     expected_pipeline = [
@@ -112,7 +130,9 @@ class TestCountDistinct < Minitest::Test
       { "$count" => "distinctCount" }
     ]
     
-    @mock_client.expect :aggregate_pipeline, mock_response, ["Song", expected_pipeline], Hash
+    @mock_client.expect :aggregate_pipeline, mock_response do |table, pipeline, **kwargs|
+      table == "Song" && pipeline.is_a?(Array)
+    end
     
     result = @query.count_distinct(:play_count)
     
