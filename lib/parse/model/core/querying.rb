@@ -249,6 +249,21 @@ module Parse
         query(constraints).count
       end
 
+      # Counts the number of distinct values for a specified field.
+      # Uses MongoDB aggregation pipeline to efficiently count unique values.
+      # @example
+      #  # get count of unique genres for songs with play_count > 100
+      #  distinct_genres_count = Song.count_distinct(:genre, :play_count.gt => 100)
+      #  # get total number of unique users
+      #  unique_users = User.count_distinct(:objectId)
+      # @param field [Symbol|String] The name of the field to count distinct values for.
+      # @param constraints (see #all)
+      # @return [Integer] the number of distinct values
+      # @see Parse::Query#count_distinct
+      def count_distinct(field, constraints = {})
+        query(constraints).count_distinct(field)
+      end
+
       # Finds the distinct values for a specified field across a single
       # collection or view and returns the results in an array.
       # @example
