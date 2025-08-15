@@ -1780,50 +1780,6 @@ module Parse
     end
   end
 
-  # Sortable version of GroupByDate that returns GroupedResult objects instead of plain hashes.
-  # Provides the same aggregation methods but with sorting capabilities.
-  class SortableGroupByDate < GroupByDate
-    # Count the number of items in each time period.
-    # @return [GroupedResult] a sortable result object.
-    def count
-      results = super
-      GroupedResult.new(results)
-    end
-
-    # Sum a field for each time period.
-    # @param field [Symbol, String] the field to sum within each time period.
-    # @return [GroupedResult] a sortable result object.
-    def sum(field)
-      results = super
-      GroupedResult.new(results)
-    end
-
-    # Calculate average of a field for each time period.
-    # @param field [Symbol, String] the field to average within each time period.
-    # @return [GroupedResult] a sortable result object.
-    def average(field)
-      results = super
-      GroupedResult.new(results)
-    end
-    alias_method :avg, :average
-
-    # Find minimum value of a field for each time period.
-    # @param field [Symbol, String] the field to find minimum for within each time period.
-    # @return [GroupedResult] a sortable result object.
-    def min(field)
-      results = super
-      GroupedResult.new(results)
-    end
-
-    # Find maximum value of a field for each time period.
-    # @param field [Symbol, String] the field to find maximum for within each time period.
-    # @return [GroupedResult] a sortable result object.
-    def max(field)
-      results = super
-      GroupedResult.new(results)
-    end
-  end
-
   # Helper class for handling group_by_date aggregations with method chaining.
   # Groups data by time intervals (year, month, week, day, hour) and supports aggregation operations.
   class GroupByDate
@@ -2043,6 +1999,50 @@ module Parse
         return "null" if year.nil? || month.nil? || day.nil? || hour.nil?
         sprintf("%04d-%02d-%02d %02d:00", year, month, day, hour)
       end
+    end
+  end
+
+  # Sortable version of GroupByDate that returns GroupedResult objects instead of plain hashes.
+  # Provides the same aggregation methods but with sorting capabilities.
+  class SortableGroupByDate < GroupByDate
+    # Count the number of items in each time period.
+    # @return [GroupedResult] a sortable result object.
+    def count
+      results = super
+      GroupedResult.new(results)
+    end
+
+    # Sum a field for each time period.
+    # @param field [Symbol, String] the field to sum within each time period.
+    # @return [GroupedResult] a sortable result object.
+    def sum(field)
+      results = super
+      GroupedResult.new(results)
+    end
+
+    # Calculate average of a field for each time period.
+    # @param field [Symbol, String] the field to average within each time period.
+    # @return [GroupedResult] a sortable result object.
+    def average(field)
+      results = super
+      GroupedResult.new(results)
+    end
+    alias_method :avg, :average
+
+    # Find minimum value of a field for each time period.
+    # @param field [Symbol, String] the field to find minimum for within each time period.
+    # @return [GroupedResult] a sortable result object.
+    def min(field)
+      results = super
+      GroupedResult.new(results)
+    end
+
+    # Find maximum value of a field for each time period.
+    # @param field [Symbol, String] the field to find maximum for within each time period.
+    # @return [GroupedResult] a sortable result object.
+    def max(field)
+      results = super
+      GroupedResult.new(results)
     end
   end
 end # Parse
