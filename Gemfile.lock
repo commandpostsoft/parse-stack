@@ -131,9 +131,8 @@ GEM
       concurrent-ruby (~> 1.0)
     uri (1.0.3)
     useragent (0.16.11)
-    webrick (1.7.0)
-    yard (0.9.28)
-      webrick (~> 1.7.0)
+    webrick (1.8.2)
+    yard (0.9.37)
 
 PLATFORMS
   ruby
