@@ -1053,7 +1053,171 @@ module Parse
       JSON.pretty_generate(as_json)
     end
 
+    # Calculate the sum of values for a specific field.
+    # @param field [Symbol, String] the field name to sum.
+    # @return [Numeric] the sum of all values for the field, or 0 if no results.
+    def sum(field)
+      if field.nil? || !field.respond_to?(:to_s)
+        raise ArgumentError, "Invalid field name passed to `sum`."
+      end
+
+      # Format field name according to Parse conventions
+      formatted_field = format_aggregation_field(field)
+      
+      # Build the aggregation pipeline
+      pipeline = [
+        { "$group" => { "_id" => nil, "total" => { "$sum" => "$#{formatted_field}" } } }
+      ]
+
+      execute_basic_aggregation(pipeline, "sum", field, "total")
+    end
+
+    # Calculate the average of values for a specific field.
+    # @param field [Symbol, String] the field name to average.
+    # @return [Float] the average of all values for the field, or 0 if no results.
+    def average(field)
+      if field.nil? || !field.respond_to?(:to_s)
+        raise ArgumentError, "Invalid field name passed to `average`."
+      end
+
+      # Format field name according to Parse conventions
+      formatted_field = format_aggregation_field(field)
+      
+      # Build the aggregation pipeline
+      pipeline = [
+        { "$group" => { "_id" => nil, "avg" => { "$avg" => "$#{formatted_field}" } } }
+      ]
+
+      execute_basic_aggregation(pipeline, "average", field, "avg")
+    end
+    alias_method :avg, :average
+
+    # Find the minimum value for a specific field.
+    # @param field [Symbol, String] the field name to find minimum for.
+    # @return [Object] the minimum value for the field, or nil if no results.
+    def min(field)
+      if field.nil? || !field.respond_to?(:to_s)
+        raise ArgumentError, "Invalid field name passed to `min`."
+      end
+
+      # Format field name according to Parse conventions
+      formatted_field = format_aggregation_field(field)
+      
+      # Build the aggregation pipeline
+      pipeline = [
+        { "$group" => { "_id" => nil, "min" => { "$min" => "$#{formatted_field}" } } }
+      ]
+
+      execute_basic_aggregation(pipeline, "min", field, "min")
+    end
+
+    # Find the maximum value for a specific field.
+    # @param field [Symbol, String] the field name to find maximum for.
+    # @return [Object] the maximum value for the field, or nil if no results.
+    def max(field)
+      if field.nil? || !field.respond_to?(:to_s)
+        raise ArgumentError, "Invalid field name passed to `max`."
+      end
+
+      # Format field name according to Parse conventions
+      formatted_field = format_aggregation_field(field)
+      
+      # Build the aggregation pipeline
+      pipeline = [
+        { "$group" => { "_id" => nil, "max" => { "$max" => "$#{formatted_field}" } } }
+      ]
+
+      execute_basic_aggregation(pipeline, "max", field, "max")
+    end
+
+    # Group results by a specific field and return a GroupBy object for chaining aggregations.
+    # @param field [Symbol, String] the field name to group by.
+    # @return [GroupBy] an object that supports chaining aggregation methods.
+    # @example
+    #   Asset.group_by(:category).count
+    #   Asset.where(:status => "active").group_by(:project).sum(:file_size)
+    #   Asset.group_by(:media_format).average(:duration)
+    def group_by(field)
+      if field.nil? || !field.respond_to?(:to_s)
+        raise ArgumentError, "Invalid field name passed to `group_by`."
+      end
+
+      GroupBy.new(self, field)
+    end
+
+    # Group results by a date field at specified time intervals.
+    # @param field [Symbol, String] the date field name to group by.
+    # @param interval [Symbol] the time interval (:year, :month, :week, :day, :hour).
+    # @return [GroupByDate] an object that supports chaining aggregation methods.
+    # @example
+    #   Capture.group_by_date(:created_at, :day).count
+    #   Asset.group_by_date(:created_at, :month).sum(:file_size)
+    #   Capture.where(:project => project_id).group_by_date(:created_at, :week).average(:duration)
+    def group_by_date(field, interval)
+      if field.nil? || !field.respond_to?(:to_s)
+        raise ArgumentError, "Invalid field name passed to `group_by_date`."
+      end
+
+      unless [:year, :month, :week, :day, :hour].include?(interval.to_sym)
+        raise ArgumentError, "Invalid interval. Must be one of: :year, :month, :week, :day, :hour"
+      end
+
+      GroupByDate.new(self, field, interval.to_sym)
+    end
+
     private
+
+    # Execute a basic aggregation pipeline and extract the result
+    # @param pipeline [Array] the base pipeline stages (without $match)
+    # @param operation [String] the operation name for debugging
+    # @param field [Symbol, String] the field being aggregated
+    # @param result_key [String] the key to extract from the result
+    # @return [Object] the aggregation result
+    def execute_basic_aggregation(pipeline, operation, field, result_key)
+      # Add match stage if there are where conditions
+      compiled_where = compile_where
+      if compiled_where.present?
+        # Convert symbols to strings and handle date objects for MongoDB aggregation
+        stringified_where = convert_dates_for_aggregation(JSON.parse(compiled_where.to_json))
+        pipeline.unshift({ "$match" => stringified_where })
+      end
+
+      # Execute the pipeline aggregation
+      if @verbose_aggregate
+        puts "[VERBOSE AGGREGATE] Pipeline for #{operation}(:#{field}):"
+        puts JSON.pretty_generate(pipeline)
+        puts "[VERBOSE AGGREGATE] Sending to: #{@table}"
+      end
+      
+      response = client.aggregate_pipeline(@table, pipeline, headers: {}, **_opts)
+      
+      if @verbose_aggregate
+        puts "[VERBOSE AGGREGATE] Response success?: #{response.success?}"
+        puts "[VERBOSE AGGREGATE] Response result: #{response.result.inspect}"
+        puts "[VERBOSE AGGREGATE] Response error: #{response.error.inspect}" unless response.success?
+      end
+      
+      # Extract the result from the response
+      if response.success? && response.result.is_a?(Array) && response.result.first
+        response.result.first[result_key]
+      else
+        operation == "sum" || operation == "average" ? 0 : nil
+      end
+    end
+
+    # Format field names for aggregation pipelines
+    # @param field [Symbol, String] the field name to format
+    # @return [String] the formatted field name
+    def format_aggregation_field(field)
+      case field.to_s
+      when 'created_at', 'createdAt'
+        'createdAt'  # Parse Server uses createdAt for aggregation
+      when 'updated_at', 'updatedAt'  
+        'updatedAt'  # Parse Server uses updatedAt for aggregation
+      else
+        Query.format_field(field)
+      end
+    end
 
     # Convert Ruby Date/Time objects to MongoDB date format for aggregation pipelines
     # @param obj [Object] the object to convert (Hash, Array, or value)
@@ -1088,4 +1252,371 @@ module Parse
       end
     end
   end # Query
+
+  # Helper class for handling group_by aggregations with method chaining.
+  # Supports count, sum, average, min, max operations on grouped data.
+  class GroupBy
+    # @param query [Parse::Query] the base query to group
+    # @param group_field [Symbol, String] the field to group by
+    def initialize(query, group_field)
+      @query = query
+      @group_field = group_field
+    end
+
+    # Count the number of items in each group.
+    # @return [Hash] a hash with group values as keys and counts as values.
+    # @example
+    #   Asset.group_by(:category).count
+    #   # => {"image" => 45, "video" => 23, "audio" => 12}
+    def count
+      execute_group_aggregation("count", { "$sum" => 1 })
+    end
+
+    # Sum a field for each group.
+    # @param field [Symbol, String] the field to sum within each group.
+    # @return [Hash] a hash with group values as keys and sums as values.
+    # @example
+    #   Asset.group_by(:project).sum(:file_size)
+    #   # => {"Project1" => 1024000, "Project2" => 512000}
+    def sum(field)
+      if field.nil? || !field.respond_to?(:to_s)
+        raise ArgumentError, "Invalid field name passed to `sum`."
+      end
+      
+      formatted_field = @query.send(:format_aggregation_field, field)
+      execute_group_aggregation("sum", { "$sum" => "$#{formatted_field}" })
+    end
+
+    # Calculate average of a field for each group.
+    # @param field [Symbol, String] the field to average within each group.
+    # @return [Hash] a hash with group values as keys and averages as values.
+    # @example
+    #   Asset.group_by(:category).average(:duration)
+    #   # => {"video" => 120.5, "audio" => 45.2}
+    def average(field)
+      if field.nil? || !field.respond_to?(:to_s)
+        raise ArgumentError, "Invalid field name passed to `average`."
+      end
+      
+      formatted_field = @query.send(:format_aggregation_field, field)
+      execute_group_aggregation("average", { "$avg" => "$#{formatted_field}" })
+    end
+    alias_method :avg, :average
+
+    # Find minimum value of a field for each group.
+    # @param field [Symbol, String] the field to find minimum for within each group.
+    # @return [Hash] a hash with group values as keys and minimum values as values.
+    def min(field)
+      if field.nil? || !field.respond_to?(:to_s)
+        raise ArgumentError, "Invalid field name passed to `min`."
+      end
+      
+      formatted_field = @query.send(:format_aggregation_field, field)
+      execute_group_aggregation("min", { "$min" => "$#{formatted_field}" })
+    end
+
+    # Find maximum value of a field for each group.
+    # @param field [Symbol, String] the field to find maximum for within each group.
+    # @return [Hash] a hash with group values as keys and maximum values as values.
+    def max(field)
+      if field.nil? || !field.respond_to?(:to_s)
+        raise ArgumentError, "Invalid field name passed to `max`."
+      end
+      
+      formatted_field = @query.send(:format_aggregation_field, field)
+      execute_group_aggregation("max", { "$max" => "$#{formatted_field}" })
+    end
+
+    private
+
+    # Execute a group aggregation operation.
+    # @param operation [String] the operation name for debugging.
+    # @param aggregation_expr [Hash] the MongoDB aggregation expression.
+    # @return [Hash] the grouped results.
+    def execute_group_aggregation(operation, aggregation_expr)
+      # Format the group field name
+      formatted_group_field = @query.send(:format_aggregation_field, @group_field)
+      
+      # Build the aggregation pipeline
+      pipeline = [
+        { 
+          "$group" => { 
+            "_id" => "$#{formatted_group_field}", 
+            "count" => aggregation_expr 
+          } 
+        },
+        {
+          "$project" => {
+            "_id" => 0,
+            "objectId" => "$_id",
+            "count" => 1
+          }
+        }
+      ]
+
+      # Add match stage if there are where conditions
+      compiled_where = @query.send(:compile_where)
+      if compiled_where.present?
+        stringified_where = @query.send(:convert_dates_for_aggregation, JSON.parse(compiled_where.to_json))
+        pipeline.unshift({ "$match" => stringified_where })
+      end
+
+      # Execute the pipeline aggregation
+      if @query.instance_variable_get(:@verbose_aggregate)
+        puts "[VERBOSE AGGREGATE] Pipeline for group_by(:#{@group_field}).#{operation}:"
+        puts JSON.pretty_generate(pipeline)
+        puts "[VERBOSE AGGREGATE] Sending to: #{@query.instance_variable_get(:@table)}"
+      end
+      
+      response = @query.client.aggregate_pipeline(
+        @query.instance_variable_get(:@table), 
+        pipeline, 
+        headers: {}, 
+        **@query.send(:_opts)
+      )
+      
+      if @query.instance_variable_get(:@verbose_aggregate)
+        puts "[VERBOSE AGGREGATE] Response success?: #{response.success?}"
+        puts "[VERBOSE AGGREGATE] Response result: #{response.result.inspect}"
+        puts "[VERBOSE AGGREGATE] Response error: #{response.error.inspect}" unless response.success?
+      end
+      
+      # Convert array of results to hash
+      if response.success? && response.result.is_a?(Array)
+        result_hash = {}
+        response.result.each do |item|
+          # Parse Server returns group key as "objectId" with $project stage
+          key = item["objectId"]
+          value = item["count"]
+          # Handle null/nil group keys
+          key = "null" if key.nil?
+          result_hash[key] = value
+        end
+        result_hash
+      else
+        {}
+      end
+    end
+  end
+
+  # Helper class for handling group_by_date aggregations with method chaining.
+  # Groups data by time intervals (year, month, week, day, hour) and supports aggregation operations.
+  class GroupByDate
+    # @param query [Parse::Query] the base query to group
+    # @param date_field [Symbol, String] the date field to group by
+    # @param interval [Symbol] the time interval (:year, :month, :week, :day, :hour)
+    def initialize(query, date_field, interval)
+      @query = query
+      @date_field = date_field
+      @interval = interval
+    end
+
+    # Count the number of items in each time period.
+    # @return [Hash] a hash with formatted date strings as keys and counts as values.
+    # @example
+    #   Capture.group_by_date(:created_at, :day).count
+    #   # => {"2024-11-24" => 45, "2024-11-25" => 23}
+    def count
+      execute_date_aggregation("count", { "$sum" => 1 })
+    end
+
+    # Sum a field for each time period.
+    # @param field [Symbol, String] the field to sum within each time period.
+    # @return [Hash] a hash with formatted date strings as keys and sums as values.
+    # @example
+    #   Asset.group_by_date(:created_at, :month).sum(:file_size)
+    #   # => {"2024-11" => 1024000, "2024-12" => 512000}
+    def sum(field)
+      if field.nil? || !field.respond_to?(:to_s)
+        raise ArgumentError, "Invalid field name passed to `sum`."
+      end
+      
+      formatted_field = @query.send(:format_aggregation_field, field)
+      execute_date_aggregation("sum", { "$sum" => "$#{formatted_field}" })
+    end
+
+    # Calculate average of a field for each time period.
+    # @param field [Symbol, String] the field to average within each time period.
+    # @return [Hash] a hash with formatted date strings as keys and averages as values.
+    def average(field)
+      if field.nil? || !field.respond_to?(:to_s)
+        raise ArgumentError, "Invalid field name passed to `average`."
+      end
+      
+      formatted_field = @query.send(:format_aggregation_field, field)
+      execute_date_aggregation("average", { "$avg" => "$#{formatted_field}" })
+    end
+    alias_method :avg, :average
+
+    # Find minimum value of a field for each time period.
+    # @param field [Symbol, String] the field to find minimum for within each time period.
+    # @return [Hash] a hash with formatted date strings as keys and minimum values as values.
+    def min(field)
+      if field.nil? || !field.respond_to?(:to_s)
+        raise ArgumentError, "Invalid field name passed to `min`."
+      end
+      
+      formatted_field = @query.send(:format_aggregation_field, field)
+      execute_date_aggregation("min", { "$min" => "$#{formatted_field}" })
+    end
+
+    # Find maximum value of a field for each time period.
+    # @param field [Symbol, String] the field to find maximum for within each time period.
+    # @return [Hash] a hash with formatted date strings as keys and maximum values as values.
+    def max(field)
+      if field.nil? || !field.respond_to?(:to_s)
+        raise ArgumentError, "Invalid field name passed to `max`."
+      end
+      
+      formatted_field = @query.send(:format_aggregation_field, field)
+      execute_date_aggregation("max", { "$max" => "$#{formatted_field}" })
+    end
+
+    private
+
+    # Execute a date-based group aggregation operation.
+    # @param operation [String] the operation name for debugging.
+    # @param aggregation_expr [Hash] the MongoDB aggregation expression.
+    # @return [Hash] the grouped results with formatted date keys.
+    def execute_date_aggregation(operation, aggregation_expr)
+      # Format the date field name
+      formatted_date_field = @query.send(:format_aggregation_field, @date_field)
+      
+      # Build the date grouping expression based on interval
+      date_group_expr = build_date_group_expression(formatted_date_field)
+      
+      # Build the aggregation pipeline
+      pipeline = [
+        { 
+          "$group" => { 
+            "_id" => date_group_expr,
+            "count" => aggregation_expr 
+          } 
+        },
+        # Sort by date to get chronological order
+        { "$sort" => { "_id" => 1 } },
+        {
+          "$project" => {
+            "_id" => 0,
+            "objectId" => "$_id",
+            "count" => 1
+          }
+        }
+      ]
+
+      # Add match stage if there are where conditions
+      compiled_where = @query.send(:compile_where)
+      if compiled_where.present?
+        stringified_where = @query.send(:convert_dates_for_aggregation, JSON.parse(compiled_where.to_json))
+        pipeline.unshift({ "$match" => stringified_where })
+      end
+
+      # Execute the pipeline aggregation
+      if @query.instance_variable_get(:@verbose_aggregate)
+        puts "[VERBOSE AGGREGATE] Pipeline for group_by_date(:#{@date_field}, :#{@interval}).#{operation}:"
+        puts JSON.pretty_generate(pipeline)
+        puts "[VERBOSE AGGREGATE] Sending to: #{@query.instance_variable_get(:@table)}"
+      end
+      
+      response = @query.client.aggregate_pipeline(
+        @query.instance_variable_get(:@table), 
+        pipeline, 
+        headers: {}, 
+        **@query.send(:_opts)
+      )
+      
+      if @query.instance_variable_get(:@verbose_aggregate)
+        puts "[VERBOSE AGGREGATE] Response success?: #{response.success?}"
+        puts "[VERBOSE AGGREGATE] Response result: #{response.result.inspect}"
+        puts "[VERBOSE AGGREGATE] Response error: #{response.error.inspect}" unless response.success?
+      end
+      
+      # Convert array of results to hash with formatted date strings
+      if response.success? && response.result.is_a?(Array)
+        result_hash = {}
+        response.result.each do |item|
+          # Parse Server returns group key as "objectId" with $project stage
+          date_key = item["objectId"]
+          value = item["count"]
+          
+          # Format the date key for display
+          formatted_key = format_date_key(date_key)
+          result_hash[formatted_key] = value
+        end
+        result_hash
+      else
+        {}
+      end
+    end
+
+    # Build the MongoDB date grouping expression based on the interval.
+    # @param field_name [String] the formatted date field name.
+    # @return [Hash] the MongoDB date grouping expression.
+    def build_date_group_expression(field_name)
+      case @interval
+      when :year
+        { "$year" => "$#{field_name}" }
+      when :month
+        {
+          "year" => { "$year" => "$#{field_name}" },
+          "month" => { "$month" => "$#{field_name}" }
+        }
+      when :week
+        {
+          "year" => { "$year" => "$#{field_name}" },
+          "week" => { "$week" => "$#{field_name}" }
+        }
+      when :day
+        {
+          "year" => { "$year" => "$#{field_name}" },
+          "month" => { "$month" => "$#{field_name}" },
+          "day" => { "$dayOfMonth" => "$#{field_name}" }
+        }
+      when :hour
+        {
+          "year" => { "$year" => "$#{field_name}" },
+          "month" => { "$month" => "$#{field_name}" },
+          "day" => { "$dayOfMonth" => "$#{field_name}" },
+          "hour" => { "$hour" => "$#{field_name}" }
+        }
+      end
+    end
+
+    # Format the date key from MongoDB result for display.
+    # @param date_key [Object] the date key from MongoDB grouping.
+    # @return [String] a formatted date string.
+    def format_date_key(date_key)
+      case @interval
+      when :year
+        date_key.to_s
+      when :month
+        return "null" if date_key.nil? || !date_key.is_a?(Hash)
+        year = date_key["year"]
+        month = date_key["month"]
+        return "null" if year.nil? || month.nil?
+        sprintf("%04d-%02d", year, month)
+      when :week
+        return "null" if date_key.nil? || !date_key.is_a?(Hash)
+        year = date_key["year"]
+        week = date_key["week"]
+        return "null" if year.nil? || week.nil?
+        sprintf("%04d-W%02d", year, week)
+      when :day
+        return "null" if date_key.nil? || !date_key.is_a?(Hash)
+        year = date_key["year"]
+        month = date_key["month"]
+        day = date_key["day"]
+        return "null" if year.nil? || month.nil? || day.nil?
+        sprintf("%04d-%02d-%02d", year, month, day)
+      when :hour
+        return "null" if date_key.nil? || !date_key.is_a?(Hash)
+        year = date_key["year"]
+        month = date_key["month"]
+        day = date_key["day"]
+        hour = date_key["hour"]
+        return "null" if year.nil? || month.nil? || day.nil? || hour.nil?
+        sprintf("%04d-%02d-%02d %02d:00", year, month, day, hour)
+      end
+    end
+  end
 end # Parse
