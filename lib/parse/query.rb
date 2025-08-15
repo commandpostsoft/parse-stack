@@ -1890,6 +1890,21 @@ module Parse
       end
     end
 
+    # Convert constraint field names to aggregation format (e.g., authorTeam -> _p_authorTeam for pointers)
+    # @param constraints [Hash] the constraints hash to convert
+    # @return [Hash] the converted constraints with aggregation-compatible field names
+    def convert_constraints_for_aggregation(constraints)
+      return constraints unless constraints.is_a?(Hash)
+      
+      constraints.transform_keys do |field|
+        # Skip special Parse operators
+        next field if field.to_s.start_with?('$')
+        
+        # Convert field name to aggregation format 
+        format_aggregation_field(field)
+      end
+    end
+
     # Convert Ruby Date/Time objects to MongoDB date format for aggregation pipelines
     # @param obj [Object] the object to convert (Hash, Array, or value)
     # @return [Object] the converted object with proper MongoDB dates
@@ -2019,7 +2034,9 @@ module Parse
       # Add match stage if there are where conditions (before unwind for efficiency)
       compiled_where = @query.send(:compile_where)
       if compiled_where.present?
-        stringified_where = @query.send(:convert_dates_for_aggregation, JSON.parse(compiled_where.to_json))
+        # Convert field names for aggregation context and handle dates
+        aggregation_where = @query.send(:convert_constraints_for_aggregation, compiled_where)
+        stringified_where = @query.send(:convert_dates_for_aggregation, JSON.parse(aggregation_where.to_json))
         pipeline << { "$match" => stringified_where }
       end
       
