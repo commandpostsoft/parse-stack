@@ -1916,6 +1916,17 @@ module Parse
         # Convert pointer values to MongoDB format (ClassName$objectId)
         if value.is_a?(Hash) && value["__type"] == "Pointer"
           result[aggregation_field] = "#{value['className']}$#{value['objectId']}"
+        # Handle nested constraint operators (like $in, $ne, etc.)
+        elsif value.is_a?(Hash)
+          converted_value = {}
+          value.each do |op, op_value|
+            if op_value.is_a?(Hash) && op_value["__type"] == "Pointer"
+              converted_value[op] = "#{op_value['className']}$#{op_value['objectId']}"
+            else
+              converted_value[op] = op_value
+            end
+          end
+          result[aggregation_field] = converted_value
         else
           result[aggregation_field] = value
         end
