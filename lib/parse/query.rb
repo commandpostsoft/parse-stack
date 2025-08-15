@@ -1066,12 +1066,12 @@ module Parse
     def to_pointers(list)
       list.map do |m|
         if m.is_a?(Hash)
-          if m["objectId"]
-            # Standard Parse object with objectId
-            Parse::Pointer.new(@table, m["objectId"])
-          elsif m["__type"] == "Pointer" && m["className"] && m["objectId"]
-            # Parse pointer object
+          if m["__type"] == "Pointer" && m["className"] && m["objectId"]
+            # Parse pointer object - use the className from the pointer
             Parse::Pointer.new(m["className"], m["objectId"])
+          elsif m["objectId"]
+            # Standard Parse object with objectId - use the query table name
+            Parse::Pointer.new(@table, m["objectId"])
           end
         end
       end.compact
@@ -1282,11 +1282,16 @@ module Parse
       objects.each do |obj|
         # Get the field value for grouping
         field_value = if obj.respond_to?(:attributes)
-                        # For Parse objects, get the attribute value  
-                        obj.attributes[field.to_s] || obj.attributes[Query.format_field(field)]
+                        # For Parse objects, try multiple field access patterns
+                        obj.attributes[field.to_s] || 
+                        obj.attributes[Query.format_field(field).to_s] ||
+                        (obj.respond_to?(field) ? obj.send(field) : nil)
                       elsif obj.is_a?(Hash)
-                        # For raw JSON objects
-                        obj[field.to_s] || obj[Query.format_field(field)]
+                        # For raw JSON objects, try multiple field access patterns
+                        obj[field.to_s] || 
+                        obj[Query.format_field(field).to_s] ||
+                        obj[field.to_sym] ||
+                        obj[Query.format_field(field).to_sym]
                       else
                         # Fallback - try to access as method
                         obj.respond_to?(field) ? obj.send(field) : nil
