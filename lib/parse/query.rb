@@ -717,31 +717,35 @@ module Parse
       # Extract values from the results
       values = raw_results.map { |item| item["value"] }.compact
       
-      # Auto-detect if this is a pointer field by checking for MongoDB format strings
-      # All strings should have the same className prefix for a distinct field
-      if values.any? && values.first.is_a?(String) && values.first.include?('$') && values.first.match(/^[A-Za-z]\w*\$[\w\d]+$/)
-        # Extract className from first value to check consistency
-        first_class_name = values.first.split('$', 2)[0]
-        
-        # Check if all values are pointer strings with the same className
-        if values.all? { |v| v.is_a?(String) && v.start_with?("#{first_class_name}$") }
-          if return_pointers
-            # Convert to Parse::Pointer objects when explicitly requested
-            to_pointers(values)
-          else
-            # By default, just return the object IDs (strip the className$ prefix)
+      # Use schema-based approach to handle pointer field results
+      parse_class = Parse::Model.const_get(@table) rescue nil
+      is_pointer = parse_class && is_pointer_field?(parse_class, field, formatted_field)
+      
+      if is_pointer && values.any?
+        # Convert all values using schema information
+        converted_values = values.map do |value|
+          convert_pointer_value_with_schema(value, field, return_pointers: return_pointers)
+        end
+        converted_values
+      elsif return_pointers
+        # Explicit conversion requested - try to convert using schema or fallback to string detection
+        if values.any? && values.first.is_a?(String) && values.first.include?('$')
+          to_pointers(values, field)
+        else
+          values.map { |value| convert_pointer_value_with_schema(value, field, return_pointers: true) }
+        end
+      else
+        # Fallback to original string detection for backward compatibility
+        if values.any? && values.first.is_a?(String) && values.first.include?('$') && values.first.match(/^[A-Za-z]\w*\$[\w\d]+$/)
+          first_class_name = values.first.split('$', 2)[0]
+          if values.all? { |v| v.is_a?(String) && v.start_with?("#{first_class_name}$") }
             values.map { |value| value.split('$', 2)[1] }
+          else
+            values
           end
         else
-          # Mixed or inconsistent format, return as-is
           values
         end
-      elsif return_pointers
-        # Explicit conversion requested for non-pointer fields
-        to_pointers(values)
-      else
-        # Return values as-is for non-pointer fields
-        values
       end
     end
 
@@ -1116,22 +1120,30 @@ module Parse
 
     # Builds Parse::Pointer objects based on the set of Parse JSON hashes in an array.
     # @param list [Array<Hash>] a list of Parse JSON hashes
+    # @param field [Symbol, String, nil] optional field name for schema-based conversion
     # @return [Array<Parse::Pointer>] an array of Parse::Pointer instances.
-    def to_pointers(list)
+    def to_pointers(list, field = nil)
       list.map do |m|
-        if m.is_a?(Hash)
-          if m["__type"] == "Pointer" && m["className"] && m["objectId"]
-            # Parse pointer object - use the className from the pointer
-            Parse::Pointer.new(m["className"], m["objectId"])
-          elsif m["objectId"]
-            # Standard Parse object with objectId - use the query table name
-            Parse::Pointer.new(@table, m["objectId"])
-          end
-        elsif m.is_a?(String) && m.include?('$')
-          # Handle MongoDB pointer string format: "ClassName$objectId"
-          class_name, object_id = m.split('$', 2)
-          if class_name && object_id
-            Parse::Pointer.new(class_name, object_id)
+        if field
+          # Use schema-based conversion when field is provided
+          converted = convert_pointer_value_with_schema(m, field, return_pointers: true)
+          converted if converted.is_a?(Parse::Pointer)
+        else
+          # Original logic for backward compatibility
+          if m.is_a?(Hash)
+            if m["__type"] == "Pointer" && m["className"] && m["objectId"]
+              # Parse pointer object - use the className from the pointer
+              Parse::Pointer.new(m["className"], m["objectId"])
+            elsif m["objectId"]
+              # Standard Parse object with objectId - use the query table name
+              Parse::Pointer.new(@table, m["objectId"])
+            end
+          elsif m.is_a?(String) && m.include?('$')
+            # Handle MongoDB pointer string format: "ClassName$objectId"
+            class_name, object_id = m.split('$', 2)
+            if class_name && object_id
+              Parse::Pointer.new(class_name, object_id)
+            end
           end
         end
       end.compact
@@ -1816,42 +1828,36 @@ module Parse
     # @param return_pointers [Boolean] whether to return Parse::Pointer objects instead of full objects.
     # @return [Array] array of distinct values with populated objects or pointers.
     def execute_distinct_with_population(field, return_pointers: false)
-      # Format field name according to Parse conventions
-      formatted_field = format_aggregation_field(field)
+      # First get the distinct pointer values using regular distinct
+      distinct_values = distinct(field, return_pointers: true)
       
-      # Build aggregation pipeline for distinct with population
-      pipeline = [
-        {
-          "$group" => {
-            "_id" => "$#{formatted_field}",
-            "distinctValue" => { "$first" => "$#{formatted_field}" }
-          }
-        },
-        {
-          "$replaceRoot" => {
-            "newRoot" => "$distinctValue"
-          }
-        }
-      ]
-
-      # Add match stage if there are where conditions
-      compiled_where = compile_where
-      if compiled_where.present?
-        # Convert field names for aggregation context and handle dates
-        aggregation_where = convert_constraints_for_aggregation(compiled_where)
-        stringified_where = convert_dates_for_aggregation(aggregation_where)
-        pipeline.unshift({ "$match" => stringified_where })
-      end
-
-      # Use the Aggregation class to execute
-      aggregation = aggregate(pipeline, verbose: @verbose_aggregate)
+      # Filter out non-pointer values (e.g., nil, scalar values)
+      pointer_values = distinct_values.select { |v| v.is_a?(Parse::Pointer) }
       
       if return_pointers
-        # Get pointers directly from aggregation
-        aggregation.result_pointers.uniq
+        # Return the pointers directly
+        pointer_values
       else
-        # Get Parse objects from aggregation
-        aggregation.results.uniq
+        # Fetch the full objects for each distinct pointer
+        return [] if pointer_values.empty?
+        
+        # Group pointers by class to fetch efficiently
+        pointers_by_class = pointer_values.group_by(&:parse_class)
+        
+        objects = []
+        pointers_by_class.each do |class_name, pointers|
+          puts "Fetching #{pointers.size} objects for class #{class_name}" if @verbose_aggregate
+          # Get the Parse class
+          klass = Parse::Model.find_class(class_name)
+          next unless klass
+          
+          # Fetch all objects for this class in one query
+          object_ids = pointers.map(&:id)
+          fetched = klass.all(:objectId.in => object_ids)
+          objects.concat(fetched)
+        end
+        
+        objects
       end
     end
 
@@ -1921,6 +1927,127 @@ module Parse
         parse_class.fields[f] == :pointer
       end
     end
+    
+    # Get the target class name for a pointer field from the schema
+    # @param parse_class [Class] the Parse::Object subclass
+    # @param field [Symbol, String] the field name
+    # @return [String, nil] the target class name or nil if not found
+    def get_pointer_target_class(parse_class, field)
+      return nil unless parse_class.respond_to?(:fields) && parse_class.respond_to?(:references)
+      
+      # Check both the original field name and formatted versions
+      fields_to_check = [field.to_s, field.to_sym]
+      formatted_field = Query.format_field(field)
+      fields_to_check += [formatted_field.to_s, formatted_field.to_sym]
+      
+      fields_to_check.each do |f|
+        # Check if it's a pointer field
+        if parse_class.fields[f.to_sym] == :pointer
+          # Get the target class from references
+          target_class = parse_class.references[f.to_sym]
+          return target_class if target_class
+        end
+      end
+      
+      nil
+    end
+
+    # Check if a field is a pointer field using schema information
+    # @param field [Symbol, String] the field name to check
+    # @return [Boolean] true if the field is a pointer field
+    def field_is_pointer?(field)
+      begin
+        parse_class = Parse::Model.const_get(@table)
+        return false unless parse_class.respond_to?(:fields)
+        
+        # If the field already has _p_ prefix, strip it to get the original field name
+        original_field = field.to_s.start_with?('_p_') ? field.to_s[3..-1] : field
+        
+        # Check both the original field name and formatted versions
+        fields_to_check = [original_field.to_s, original_field.to_sym]
+        formatted_field = Query.format_field(original_field)
+        fields_to_check += [formatted_field.to_s, formatted_field.to_sym]
+        
+        fields_to_check.each do |f|
+          return true if parse_class.fields[f.to_sym] == :pointer
+        end
+        
+        false
+      rescue NameError
+        # If the model class doesn't exist, fall back to checking the server schema
+        fetch_and_check_server_schema(field)
+      end
+    end
+
+    # Convert various pointer representations using schema information
+    # @param value [Object] the value to potentially convert (String, Hash, Parse::Pointer)
+    # @param field_name [Symbol, String] the field name for schema lookup
+    # @param options [Hash] conversion options
+    # @option options [Boolean] :return_pointers (false) whether to return Parse::Pointer objects
+    # @option options [Boolean] :to_mongodb_format (false) whether to convert to "ClassName$objectId" format
+    # @return [Object] converted value or original value if no conversion needed
+    def convert_pointer_value_with_schema(value, field_name, **options)
+      return value unless value # nil/empty values pass through
+      
+      parse_class = Parse::Model.const_get(@table) rescue nil
+      is_pointer = parse_class && is_pointer_field?(parse_class, field_name, Query.format_field(field_name))
+      target_class = parse_class ? get_pointer_target_class(parse_class, field_name) : nil
+      
+      case value
+      when Parse::Pointer
+        if options[:to_mongodb_format]
+          "#{value.parse_class}$#{value.id}"
+        elsif options[:return_pointers]
+          value
+        else
+          value.id # Just return the object ID
+        end
+        
+      when Hash
+        if value["__type"] == "Pointer" && value["className"] && value["objectId"]
+          if options[:to_mongodb_format]
+            "#{value['className']}$#{value['objectId']}"
+          elsif options[:return_pointers]
+            Parse::Pointer.new(value["className"], value["objectId"])
+          else
+            value["objectId"] # Just return the object ID
+          end
+        else
+          value # Not a pointer hash
+        end
+        
+      when String
+        if is_pointer
+          # Handle MongoDB format strings ("ClassName$objectId")
+          if value.include?('$') && value.match(/^[A-Za-z_]\w*\$[\w\d]+$/)
+            class_name, object_id = value.split('$', 2)
+            if options[:to_mongodb_format]
+              value # Already in MongoDB format
+            elsif options[:return_pointers]
+              Parse::Pointer.new(class_name, object_id)
+            else
+              object_id # Just return the object ID
+            end
+          elsif target_class
+            # Plain object ID with known target class from schema
+            if options[:to_mongodb_format]
+              "#{target_class}$#{value}"
+            elsif options[:return_pointers]
+              Parse::Pointer.new(target_class, value)
+            else
+              value # Already just an object ID
+            end
+          else
+            value # Can't determine pointer type
+          end
+        else
+          value # Not a pointer field
+        end
+        
+      else
+        value # Unknown type, pass through
+      end
+    end
 
     # Convert constraint field names to aggregation format (e.g., authorTeam -> _p_authorTeam for pointers)
     # @param constraints [Hash] the constraints hash to convert
@@ -1955,8 +2082,8 @@ module Parse
               converted_value[op] = "#{op_value.parse_class}$#{op_value.id}"
             elsif op_value.is_a?(Array) && (op.to_s == "$in" || op.to_s == "$nin")
               # Handle arrays of pointers for $in and $nin operators
-              # If the aggregation_field starts with _p_, it's a pointer field
-              is_pointer_field = aggregation_field.start_with?('_p_')
+              # Check if the original field is a pointer field using schema
+              is_pointer_field = field_is_pointer?(field)
               
               converted_value[op] = op_value.map do |item|
                 if item.is_a?(Hash) && item["__type"] == "Pointer"
@@ -1964,26 +2091,36 @@ module Parse
                 elsif item.is_a?(Parse::Pointer)
                   "#{item.parse_class}$#{item.id}"
                 elsif is_pointer_field && item.is_a?(String)
-                  # For pointer fields with string IDs, we need to infer the class name
-                  # Try to get it from the Parse::Pointer if one exists in the array
+                  # For pointer fields with string IDs, try to get the class name from:
+                  # 1. The schema definition (most reliable)
+                  # 2. Other Parse::Pointer objects in the same array
+                  # 3. Other pointer hash objects in the same array
                   class_name = nil
-                  op_value.each do |v|
-                    if v.is_a?(Parse::Pointer)
-                      class_name = v.parse_class
-                      break
-                    elsif v.is_a?(Hash) && v["__type"] == "Pointer"
-                      class_name = v["className"]
-                      break
+                  
+                  # First try to get it from the schema
+                  parse_class = Parse::Model.const_get(@table) rescue nil
+                  if parse_class
+                    class_name = get_pointer_target_class(parse_class, field)
+                  end
+                  
+                  # If not found in schema, try to infer from other items in the array
+                  if class_name.nil?
+                    op_value.each do |v|
+                      if v.is_a?(Parse::Pointer)
+                        class_name = v.parse_class
+                        break
+                      elsif v.is_a?(Hash) && v["__type"] == "Pointer"
+                        class_name = v["className"]
+                        break
+                      end
                     end
                   end
                   
                   if class_name
                     "#{class_name}$#{item}"
                   else
-                    # Try to infer from field name (e.g., _p_team -> Team)
-                    field_name = aggregation_field.sub(/^_p_/, '')
-                    inferred_class = field_name.capitalize
-                    "#{inferred_class}$#{item}"
+                    # Can't determine class name - leave string as-is
+                    item
                   end
                 else
                   item

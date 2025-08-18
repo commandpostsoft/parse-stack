@@ -1,7 +1,7 @@
 PATH
   remote: .
   specs:
-    parse-stack (1.12.0)
+    parse-stack (1.12.1)
       active_model_serializers (>= 0.9, < 1)
       activemodel (>= 5, < 9)
       activesupport (>= 5, < 9)
@@ -82,6 +82,7 @@ GEM
       crass (~> 1.0.2)
       nokogiri (>= 1.12.0)
     method_source (1.1.0)
+    mini_portile2 (2.8.9)
     minitest (5.25.5)
     minitest-reporters (1.7.1)
       ansi
@@ -91,15 +92,8 @@ GEM
     moneta (1.6.0)
     net-http (0.6.0)
       uri
-    nokogiri (1.18.9-aarch64-linux-gnu)
-      racc (~> 1.4)
-    nokogiri (1.18.9-aarch64-linux-musl)
-      racc (~> 1.4)
-    nokogiri (1.18.9-arm-linux-gnu)
-      racc (~> 1.4)
-    nokogiri (1.18.9-arm-linux-musl)
-      racc (~> 1.4)
-    nokogiri (1.18.9-arm64-darwin)
+    nokogiri (1.18.9)
+      mini_portile2 (~> 2.8.2)
       racc (~> 1.4)
     nokogiri (1.18.9-x86_64-darwin)
       racc (~> 1.4)

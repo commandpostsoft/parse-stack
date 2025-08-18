@@ -1,5 +1,15 @@
 ## Parse-Stack Changelog
 
+### 1.12.1
+
+#### Query and Pointer Improvements
+- IMPROVED: Schema-based approach for pointer conversion when available - provides more reliable pointer field detection
+- IMPROVED: Enhanced `in` and `not_in` query constraints to properly handle Parse pointers 
+- IMPROVED: Automatic conversion of pointer strings to proper Parse::Pointer objects in queries
+- NEW: Support for detecting pointer fields from schema information when available
+- NEW: Fallback to pattern-based detection when schema is unavailable
+- FIXED: Pointer conversion in aggregation queries now correctly handles all pointer field types
+
 ### 1.12.0
 
 #### Breaking Changes
