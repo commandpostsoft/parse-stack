@@ -1953,6 +1953,42 @@ module Parse
               converted_value[op] = "#{op_value['className']}$#{op_value['objectId']}"
             elsif op_value.is_a?(Parse::Pointer)
               converted_value[op] = "#{op_value.parse_class}$#{op_value.id}"
+            elsif op_value.is_a?(Array) && (op.to_s == "$in" || op.to_s == "$nin")
+              # Handle arrays of pointers for $in and $nin operators
+              # If the aggregation_field starts with _p_, it's a pointer field
+              is_pointer_field = aggregation_field.start_with?('_p_')
+              
+              converted_value[op] = op_value.map do |item|
+                if item.is_a?(Hash) && item["__type"] == "Pointer"
+                  "#{item['className']}$#{item['objectId']}"
+                elsif item.is_a?(Parse::Pointer)
+                  "#{item.parse_class}$#{item.id}"
+                elsif is_pointer_field && item.is_a?(String)
+                  # For pointer fields with string IDs, we need to infer the class name
+                  # Try to get it from the Parse::Pointer if one exists in the array
+                  class_name = nil
+                  op_value.each do |v|
+                    if v.is_a?(Parse::Pointer)
+                      class_name = v.parse_class
+                      break
+                    elsif v.is_a?(Hash) && v["__type"] == "Pointer"
+                      class_name = v["className"]
+                      break
+                    end
+                  end
+                  
+                  if class_name
+                    "#{class_name}$#{item}"
+                  else
+                    # Try to infer from field name (e.g., _p_team -> Team)
+                    field_name = aggregation_field.sub(/^_p_/, '')
+                    inferred_class = field_name.capitalize
+                    "#{inferred_class}$#{item}"
+                  end
+                else
+                  item
+                end
+              end
             else
               converted_value[op] = op_value
             end

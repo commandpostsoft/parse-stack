@@ -105,6 +105,27 @@ class TestDistinctConversion < Minitest::Test
     end
   end
 
+  def test_distinct_with_return_pointers_converts_to_pointers
+    # Test with return_pointers: true option
+    values = ["Team$abc123", "Team$def456", "Team$ghi789"]
+    
+    @query.stub :compile_where, {} do
+      @query.stub :aggregate, mock_aggregation(values) do
+        result = @query.distinct(:project, return_pointers: true)
+        
+        # Should return Parse::Pointer objects when explicitly requested
+        assert_equal 3, result.size
+        assert_kind_of Parse::Pointer, result.first
+        assert_equal "Team", result[0].parse_class
+        assert_equal "abc123", result[0].id
+        assert_equal "Team", result[1].parse_class
+        assert_equal "def456", result[1].id
+        assert_equal "Team", result[2].parse_class
+        assert_equal "ghi789", result[2].id
+      end
+    end
+  end
+
   def test_pointer_string_regex_pattern
     # Test the regex pattern used for detecting MongoDB pointer strings
     valid_patterns = ["Team$abc123", "User$def456", "MyClass$12345abc", "A$1"]

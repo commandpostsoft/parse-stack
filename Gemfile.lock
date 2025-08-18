@@ -53,18 +53,18 @@ GEM
     base64 (0.3.0)
     benchmark (0.4.1)
     bigdecimal (3.2.2)
-    binding_of_caller (1.0.0)
-      debug_inspector (>= 0.0.1)
+    binding_of_caller (1.0.1)
+      debug_inspector (>= 1.2.0)
     builder (3.3.0)
-    byebug (11.1.3)
+    byebug (12.0.0)
     case_transform (0.2)
       activesupport
     coderay (1.1.3)
     concurrent-ruby (1.3.5)
     connection_pool (2.5.3)
     crass (1.0.6)
-    debug_inspector (1.1.0)
-    dotenv (2.8.1)
+    debug_inspector (1.2.0)
+    dotenv (3.1.8)
     drb (2.2.3)
     erubi (1.13.1)
     faraday (2.13.4)
@@ -81,8 +81,7 @@ GEM
     loofah (2.24.1)
       crass (~> 1.0.2)
       nokogiri (>= 1.12.0)
-    method_source (1.0.0)
-    mini_portile2 (2.8.9)
+    method_source (1.1.0)
     minitest (5.25.5)
     minitest-reporters (1.7.1)
       ansi
@@ -92,8 +91,21 @@ GEM
     moneta (1.6.0)
     net-http (0.6.0)
       uri
-    nokogiri (1.18.9)
-      mini_portile2 (~> 2.8.2)
+    nokogiri (1.18.9-aarch64-linux-gnu)
+      racc (~> 1.4)
+    nokogiri (1.18.9-aarch64-linux-musl)
+      racc (~> 1.4)
+    nokogiri (1.18.9-arm-linux-gnu)
+      racc (~> 1.4)
+    nokogiri (1.18.9-arm-linux-musl)
+      racc (~> 1.4)
+    nokogiri (1.18.9-arm64-darwin)
+      racc (~> 1.4)
+    nokogiri (1.18.9-x86_64-darwin)
+      racc (~> 1.4)
+    nokogiri (1.18.9-x86_64-linux-gnu)
+      racc (~> 1.4)
+    nokogiri (1.18.9-x86_64-linux-musl)
       racc (~> 1.4)
     parallel (1.27.0)
     pry (0.14.2)
@@ -118,25 +130,26 @@ GEM
     rails-html-sanitizer (1.6.2)
       loofah (~> 2.21)
       nokogiri (>= 1.15.7, != 1.16.7, != 1.16.6, != 1.16.5, != 1.16.4, != 1.16.3, != 1.16.2, != 1.16.1, != 1.16.0.rc1, != 1.16.0)
-    rake (13.0.6)
-    redcarpet (3.5.1)
-    redis (5.0.6)
-      redis-client (>= 0.9.0)
-    redis-client (0.12.1)
+    rake (13.3.0)
+    redcarpet (3.6.1)
+    redis (5.4.1)
+      redis-client (>= 0.22.0)
+    redis-client (0.25.2)
       connection_pool
     ruby-progressbar (1.13.0)
-    rufo (0.13.0)
+    rufo (0.18.1)
     securerandom (0.4.1)
     tzinfo (2.0.6)
       concurrent-ruby (~> 1.0)
     uri (1.0.3)
     useragent (0.16.11)
-    webrick (1.7.0)
-    yard (0.9.28)
-      webrick (~> 1.7.0)
+    yard (0.9.37)
 
 PLATFORMS
   ruby
+  x86_64-darwin
+  x86_64-linux-gnu
+  x86_64-linux-musl
 
 DEPENDENCIES
   byebug
@@ -154,4 +167,4 @@ DEPENDENCIES
   yard (>= 0.9.11)
 
 BUNDLED WITH
-   2.3.19
+   2.5.23
