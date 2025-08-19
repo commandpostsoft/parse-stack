@@ -24,6 +24,14 @@
 - Webhook callback coordination tests (Ruby vs client detection, error handling)
 - Webhook trigger tests (all trigger types with proper underscore naming convention)
 
+#### New Query Constraints
+- NEW: `readable_by` constraint for filtering objects by ACL read permissions for users/roles
+- NEW: `writable_by` constraint for filtering objects by ACL write permissions for users/roles
+- NEW: Smart input handling for User objects, Role objects, Pointers, and role name strings
+- NEW: Automatic role fetching when given User objects to include user's roles in permission checks
+- NEW: Support for both ACL object field and Parse's internal _rperm/_wperm fields
+- NEW: Public access ("*") automatically included when querying internal permission fields
+
 ### 1.12.1
 
 #### Query and Pointer Improvements
