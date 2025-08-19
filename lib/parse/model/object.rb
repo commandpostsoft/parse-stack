@@ -28,6 +28,7 @@ require_relative "core/schema"
 require_relative "core/properties"
 require_relative "core/errors"
 require_relative "core/builder"
+require_relative "core/enhanced_change_tracking"
 require_relative "associations/has_one"
 require_relative "associations/belongs_to"
 require_relative "associations/has_many"
@@ -127,6 +128,7 @@ module Parse
   # @see Associations::HasMany
   class Object < Pointer
     include Properties
+    include Core::EnhancedChangeTracking
     include Associations::HasOne
     include Associations::BelongsTo
     include Associations::HasMany

@@ -153,7 +153,14 @@ class TestOrder < Parse::Object
   end
   
   def should_send_email?
-    status_changed? && ['completed', 'shipped'].include?(status)
+    # Use previous_changes in after_save context
+    if previous_changes && previous_changes[:status]
+      old_status, new_status = previous_changes[:status]
+      ['completed', 'shipped'].include?(new_status)
+    else
+      # Fallback for before_save context
+      status_changed? && ['completed', 'shipped'].include?(status)
+    end
   end
   
   def log_status_change
@@ -182,9 +189,12 @@ class TestOrder < Parse::Object
   end
   
   def update_inventory
-    # Check if status changed to completed using @original
-    if status == 'completed' && @original && @original[:status] != 'completed'
-      self.inventory_updated = true
+    # Check if status changed to completed using previous_changes
+    if previous_changes && previous_changes[:status]
+      old_status, new_status = previous_changes[:status]
+      if new_status == 'completed' && old_status != 'completed'
+        self.inventory_updated = true
+      end
     end
   end
 end
@@ -332,7 +342,6 @@ class HooksAndValidationIntegrationTest < Minitest::Test
   end
 
   def test_conditional_hooks_with_change_tracking
-    skip "Need to investigate @original object access in after_save hooks"
     skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
     
     with_parse_server do
@@ -625,6 +634,37 @@ class HooksAndValidationIntegrationTest < Minitest::Test
         puts "  - Before destroy called: #{product.before_destroy_called}"
         puts "  - After destroy called: #{product.after_destroy_called}"
         puts "  - Product deleted from database"
+      end
+    end
+  end
+
+  def test_previous_changes_in_after_save
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    
+    with_parse_server do
+      with_timeout(10, "previous_changes in after_save test") do
+        order = TestOrder.new({
+          order_number: "ORD-999",
+          status: "draft",
+          customer_email: "test@example.com",
+          total_amount: 200.00
+        })
+        
+        assert order.save, "Order should save successfully"
+        
+        # Make changes to trigger after_save
+        order.status = "completed"
+        order.total_amount = 250.00
+        
+        assert order.save, "Order should update successfully"
+        
+        # The update_inventory method should have been called via previous_changes
+        assert order.inventory_updated, "Inventory should be updated using previous_changes"
+        
+        puts "✓ previous_changes successfully used in after_save hooks"
+        puts "  - Status changed from draft to completed"
+        puts "  - Inventory updated using previous_changes detection"
+        puts "  - Solution: Use previous_changes hash in after_save for change detection"
       end
     end
   end
