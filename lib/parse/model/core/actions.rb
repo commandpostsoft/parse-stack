@@ -110,6 +110,73 @@ module Parse
 
       # Class methods applied to Parse::Object subclasses.
       module ClassMethods
+        
+        # Execute a set of operations as an atomic transaction.
+        # All operations will be executed in sequence, and if any fail,
+        # the entire transaction will be rolled back.
+        #
+        # @example Basic transaction
+        #   Parse::Object.transaction do |batch|
+        #     user = User.first
+        #     user.username = "new_username"
+        #     batch.add(user)
+        #     
+        #     post = Post.new(author: user, title: "New Post")
+        #     batch.add(post)
+        #   end
+        #
+        # @example Using the block return for automatic batching
+        #   results = Parse::Object.transaction do
+        #     user1 = User.first
+        #     user1.score = 100
+        #     
+        #     user2 = User.first(username: "player2")
+        #     user2.score = 200
+        #     
+        #     [user1, user2]  # Return array of objects to save
+        #   end
+        #
+        # @param retries [Integer] number of times to retry on transaction conflict (error 251)
+        # @yield [Parse::BatchOperation] the batch operation to add requests to
+        # @return [Array<Parse::Response>] the responses from the transaction
+        # @raise [Parse::Error] if the transaction fails
+        def transaction(retries: 5, &block)
+          raise ArgumentError, "Block required for transaction" unless block_given?
+          
+          batch = Parse::BatchOperation.new(nil, transaction: true)
+          result = yield(batch)
+          
+          # If block returns objects, add them to batch
+          if result.respond_to?(:change_requests)
+            batch.add(result)
+          elsif result.is_a?(Array)
+            result.each { |obj| batch.add(obj) if obj.respond_to?(:change_requests) }
+          end
+          
+          # Submit with retry logic for transaction conflicts
+          attempts = 0
+          begin
+            attempts += 1
+            responses = batch.submit
+            
+            # Check for success
+            if responses.all?(&:success?)
+              return responses
+            else
+              # Find first error
+              error_response = responses.find { |r| !r.success? }
+              raise Parse::Error, "Transaction failed: #{error_response.error}"
+            end
+            
+          rescue Parse::Error => e
+            # Retry on transaction conflict (error code 251)
+            if e.message.include?("251") && attempts < retries
+              sleep(0.1 * attempts) # Exponential backoff
+              retry
+            end
+            raise e
+          end
+        end
         # @!attribute raise_on_save_failure
         # By default, we return `true` or `false` for save and destroy operations.
         # If you prefer to have `Parse::Object` raise an exception instead, you
