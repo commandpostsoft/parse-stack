@@ -1,5 +1,29 @@
 ## Parse-Stack Changelog
 
+### 1.12.2
+
+#### Enhanced Testing Infrastructure
+- NEW: Comprehensive webhook trigger testing for all trigger types (before_save, after_save, before_delete, after_delete, before_find, after_find)
+- NEW: Request idempotency system with `_RB_` prefix for Ruby-initiated requests to prevent duplicate operations
+- NEW: Intelligent webhook callback coordination to distinguish between Ruby vs client-initiated operations
+- NEW: Docker-based Parse Server integration testing environment with Redis caching support
+- NEW: Complete test coverage for cache integration, date/timezone handling, batch operations, and model associations
+- NEW: Query aggregation pipeline tests with proper pointer conversion and MongoDB field handling
+- NEW: Cloud config variable testing for reading/writing Parse configuration settings
+- IMPROVED: Webhook payload detection with `ruby_initiated?` and `client_initiated?` helper methods
+- IMPROVED: Smart callback skipping for Ruby operations to prevent callback loops
+- IMPROVED: Thread-safe request ID generation and configuration management
+
+#### Test Categories Added
+- Cache integration tests (Redis TTL, invalidation, authentication contexts)
+- Date and timezone handling tests (UTC conversion, DST transitions)
+- Batch operations and transaction tests (atomic operations, rollback scenarios)
+- Query pointer and aggregation tests (MongoDB field conversion, arrays of pointers)
+- Model association tests (has_many, has_one, belongs_to with various strategies)
+- Request idempotency tests (configuration, thread safety, per-request control)
+- Webhook callback coordination tests (Ruby vs client detection, error handling)
+- Webhook trigger tests (all trigger types with proper underscore naming convention)
+
 ### 1.12.1
 
 #### Query and Pointer Improvements

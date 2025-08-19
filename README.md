@@ -258,6 +258,10 @@ result = Parse.call_function :myFunctionName, {param: value}
 - [Parse REST API Client](#parse-rest-api-client)
   - [Request Caching](#request-caching)
 - [Contributing](#contributing)
+- [Testing](#testing)
+  - [Docker Integration Tests](#docker-integration-tests)
+  - [Unit Tests](#unit-tests)
+  - [Contributing Tests](#contributing-tests)
 - [License](#license)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
@@ -2883,6 +2887,185 @@ end
 ## Contributing
 
 Bug reports and pull requests are welcome on GitHub at [https://github.com/modernistik/parse-stack](https://github.com/modernistik/parse-stack).
+
+## Testing
+
+Parse Stack includes comprehensive integration tests that require a Parse Server instance for full functionality testing. The tests are designed to work with Docker for easy setup and consistency across environments.
+
+### Docker Integration Tests
+
+The integration tests use Docker Compose to spin up a Parse Server instance with MongoDB and Redis. This ensures tests run in a clean, isolated environment.
+
+#### Prerequisites
+
+- Docker and Docker Compose installed
+- Ruby environment with bundler
+
+#### Setup and Running Tests
+
+1. **Enable Docker Tests**: Set the environment variable to enable Docker-based tests:
+   ```bash
+   export PARSE_TEST_USE_DOCKER=true
+   ```
+
+2. **Run All Integration Tests**: Execute the full test suite:
+   ```bash
+   bundle exec rake test
+   ```
+
+3. **Run Specific Test Suites**: Run individual test files for focused testing:
+   ```bash
+   # Cache integration tests
+   bundle exec ruby test/lib/parse/cache_integration_test.rb
+   
+   # Model associations tests
+   bundle exec ruby test/lib/parse/model_associations_test.rb
+   
+   # Query and aggregation tests
+   bundle exec ruby test/lib/parse/query_aggregate_test.rb
+   
+   # Request idempotency tests
+   bundle exec ruby test/lib/parse/request_idempotency_test.rb
+   
+   # Webhook callback tests
+   bundle exec ruby test/lib/parse/webhook_callbacks_test.rb
+   
+   # Cloud config tests
+   bundle exec ruby test/lib/parse/cloud_config_test.rb
+   ```
+
+#### Test Categories
+
+**Core Feature Tests:**
+- **Cache Integration**: Redis caching, invalidation, TTL, authentication contexts
+- **Date and Timezone**: UTC handling, timezone conversions, DST transitions  
+- **Batch Operations**: Atomic transactions, rollback scenarios, error handling
+- **Model Associations**: `has_many`, `has_one`, `belongs_to` with all approaches
+
+**Advanced Feature Tests:**
+- **Query Operations**: Pointer handling, contains/nin operators, complex queries
+- **Aggregation Pipelines**: MongoDB aggregations, field conversions, date operations
+- **Cloud Config**: Reading/writing config variables, data validation, edge cases
+- **Request Idempotency**: Duplicate prevention, thread safety, configuration
+- **Webhook Callbacks**: Ruby vs client detection, callback coordination
+
+#### Docker Configuration
+
+The tests use the following Docker setup:
+
+```yaml
+# docker-compose.test.yml
+version: '3.8'
+services:
+  mongo:
+    image: mongo:4.4
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: password
+  
+  redis:
+    image: redis:6-alpine
+  
+  parse-server:
+    image: parseplatform/parse-server:latest
+    environment:
+      PARSE_SERVER_APPLICATION_ID: testAppId
+      PARSE_SERVER_MASTER_KEY: testMasterKey
+      PARSE_SERVER_DATABASE_URI: mongodb://root:password@mongo:27017/parse?authSource=admin
+      PARSE_SERVER_REDIS_URL: redis://redis:6379
+```
+
+#### Environment Variables
+
+Configure the following environment variables for testing:
+
+```bash
+# Required for Docker tests
+export PARSE_TEST_USE_DOCKER=true
+
+# Optional: Custom Parse Server configuration
+export PARSE_SERVER_URL=http://localhost:1337/parse
+export PARSE_APP_ID=testAppId
+export PARSE_MASTER_KEY=testMasterKey
+export PARSE_API_KEY=testRestKey
+
+# Optional: Redis configuration for cache tests
+export REDIS_URL=redis://localhost:6379
+```
+
+#### Troubleshooting
+
+**Common Issues:**
+
+1. **Docker not running**: Ensure Docker daemon is running
+   ```bash
+   docker --version
+   docker-compose --version
+   ```
+
+2. **Port conflicts**: Stop other services using ports 1337, 27017, or 6379
+   ```bash
+   docker-compose -f docker-compose.test.yml down
+   ```
+
+3. **Permission errors**: Ensure Docker has proper permissions
+   ```bash
+   sudo usermod -aG docker $USER  # Linux
+   ```
+
+**Test Debugging:**
+
+Enable verbose logging for detailed test output:
+```bash
+PARSE_STACK_LOGGING=debug bundle exec ruby test/lib/parse/cache_integration_test.rb
+```
+
+**Docker Logs:**
+
+View Parse Server logs during test runs:
+```bash
+docker-compose -f docker-compose.test.yml logs -f parse-server
+```
+
+### Unit Tests
+
+For faster development cycles, unit tests can be run without Docker:
+
+```bash
+# Run only unit tests (no Docker required)
+bundle exec ruby test/lib/parse/models/property_test.rb
+bundle exec ruby test/lib/parse/query/basic_test.rb
+```
+
+Unit tests focus on:
+- Object property definitions
+- Query constraint building  
+- Data type conversions
+- Model validations
+- Basic functionality
+
+### Contributing Tests
+
+When contributing to Parse Stack:
+
+1. **Add Integration Tests**: For new features that interact with Parse Server
+2. **Add Unit Tests**: For utility functions and data transformations
+3. **Test Edge Cases**: Include error conditions and boundary values
+4. **Document Test Scenarios**: Add clear descriptions of what each test validates
+
+Example test structure:
+```ruby
+def test_new_feature
+  puts "\n=== Testing New Feature ==="
+  
+  # Setup
+  # Test execution  
+  # Assertions
+  # Cleanup (if needed)
+  
+  puts "✅ New feature test passed"
+end
+```
 
 ## License
 

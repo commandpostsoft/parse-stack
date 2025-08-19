@@ -27,10 +27,37 @@ module Parse
 
       # Fetches the object from the Parse data store if the object is in a Pointer
       # state. This is similar to the `fetchIfNeeded` action in the standard Parse client SDK.
-      # @return [self] the current object.
-      def fetch
+      # @param returnObject [Boolean] if true (default), returns the Parse::Object; if false, returns JSON (only affects pointer state)
+      # @return [self] the current object when called without parameters, or a fetched object when returnObject=true.
+      def fetch(returnObject = true)
         # if it is a pointer, then let's go fetch the rest of the content
-        pointer? ? fetch! : self
+        if pointer?
+          if returnObject
+            fetch! # This updates self
+            self   # Return the updated self
+          else
+            # Return the raw JSON data without updating the current object
+            response = client.fetch_object(parse_class, id)
+            return nil if response.error?
+            response.result
+          end
+        else
+          # Object is already fetched
+          if returnObject
+            self # Return the current object (already fetched)
+          else
+            # This case might not make much sense, but for consistency...
+            # Convert the current object to JSON-like format
+            as_json
+          end
+        end
+      end
+
+      # Fetches the Parse object from the data store and returns a Parse::Object instance.
+      # This is a convenience method that calls fetch(true).
+      # @return [Parse::Object] the fetched Parse::Object (self if already fetched).
+      def fetch_object
+        fetch(true)
       end
 
       # Autofetches the object based on a key that is not part {Parse::Properties::BASE_KEYS}.

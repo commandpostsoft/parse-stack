@@ -140,12 +140,34 @@ module Parse
 
     # This method is a general implementation that gets overriden by Parse::Object subclass.
     # Given the class name and the id, we will go to Parse and fetch the actual record, returning the
-    # JSON object.
-    # @return [Parse::Object] the fetched Parse::Object, nil otherwise.
-    def fetch
+    # Parse::Object by default.
+    # @param returnObject [Boolean] if true (default), returns the fetched Parse::Object; if false, returns JSON
+    # @return [Parse::Object,Hash] the fetched Parse::Object or JSON hash, nil otherwise.
+    def fetch(returnObject = true)
       response = client.fetch_object(parse_class, id)
       return nil if response.error?
+      
+      if returnObject
+        # Convert the JSON result to a proper Parse::Object
+        result_hash = response.result
+        return nil unless result_hash.is_a?(Hash)
+        
+        # Try to find the appropriate Parse class, fallback to Parse::Object
+        klass = Parse::Model.find_class(parse_class) || Parse::Object
+        # Create a new instance with the fetched data
+        obj = klass.new(result_hash)
+        obj.clear_changes!
+        return obj
+      end
+      
       response.result
+    end
+
+    # Fetches the Parse object from the data store and returns a Parse::Object instance.
+    # This is a convenience method that calls fetch(true).
+    # @return [Parse::Object] the fetched Parse::Object, nil otherwise.
+    def fetch_object
+      fetch(true)
     end
 
     # Two Parse::Pointers (or Parse::Objects) are equal if both of them have
