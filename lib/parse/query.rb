@@ -1127,7 +1127,17 @@ module Parse
         if field
           # Use schema-based conversion when field is provided
           converted = convert_pointer_value_with_schema(m, field, return_pointers: true)
-          converted if converted.is_a?(Parse::Pointer)
+          if converted.is_a?(Parse::Pointer)
+            converted
+          elsif m.is_a?(String) && m.include?('$')
+            # Fallback to string parsing if schema conversion didn't work
+            class_name, object_id = m.split('$', 2)
+            if class_name && object_id
+              Parse::Pointer.new(class_name, object_id)
+            end
+          else
+            nil
+          end
         else
           # Original logic for backward compatibility
           if m.is_a?(Hash)
