@@ -1,5 +1,7 @@
 require 'open3'
 require 'timeout'
+require 'net/http'
+require 'uri'
 
 module Parse
   module Test
@@ -26,7 +28,7 @@ module Parse
 
         def stop!
           puts "Stopping Parse Server test container..."
-          system("docker-compose -f #{COMPOSE_FILE} down", out: File::NULL, err: File::NULL)
+          system("docker-compose -f #{COMPOSE_FILE} down", out: IO::NULL, err: IO::NULL)
         end
 
         def restart!
@@ -98,11 +100,11 @@ module Parse
         end
 
         def docker_installed?
-          system('docker --version', out: File::NULL, err: File::NULL)
+          system('docker --version', out: IO::NULL, err: IO::NULL)
         end
 
         def compose_file_exists?
-          File.exist?(COMPOSE_FILE)
+          ::File.exist?(COMPOSE_FILE)
         end
 
         # Auto-start server for tests if ENV variable is set

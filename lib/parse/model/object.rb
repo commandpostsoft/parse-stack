@@ -523,6 +523,14 @@ module Parse
       return unless self.class.fields[key.to_sym].present?
       send("#{key}=", value)
     end
+
+    # Returns an array of property names (keys) for this Parse::Object.
+    # Similar to Hash#keys, this method returns all the defined field names
+    # for this object's class.
+    # @return [Array<String>] an array of property names as strings.
+    def keys
+      self.class.fields.keys.map(&:to_s)
+    end
   end
 end
 

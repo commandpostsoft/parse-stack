@@ -19,7 +19,8 @@ module Parse
             server_url: config[:server_url],
             app_id: config[:app_id],
             api_key: config[:api_key],
-            master_key: config[:master_key]
+            master_key: config[:master_key],
+            logging: ENV['PARSE_DEBUG'] ? :debug : false  # Disable Parse logging by default
           )
           
           if server_available?
@@ -55,20 +56,32 @@ module Parse
           user_classes.each do |schema|
             class_name = schema['className']
             begin
-              # Use master key to bypass ACLs
-              query = Parse::Query.new(class_name)
-              query = query.limit(1000)
+              total_deleted = 0
+              attempts = 0
+              max_attempts = 50  # Safety limit to prevent infinite loops
               
               loop do
-                objects = query.results
+                attempts += 1
+                break if attempts > max_attempts
+                
+                # Always fetch from skip=0 since we're deleting objects
+                fresh_query = Parse::Query.new(class_name).limit(100)
+                objects = fresh_query.results
                 break if objects.empty?
                 
-                objects.each(&:destroy)
+                # Delete objects
+                objects.each do |obj|
+                  begin
+                    obj.destroy
+                    total_deleted += 1
+                  rescue => e
+                    # Silent failure - continue with other objects
+                  end
+                end
               end
               
-              puts "  Cleared #{class_name}"
             rescue StandardError => e
-              puts "  Error clearing #{class_name}: #{e.message}"
+              # Silent failure - continue with other classes  
             end
           end
         end

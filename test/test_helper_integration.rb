@@ -5,24 +5,50 @@ require_relative 'support/test_server'
 # Integration test helper that can work with a real Parse Server
 module ParseStackIntegrationTest
   def self.included(base)
-    base.class_eval do
-      # Start Docker containers before all tests if configured
-      if ENV['PARSE_TEST_USE_DOCKER'] == 'true'
-        Parse::Test::DockerHelper.ensure_available!
-        Parse::Test::DockerHelper.start!
-        Parse::Test::DockerHelper.setup_exit_handler
-      end
+    # Start Docker containers before all tests if configured
+    if ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+      puts "Starting Docker containers for integration tests..."
+      Parse::Test::DockerHelper.ensure_available!
+      Parse::Test::DockerHelper.start!
+      Parse::Test::DockerHelper.setup_exit_handler
+      puts "Docker containers started successfully"
+    end
 
-      # Setup Parse connection
-      setup do
-        @test_context = Parse::Test::Context.new
-        Parse::Test::ServerHelper.setup
+    # Add setup method to the including class
+    base.define_method :setup do
+      # Call super first to handle any parent setup
+      begin
+        super()
+      rescue NoMethodError
+        # No super method, continue
       end
+      
+      @test_context = Parse::Test::Context.new
+      
+      puts "Setting up Parse server connection..."
+      # Setup Parse server connection
+      unless Parse::Test::ServerHelper.setup
+        skip "Could not connect to Parse Server"
+      end
+      puts "Parse server connection established"
+      
+      # Reset database to ensure clean test data
+      puts "Resetting database for clean test environment..."
+      Parse::Test::ServerHelper.reset_database!
+      puts "Database reset completed"
+    end
 
-      # Cleanup after each test
-      teardown do
-        @test_context.cleanup! if @test_context
-      end
+    # Add teardown method to the including class
+    base.define_method :teardown do
+      @test_context.cleanup! if @test_context
+      
+      # Force garbage collection to free memory
+      GC.start
+      
+      # Longer delay to let any pending operations complete and server stabilize
+      sleep 1
+      
+      super() if defined?(super)
     end
   end
 

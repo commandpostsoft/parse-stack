@@ -860,12 +860,28 @@ module Parse
       limit == 1 ? results.first : results.first(limit)
     end
 
+    # Retrieve a single object by its objectId.
+    # @param object_id [String] the objectId to retrieve.
+    # @return [Parse::Object] the object with the given ID.
+    # @raise [Parse::Error] if the object is not found.
+    def get(object_id)
+      parse_class = Object.const_get(@table) if Object.const_defined?(@table)
+      parse_class ||= Parse::Object
+      
+      response = client.fetch_object(@table, object_id)
+      if response.error?
+        raise Parse::Error.new(response.error_code, response.message)
+      end
+      
+      Parse::Object.build(response.result, parse_class)
+    end
+
     # max_results is used to iterate through as many API requests as possible using
     # :skip and :limit paramter.
     # @!visibility private
     def max_results(raw: false, return_pointers: false, on_batch: nil, discard_results: false, &block)
       compiled_query = compile
-      batch_size = 1_000
+      batch_size = 100
       results = []
       # determine if there is a user provided hard limit
       _limit = (@limit.is_a?(Numeric) && @limit > 0) ? @limit : nil
