@@ -169,6 +169,18 @@ module Parse
         return unless routes[type].present? && routes[type][className].present?
         registry = routes[type][className]
 
+        # Add ruby_initiated flag to payload for intelligent callback handling
+        if payload
+          request_id = payload&.raw&.dig(:headers, 'x-parse-request-id') || 
+                      payload&.raw&.dig('headers', 'x-parse-request-id') ||
+                      payload&.raw&.dig(:headers, 'X-Parse-Request-Id') ||
+                      payload&.raw&.dig('headers', 'X-Parse-Request-Id')
+          ruby_initiated = request_id&.start_with?('_RB_')
+          payload.instance_variable_set(:@ruby_initiated, ruby_initiated)
+        else
+          ruby_initiated = false
+        end
+
         if registry.is_a?(Array)
           result = registry.map { |hook| payload.instance_exec(payload, &hook) }.last
         else
@@ -180,7 +192,8 @@ module Parse
           # and then send the proper changes payload
           if type == :before_save
             # returning false from the callback block only runs the before_* callback
-            result.prepare_save!
+            # Skip prepare_save! for Ruby-initiated requests to prevent redundant preparation
+            result.prepare_save! unless ruby_initiated
             result = result.changes_payload
           elsif type == :before_delete
             result.run_callbacks(:destroy) { false }
@@ -189,6 +202,15 @@ module Parse
         elsif type == :before_save && (result == true || result.nil?)
           # Open Source Parse server does not accept true results on before_save hooks.
           result = {}
+        elsif type == :after_save && (result == true || result.nil?) && payload&.parse_object.present? && payload.parse_object.is_a?(Parse::Object)
+          # Handle after_save callbacks intelligently based on request origin
+          is_new = payload.original.nil?
+          
+          # Only run Ruby callbacks for NON-Ruby-initiated requests
+          # This prevents callback loops while ensuring client-initiated operations trigger Ruby business logic
+          payload.parse_object.run_after_create_callbacks if is_new && !ruby_initiated
+          payload.parse_object.run_after_save_callbacks unless (is_new && ruby_initiated)
+          result = true
         end
 
         result

@@ -239,6 +239,29 @@ module Parse
         return nil unless parse_class.present? && @query.is_a?(Hash)
         Parse::Query.new parse_class, @query
       end
+
+      # Returns true if this webhook was triggered by a Ruby Parse Stack request.
+      # This is determined by checking for the '_RB_' prefix in the request ID header.
+      # This flag is useful for preventing callback loops and implementing intelligent
+      # callback handling based on the request origin.
+      # @return [Boolean] true if the request originated from Ruby Parse Stack
+      def ruby_initiated?
+        @ruby_initiated ||= begin
+          request_id = @raw&.dig(:headers, 'x-parse-request-id') || 
+                      @raw&.dig('headers', 'x-parse-request-id') ||
+                      @raw&.dig(:headers, 'X-Parse-Request-Id') ||
+                      @raw&.dig('headers', 'X-Parse-Request-Id')
+          request_id&.start_with?('_RB_') || false
+        end
+      end
+
+      # Returns true if this webhook was triggered by a client request (JavaScript, iOS, Android, etc.)
+      # This is the inverse of ruby_initiated? and is useful for callback logic that should
+      # only run for client-initiated operations.
+      # @return [Boolean] true if the request originated from a client (not Ruby)
+      def client_initiated?
+        !ruby_initiated?
+      end
     end # Payload
   end
 end
