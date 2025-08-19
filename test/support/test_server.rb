@@ -112,7 +112,7 @@ module Parse
           if server_available?
             yield
           else
-            skip "Parse Server not available. Run 'docker-compose -f docker-compose.test.yml up' to start test server"
+            raise Minitest::Skip, "Parse Server not available. Run 'docker-compose -f docker-compose.test.yml up' to start test server"
           end
         end
       end
