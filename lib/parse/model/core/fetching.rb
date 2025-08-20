@@ -18,6 +18,13 @@ module Parse
         response = client.fetch_object(parse_class, id, **opts)
         if response.error?
           puts "[Fetch Error] #{response.code}: #{response.error}"
+          # Raise appropriate error based on response code
+          case response.code
+          when 101 # Object not found
+            raise Parse::Error::ProtocolError, "Object not found"
+          else
+            raise Parse::Error::ProtocolError, response.error
+          end
         end
         # take the result hash and apply it to the attributes.
         apply_attributes!(response.result, dirty_track: false)
@@ -25,31 +32,19 @@ module Parse
         self
       end
 
-      # Fetches the object from the Parse data store if the object is in a Pointer
-      # state. This is similar to the `fetchIfNeeded` action in the standard Parse client SDK.
-      # @param returnObject [Boolean] if true (default), returns the Parse::Object; if false, returns JSON (only affects pointer state)
+      # Fetches the object from the Parse data store. Unlike fetchIfNeeded, this always
+      # fetches from the server and updates the local object with fresh data.
+      # @param returnObject [Boolean] if true (default), returns the Parse::Object; if false, returns JSON
       # @return [self] the current object when called without parameters, or a fetched object when returnObject=true.
       def fetch(returnObject = true)
-        # if it is a pointer, then let's go fetch the rest of the content
-        if pointer?
-          if returnObject
-            fetch! # This updates self
-            self   # Return the updated self
-          else
-            # Return the raw JSON data without updating the current object
-            response = client.fetch_object(parse_class, id)
-            return nil if response.error?
-            response.result
-          end
+        if returnObject
+          fetch! # This always updates self with fresh data from server
+          self   # Return the updated self
         else
-          # Object is already fetched
-          if returnObject
-            self # Return the current object (already fetched)
-          else
-            # This case might not make much sense, but for consistency...
-            # Convert the current object to JSON-like format
-            as_json
-          end
+          # Return the raw JSON data without updating the current object
+          response = client.fetch_object(parse_class, id)
+          return nil if response.error?
+          response.result
         end
       end
 

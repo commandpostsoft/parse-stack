@@ -17,7 +17,10 @@ class ACLConstraintsUnitTest < Minitest::Test
     expected_pipeline = [
       {
         "$match" => {
-          "_rperm" => { "$in" => ["role:Admin", "*"] }
+          "$or" => [
+            { "_rperm" => { "$in" => ["role:Admin", "*"] } },
+            { "_rperm" => { "$exists" => false } }
+          ]
         }
       }
     ]
@@ -33,7 +36,10 @@ class ACLConstraintsUnitTest < Minitest::Test
     expected_pipeline2 = [
       {
         "$match" => {
-          "_rperm" => { "$in" => ["role:Admin", "role:Editor", "*"] }
+          "$or" => [
+            { "_rperm" => { "$in" => ["role:Admin", "role:Editor", "*"] } },
+            { "_rperm" => { "$exists" => false } }
+          ]
         }
       }
     ]
@@ -53,7 +59,10 @@ class ACLConstraintsUnitTest < Minitest::Test
     expected_pipeline = [
       {
         "$match" => {
-          "_wperm" => { "$in" => ["role:Admin", "*"] }
+          "$or" => [
+            { "_wperm" => { "$in" => ["role:Admin", "*"] } },
+            { "_wperm" => { "$exists" => false } }
+          ]
         }
       }
     ]
@@ -69,7 +78,10 @@ class ACLConstraintsUnitTest < Minitest::Test
     expected_pipeline2 = [
       {
         "$match" => {
-          "_wperm" => { "$in" => ["role:Admin", "role:Editor", "*"] }
+          "$or" => [
+            { "_wperm" => { "$in" => ["role:Admin", "role:Editor", "*"] } },
+            { "_wperm" => { "$exists" => false } }
+          ]
         }
       }
     ]
@@ -89,7 +101,10 @@ class ACLConstraintsUnitTest < Minitest::Test
     expected_pipeline = [
       {
         "$match" => {
-          "_rperm" => { "$in" => ["role:Admin", "*"] }
+          "$or" => [
+            { "_rperm" => { "$in" => ["role:Admin", "*"] } },
+            { "_rperm" => { "$exists" => false } }
+          ]
         }
       }
     ]

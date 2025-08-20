@@ -12,10 +12,12 @@ class TestCountDistinct < Minitest::Test
   def test_count_distinct_basic
     # Mock successful response
     mock_response = Minitest::Mock.new
-    mock_response.stub :success?, true
-    mock_response.stub :error?, false
-    mock_response.stub :respond_to?, true
-    mock_response.stub :result, [{ "distinctCount" => 5 }]
+    mock_response.expect :error?, false
+    mock_response.expect :result, [{ "distinctCount" => 5 }]
+    # Define respond_to? to return true for the methods we expect
+    def mock_response.respond_to?(method)
+      [:error?, :result].include?(method) || super
+    end
     
     expected_pipeline = [
       { "$group" => { "_id" => "$genre" } },
@@ -38,10 +40,12 @@ class TestCountDistinct < Minitest::Test
     @query.where(:play_count.gt => 100)
     
     mock_response = Minitest::Mock.new
-    mock_response.stub :success?, true
-    mock_response.stub :error?, false
-    mock_response.stub :respond_to?, true  
-    mock_response.stub :result, [{ "distinctCount" => 3 }]
+    mock_response.expect :error?, false
+    mock_response.expect :result, [{ "distinctCount" => 3 }]
+    # Define respond_to? to return true for the methods we expect
+    def mock_response.respond_to?(method)
+      [:error?, :result].include?(method) || super
+    end
     
     expected_pipeline = [
       { "$match" => { "playCount" => { "$gt" => 100 } } },
@@ -62,10 +66,12 @@ class TestCountDistinct < Minitest::Test
 
   def test_count_distinct_empty_result
     mock_response = Minitest::Mock.new
-    mock_response.stub :success?, true
-    mock_response.stub :error?, false
-    mock_response.stub :respond_to?, true
-    mock_response.stub :result, []
+    mock_response.expect :error?, false
+    mock_response.expect :result, []
+    # Define respond_to? to return true for the methods we expect
+    def mock_response.respond_to?(method)
+      [:error?, :result].include?(method) || super
+    end
     
     expected_pipeline = [
       { "$group" => { "_id" => "$genre" } },
@@ -85,9 +91,11 @@ class TestCountDistinct < Minitest::Test
 
   def test_count_distinct_error_response
     mock_response = Minitest::Mock.new
-    mock_response.stub :success?, false
-    mock_response.stub :error?, true
-    mock_response.stub :respond_to?, true
+    mock_response.expect :error?, true
+    # Define respond_to? to return true for error? method
+    def mock_response.respond_to?(method)
+      method == :error? || super
+    end
     
     expected_pipeline = [
       { "$group" => { "_id" => "$genre" } },
@@ -112,17 +120,25 @@ class TestCountDistinct < Minitest::Test
   end
 
   def test_count_distinct_invalid_field_raises_error
+    # Test with an invalid field type that doesn't respond to to_s  
+    invalid_field = Object.new
+    def invalid_field.respond_to?(method)
+      method == :to_s ? false : super
+    end
+    
     assert_raises(ArgumentError) do
-      @query.count_distinct({})
+      @query.count_distinct(invalid_field)
     end
   end
 
   def test_count_distinct_field_formatting
     mock_response = Minitest::Mock.new
-    mock_response.stub :success?, true
-    mock_response.stub :error?, false
-    mock_response.stub :respond_to?, true
-    mock_response.stub :result, [{ "distinctCount" => 2 }]
+    mock_response.expect :error?, false
+    mock_response.expect :result, [{ "distinctCount" => 2 }]
+    # Define respond_to? to return true for the methods we expect
+    def mock_response.respond_to?(method)
+      [:error?, :result].include?(method) || super
+    end
     
     # Test that snake_case field gets converted to camelCase
     expected_pipeline = [

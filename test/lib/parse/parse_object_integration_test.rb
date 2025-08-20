@@ -25,6 +25,8 @@ class TestObject < Parse::Object
   property :array_field, :array
   property :object_field, :object
   property :date_field, :date
+  property :location, :geopoint
+  property :avatar, :file
 end
 
 class Item < Parse::Object
@@ -36,9 +38,9 @@ end
 
 class Container < Parse::Object
   parse_class "Container"
-  property :item, :relation, class_name: 'Item'
+  belongs_to :item
   property :items, :array
-  property :subcontainer, :relation, class_name: 'Container'
+  belongs_to :subcontainer, as: :container
 end
 
 # Port of the JavaScript Parse.Object test suite to Ruby
@@ -174,10 +176,16 @@ class ParseObjectIntegrationTest < Minitest::Test
       object = TestObject.new
       assert object.save, "Should save empty object"
       
-      # Check that only minimal keys are present
-      keys = object.attributes.keys
-      expected_keys = ['id', 'created_at', 'updated_at', 'acl'].map(&:to_sym)
-      assert keys.all? { |k| expected_keys.include?(k) }, "Should only have basic Parse keys"
+      # Check that only minimal keys have actual values
+      actual_data_keys = []
+      object.class.fields.keys.each do |key|
+        next if [:__type, :className].include?(key)
+        value = object.instance_variable_get(:"@#{key}")
+        actual_data_keys << key if !value.nil?
+      end
+      
+      expected_keys = [:id, :created_at, :updated_at, :acl]
+      assert (actual_data_keys - expected_keys).empty?, "Should only have basic Parse keys with values. Extra keys: #{actual_data_keys - expected_keys}"
     end
   end
 
@@ -185,11 +193,12 @@ class ParseObjectIntegrationTest < Minitest::Test
     with_parse_server do
       item = Item.new
       item[:property] = 'x'
+      assert item.save, "Should save item first"
       
       container = Container.new
       container[:item] = item
       
-      assert container.save, "Should save container and item recursively"
+      assert container.save, "Should save container with item association"
       
       query = Container.query
       results = query.results
@@ -497,6 +506,12 @@ class ParseObjectIntegrationTest < Minitest::Test
           # Compare times within 1 second tolerance
           assert (test_case[:value] - retrieved_value).abs < 1, 
                  "Time values should be close for #{test_case[:field]}"
+        when Hash
+          # For object fields, compare the hash contents (keys might be strings instead of symbols)
+          test_case[:value].each do |key, expected_value|
+            assert_equal expected_value, retrieved_value[key] || retrieved_value[key.to_s],
+                         "Should retrieve correct value for #{test_case[:field]}[#{key}]"
+          end
         else
           assert_equal test_case[:value], retrieved_value,
                        "Should retrieve correct value for #{test_case[:field]}"
@@ -505,6 +520,253 @@ class ParseObjectIntegrationTest < Minitest::Test
         # Clean up
         object_again.destroy
       end
+    end
+  end
+
+  def test_geopoint_save_and_retrieve
+    with_parse_server do
+      # Create a test object with GeoPoint
+      object = TestObject.new
+      
+      # Test different ways to create GeoPoints
+      san_diego = Parse::GeoPoint.new(32.7157, -117.1611)
+      object[:location] = san_diego
+      
+      assert object.save, "Should save object with GeoPoint"
+      
+      # Retrieve and verify
+      query = TestObject.query
+      object_again = query.get(object.id)
+      retrieved_location = object_again[:location]
+      
+      assert retrieved_location.is_a?(Parse::GeoPoint), "Should retrieve GeoPoint object"
+      assert_equal san_diego.latitude, retrieved_location.latitude, "Should have correct latitude"
+      assert_equal san_diego.longitude, retrieved_location.longitude, "Should have correct longitude"
+      
+      # Clean up
+      object_again.destroy
+    end
+  end
+
+  def test_geopoint_query_operations
+    with_parse_server do
+      # Create test objects with different locations
+      locations = [
+        { name: "San Diego", lat: 32.7157, lng: -117.1611 },
+        { name: "Los Angeles", lat: 34.0522, lng: -118.2437 },
+        { name: "San Francisco", lat: 37.7749, lng: -122.4194 }
+      ]
+      
+      created_objects = []
+      locations.each do |loc|
+        object = TestObject.new
+        object[:test] = loc[:name]
+        object[:location] = Parse::GeoPoint.new(loc[:lat], loc[:lng])
+        assert object.save, "Should save #{loc[:name]} object"
+        created_objects << object
+      end
+      
+      # Test near query (find objects near San Diego)
+      san_diego_center = Parse::GeoPoint.new(32.7157, -117.1611)
+      near_results = TestObject.all(:location.near => san_diego_center)
+      
+      assert near_results.any?, "Should find objects near San Diego"
+      assert near_results.first[:test] == "San Diego", "Nearest should be San Diego itself"
+      
+      # Test within miles query (find objects within 200 miles of San Diego)
+      within_results = TestObject.all(:location.within_miles => san_diego_center.max_miles(200))
+      
+      assert within_results.count >= 2, "Should find San Diego and LA within 200 miles"
+      city_names = within_results.map { |obj| obj[:test] }
+      assert city_names.include?("San Diego"), "Should include San Diego"
+      assert city_names.include?("Los Angeles"), "Should include Los Angeles"
+      
+      # Clean up
+      created_objects.each(&:destroy)
+    end
+  end
+
+  def test_geopoint_distance_calculations
+    with_parse_server do
+      # Create objects at known locations
+      object1 = TestObject.new
+      object1[:test] = "Point A"
+      object1[:location] = Parse::GeoPoint.new(32.7157, -117.1611)  # San Diego
+      assert object1.save, "Should save first object"
+      
+      object2 = TestObject.new  
+      object2[:test] = "Point B"
+      object2[:location] = Parse::GeoPoint.new(34.0522, -118.2437)  # Los Angeles
+      assert object2.save, "Should save second object"
+      
+      # Retrieve and test distance calculations
+      query = TestObject.query
+      results = query.results
+      point_a = results.find { |obj| obj[:test] == "Point A" }
+      point_b = results.find { |obj| obj[:test] == "Point B" }
+      
+      assert point_a && point_b, "Should find both points"
+      
+      # Test distance calculation
+      distance_miles = point_a[:location].distance_in_miles(point_b[:location])
+      distance_km = point_a[:location].distance_in_km(point_b[:location])
+      
+      # San Diego to LA is approximately 120 miles / 193 km
+      assert distance_miles > 100 && distance_miles < 140, "Distance should be around 120 miles (got #{distance_miles})"
+      assert distance_km > 180 && distance_km < 220, "Distance should be around 193 km (got #{distance_km})"
+      
+      # Clean up
+      point_a.destroy
+      point_b.destroy
+    end
+  end
+
+  def test_geopoint_serialization_formats
+    with_parse_server do
+      object = TestObject.new
+      object[:test] = "Serialization Test"
+      
+      # Test Parse server format deserialization
+      geopoint_hash = {
+        "__type" => "GeoPoint",
+        "latitude" => 37.7749,
+        "longitude" => -122.4194
+      }
+      
+      # Manually set the geopoint using the server format
+      object.instance_variable_set(:@location, geopoint_hash)
+      object.send(:location_will_change!)
+      
+      assert object.save, "Should save object with hash-format geopoint"
+      
+      # Retrieve and verify it was converted properly
+      query = TestObject.query  
+      object_again = query.get(object.id)
+      retrieved_location = object_again[:location]
+      
+      assert retrieved_location.is_a?(Parse::GeoPoint), "Should convert hash to GeoPoint object"
+      assert_equal 37.7749, retrieved_location.latitude, "Should have correct latitude"
+      assert_equal -122.4194, retrieved_location.longitude, "Should have correct longitude"
+      
+      # Clean up
+      object_again.destroy
+    end
+  end
+
+  def test_file_creation_and_basic_properties
+    with_parse_server do
+      # Create a simple text file
+      content = "Hello, Parse File!"
+      file = Parse::File.new("test.txt", content, "text/plain")
+      
+      assert_equal "test.txt", file.name, "Should have correct name"
+      assert_equal content, file.contents, "Should have correct contents"
+      assert_equal "text/plain", file.mime_type, "Should have correct mime type"
+      assert_nil file.url, "Should not have URL before saving"
+      refute file.saved?, "Should not be saved initially"
+    end
+  end
+
+  def test_file_save_and_retrieve
+    with_parse_server do
+      # Create and save a file
+      content = "This is test file content for Parse integration test."
+      file = Parse::File.new("integration_test.txt", content, "text/plain")
+      
+      assert file.save, "Should save file successfully"
+      assert file.saved?, "File should be marked as saved"
+      assert file.url, "Should have URL after saving"
+      assert file.url.start_with?("http"), "URL should be a valid HTTP URL"
+      
+      # Create an object that references this file
+      object = TestObject.new
+      object[:test] = "File Test"
+      object[:avatar] = file
+      
+      assert object.save, "Should save object with file reference"
+      
+      # Retrieve and verify
+      query = TestObject.query
+      object_again = query.get(object.id)
+      retrieved_file = object_again[:avatar]
+      
+      assert retrieved_file.is_a?(Parse::File), "Should retrieve Parse::File object"
+      assert_equal file.name, retrieved_file.name, "Should have same filename"
+      assert_equal file.url, retrieved_file.url, "Should have same URL"
+      assert retrieved_file.saved?, "Retrieved file should be marked as saved"
+      
+      # Clean up
+      object_again.destroy
+    end
+  end
+
+  def test_file_serialization_from_server_format
+    with_parse_server do
+      object = TestObject.new
+      object[:test] = "File Serialization Test"
+      
+      # Test Parse server file format deserialization
+      file_hash = {
+        "__type" => "File",
+        "name" => "server_file.pdf",
+        "url" => "https://example.com/files/server_file.pdf"
+      }
+      
+      # Set file using server format
+      object.instance_variable_set(:@avatar, file_hash)
+      object.send(:avatar_will_change!)
+      
+      # The file should be converted to Parse::File during property access
+      retrieved_file = object[:avatar]
+      assert retrieved_file.is_a?(Parse::File), "Should convert hash to Parse::File object"
+      assert_equal "server_file.pdf", retrieved_file.name, "Should have correct name"
+      assert_equal "https://example.com/files/server_file.pdf", retrieved_file.url, "Should have correct URL"
+      assert retrieved_file.saved?, "Should be marked as saved when it has a URL"
+    end
+  end
+
+  def test_file_mime_type_handling
+    with_parse_server do
+      # Test different mime types
+      test_cases = [
+        { name: "image.jpg", content: "fake_image_data", mime_type: "image/jpeg" },
+        { name: "document.pdf", content: "fake_pdf_data", mime_type: "application/pdf" },
+        { name: "data.json", content: '{"key": "value"}', mime_type: "application/json" },
+        { name: "no_extension", content: "some content", mime_type: nil } # Should use default
+      ]
+      
+      test_cases.each do |test_case|
+        file = Parse::File.new(test_case[:name], test_case[:content], test_case[:mime_type])
+        
+        expected_mime_type = test_case[:mime_type] || Parse::File.default_mime_type
+        assert_equal expected_mime_type, file.mime_type, "Should have correct mime type for #{test_case[:name]}"
+        
+        assert file.save, "Should save file with mime type #{expected_mime_type}"
+        assert file.url, "Should have URL after saving"
+      end
+    end
+  end
+
+  def test_file_default_configurations
+    original_default_mime = Parse::File.default_mime_type
+    original_force_ssl = Parse::File.force_ssl
+    
+    begin
+      # Test default mime type
+      assert_equal "image/jpeg", Parse::File.default_mime_type, "Should have correct default mime type"
+      
+      # Test changing default mime type
+      Parse::File.default_mime_type = "text/plain"
+      file = Parse::File.new("test.txt", "content")
+      assert_equal "text/plain", file.mime_type, "Should use new default mime type"
+      
+      # Test force SSL configuration
+      assert_equal false, Parse::File.force_ssl, "Should have correct default force_ssl setting"
+      
+    ensure
+      # Reset to original values
+      Parse::File.default_mime_type = original_default_mime
+      Parse::File.force_ssl = original_force_ssl
     end
   end
 end

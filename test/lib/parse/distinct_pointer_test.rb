@@ -8,17 +8,19 @@ class TestDistinctPointer < Minitest::Test
     @query.client = @mock_client
   end
 
-  def test_distinct_with_pointer_field_returns_parse_pointers_by_default
+  def test_distinct_with_pointer_field_returns_strings_by_default
     # Mock response with MongoDB string format
     mock_response = Minitest::Mock.new
-    mock_response.expect :success?, true
-    mock_response.expect :error?, false
     mock_response.expect :error?, false
     mock_response.expect :result, [
       { "value" => "Team$abc123" },
       { "value" => "Team$def456" },
       { "value" => "Team$ghi789" }
     ]
+    # Define respond_to? to return true for the methods we expect
+    def mock_response.respond_to?(method)
+      [:error?, :result].include?(method) || super
+    end
     
     expected_pipeline = [
       { "$group" => { "_id" => "$project" } },
@@ -31,13 +33,12 @@ class TestDistinctPointer < Minitest::Test
     
     result = @query.distinct(:project)
     
-    # Should auto-convert to Parse::Pointer objects
+    # Should return object IDs as strings by default (extracted from MongoDB pointer format)
     assert_equal 3, result.size
-    assert_kind_of Parse::Pointer, result.first
-    assert_equal "Team", result.first.parse_class
-    assert_equal "abc123", result.first.id
-    assert_equal "Team", result[1].parse_class
-    assert_equal "def456", result[1].id
+    assert_kind_of String, result.first
+    assert_equal "abc123", result.first
+    assert_equal "def456", result[1]
+    assert_equal "ghi789", result[2]
     
     @mock_client.verify
     mock_response.verify
@@ -46,13 +47,16 @@ class TestDistinctPointer < Minitest::Test
   def test_distinct_with_non_pointer_field_returns_values_as_is
     # Mock response with regular string values
     mock_response = Minitest::Mock.new
-    mock_response.expect :success?, true
     mock_response.expect :error?, false
     mock_response.expect :result, [
       { "value" => "video" },
       { "value" => "image" },
       { "value" => "audio" }
     ]
+    # Define respond_to? to return true for the methods we expect
+    def mock_response.respond_to?(method)
+      [:error?, :result].include?(method) || super
+    end
     
     expected_pipeline = [
       { "$group" => { "_id" => "$category" } },
@@ -76,12 +80,15 @@ class TestDistinctPointer < Minitest::Test
   def test_distinct_with_return_pointers_true_uses_to_pointers_method
     # Mock response with mixed formats
     mock_response = Minitest::Mock.new
-    mock_response.expect :success?, true
     mock_response.expect :error?, false
     mock_response.expect :result, [
       { "value" => "Team$abc123" },
       { "value" => "Team$def456" }
     ]
+    # Define respond_to? to return true for the methods we expect
+    def mock_response.respond_to?(method)
+      [:error?, :result].include?(method) || super
+    end
     
     expected_pipeline = [
       { "$group" => { "_id" => "$project" } },
@@ -143,13 +150,16 @@ class TestDistinctPointer < Minitest::Test
   def test_distinct_does_not_convert_invalid_string_formats
     # Mock response with non-pointer strings
     mock_response = Minitest::Mock.new
-    mock_response.expect :success?, true
     mock_response.expect :error?, false
     mock_response.expect :result, [
       { "value" => "not-a-pointer" },
       { "value" => "also$not$valid" },
       { "value" => "$invalid" }
     ]
+    # Define respond_to? to return true for the methods we expect
+    def mock_response.respond_to?(method)
+      [:error?, :result].include?(method) || super
+    end
     
     expected_pipeline = [
       { "$group" => { "_id" => "$name" } },

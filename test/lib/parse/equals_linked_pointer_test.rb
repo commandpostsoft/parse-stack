@@ -23,26 +23,30 @@ class TestEqualsLinkedPointer < Minitest::Test
     
     pipeline = result["__aggregation_pipeline"]
     assert_instance_of Array, pipeline
-    assert_equal 2, pipeline.length
+    assert_equal 3, pipeline.length
     
-    # Check $lookup stage
-    lookup_stage = pipeline[0]
+    # Check $addFields stage (first stage for pointer conversion)
+    addfields_stage = pipeline[0]
+    assert addfields_stage.key?("$addFields")
+    
+    # Check $lookup stage (second stage)
+    lookup_stage = pipeline[1]
     assert lookup_stage.key?("$lookup")
     assert_equal "Project", lookup_stage["$lookup"]["from"]
-    assert_equal "project", lookup_stage["$lookup"]["localField"]
+    assert_equal "_p_project", lookup_stage["$lookup"]["localField"]
     assert_equal "_id", lookup_stage["$lookup"]["foreignField"]
     assert_equal "project_data", lookup_stage["$lookup"]["as"]
     
-    # Check $match stage with $expr
-    match_stage = pipeline[1]
+    # Check $match stage with $expr (third stage)
+    match_stage = pipeline[2]
     assert match_stage.key?("$match")
     assert match_stage["$match"].key?("$expr")
     
     expr = match_stage["$match"]["$expr"]
     assert expr.key?("$eq")
     assert_equal 2, expr["$eq"].length
-    assert_equal({ "$arrayElemAt" => ["$project_data.owner", 0] }, expr["$eq"][0])
-    assert_equal "$author", expr["$eq"][1]
+    assert_equal({ "$arrayElemAt" => ["$project_data._p_owner", 0] }, expr["$eq"][0])
+    assert_equal "$_p_author", expr["$eq"][1]
   end
 
   def test_constraint_build_with_snake_case_fields
@@ -54,16 +58,20 @@ class TestEqualsLinkedPointer < Minitest::Test
     result = constraint.build
     pipeline = result["__aggregation_pipeline"]
     
+    # Check $addFields stage first
+    addfields_stage = pipeline[0]
+    assert addfields_stage.key?("$addFields")
+    
     # Check field formatting (snake_case -> camelCase)
-    lookup_stage = pipeline[0]
+    lookup_stage = pipeline[1]
     assert_equal "ProjectDatum", lookup_stage["$lookup"]["from"]  # Rails pluralization: data -> datum
-    assert_equal "projectData", lookup_stage["$lookup"]["localField"]
+    assert_equal "_p_projectData", lookup_stage["$lookup"]["localField"]
     assert_equal "projectData_data", lookup_stage["$lookup"]["as"]
     
-    match_stage = pipeline[1]
+    match_stage = pipeline[2]
     expr = match_stage["$match"]["$expr"]
-    assert_equal({ "$arrayElemAt" => ["$projectData_data.ownerUser", 0] }, expr["$eq"][0])
-    assert_equal "$authorUser", expr["$eq"][1]
+    assert_equal({ "$arrayElemAt" => ["$projectData_data._p_ownerUser", 0] }, expr["$eq"][0])
+    assert_equal "$_p_authorUser", expr["$eq"][1]
   end
 
   def test_constraint_validation_missing_through
@@ -123,13 +131,16 @@ class TestEqualsLinkedPointer < Minitest::Test
     pipeline = query.build_aggregation_pipeline
     
     assert_instance_of Array, pipeline
-    assert_equal 2, pipeline.length
+    assert_equal 3, pipeline.length
     
-    # Should contain the lookup and match stages
-    lookup_stage = pipeline[0]
+    # Should contain the addFields, lookup and match stages
+    addfields_stage = pipeline[0]
+    assert addfields_stage.key?("$addFields")
+    
+    lookup_stage = pipeline[1]
     assert lookup_stage.key?("$lookup")
     
-    match_stage = pipeline[1]
+    match_stage = pipeline[2]
     assert match_stage.key?("$match")
     assert match_stage["$match"].key?("$expr")
   end
@@ -142,18 +153,21 @@ class TestEqualsLinkedPointer < Minitest::Test
     pipeline = query.build_aggregation_pipeline
     
     assert_instance_of Array, pipeline
-    assert_equal 3, pipeline.length
+    assert_equal 4, pipeline.length
     
     # Should have initial $match for regular constraints
     initial_match = pipeline[0]
     assert initial_match.key?("$match")
     assert_equal "active", initial_match["$match"]["status"]
     
-    # Then lookup and expr match
-    lookup_stage = pipeline[1]
+    # Then addFields, lookup and expr match
+    addfields_stage = pipeline[1]
+    assert addfields_stage.key?("$addFields")
+    
+    lookup_stage = pipeline[2]
     assert lookup_stage.key?("$lookup")
     
-    expr_match_stage = pipeline[2]
+    expr_match_stage = pipeline[3]
     assert expr_match_stage.key?("$match")
     assert expr_match_stage["$match"].key?("$expr")
   end
@@ -192,26 +206,30 @@ class TestEqualsLinkedPointer < Minitest::Test
     
     pipeline = result["__aggregation_pipeline"]
     assert_instance_of Array, pipeline
-    assert_equal 2, pipeline.length
+    assert_equal 3, pipeline.length
+    
+    # Check $addFields stage first
+    addfields_stage = pipeline[0]
+    assert addfields_stage.key?("$addFields")
     
     # Check $lookup stage
-    lookup_stage = pipeline[0]
+    lookup_stage = pipeline[1]
     assert lookup_stage.key?("$lookup")
     assert_equal "Capture", lookup_stage["$lookup"]["from"]
-    assert_equal "capture", lookup_stage["$lookup"]["localField"]
+    assert_equal "_p_capture", lookup_stage["$lookup"]["localField"]
     assert_equal "_id", lookup_stage["$lookup"]["foreignField"]
     assert_equal "capture_data", lookup_stage["$lookup"]["as"]
     
     # Check $match stage with $expr using $ne (not equal)
-    match_stage = pipeline[1]
+    match_stage = pipeline[2]
     assert match_stage.key?("$match")
     assert match_stage["$match"].key?("$expr")
     
     expr = match_stage["$match"]["$expr"]
     assert expr.key?("$ne")  # Should use $ne instead of $eq
     assert_equal 2, expr["$ne"].length
-    assert_equal({ "$arrayElemAt" => ["$capture_data.project", 0] }, expr["$ne"][0])
-    assert_equal "$project", expr["$ne"][1]
+    assert_equal({ "$arrayElemAt" => ["$capture_data._p_project", 0] }, expr["$ne"][0])
+    assert_equal "$_p_project", expr["$ne"][1]
   end
 
   def test_does_not_equal_constraint_validation_missing_through
@@ -256,13 +274,16 @@ class TestEqualsLinkedPointer < Minitest::Test
     
     pipeline = query.build_aggregation_pipeline
     assert_instance_of Array, pipeline
-    assert_equal 2, pipeline.length
+    assert_equal 3, pipeline.length
     
-    # Should contain the lookup and match stages with $ne
-    lookup_stage = pipeline[0]
+    # Should contain the addFields, lookup and match stages with $ne
+    addfields_stage = pipeline[0]
+    assert addfields_stage.key?("$addFields")
+    
+    lookup_stage = pipeline[1]
     assert lookup_stage.key?("$lookup")
     
-    match_stage = pipeline[1]
+    match_stage = pipeline[2]
     assert match_stage.key?("$match")
     assert match_stage["$match"].key?("$expr")
     assert match_stage["$match"]["$expr"].key?("$ne")

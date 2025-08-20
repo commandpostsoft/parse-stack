@@ -1362,7 +1362,7 @@ module Parse
           {
             "$lookup" => {
               "from" => target_collection,
-              "localField" => "#{formatted_through}_id",
+              "localField" => formatted_through,
               "foreignField" => "_id", 
               "as" => lookup_alias
             }
@@ -1449,7 +1449,7 @@ module Parse
         lookup_stage = {
           "$lookup" => {
             "from" => lookup_collection,
-            "localField" => "#{through_field_name}_id",
+            "localField" => through_field_name,
             "foreignField" => "_id", 
             "as" => lookup_alias
           }

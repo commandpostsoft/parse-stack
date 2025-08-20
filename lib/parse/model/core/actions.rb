@@ -429,7 +429,21 @@ module Parse
       # @return [Boolean] whether it was successful
       # @see #operate_field!
       def op_destroy!(field)
-        operate_field! field, { __op: :Delete }.freeze
+        result = operate_field! field, { __op: :Delete }.freeze
+        if result
+          # Also update the local state to reflect the deletion
+          field_sym = field.to_sym
+          if self.class.fields[field_sym].present?
+            set_attribute_method = "#{field}_set_attribute!"
+            if respond_to?(set_attribute_method)
+              send(set_attribute_method, nil, true) # Set to nil with dirty tracking
+            else
+              instance_variable_set(:"@#{field}", nil)
+              send("#{field}_will_change!") if respond_to?("#{field}_will_change!")
+            end
+          end
+        end
+        result
       end
 
       # Perform an atomic add operation on this relational field.

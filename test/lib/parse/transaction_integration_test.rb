@@ -4,7 +4,7 @@ require_relative '../../test_helper_integration'
 class Product < Parse::Object
   parse_class "Product"
   
-  property :name, :string
+  property :name, :string, required: true
   property :price, :float
   property :sku, :string
   property :stock_quantity, :integer, default: 0
@@ -25,7 +25,7 @@ end
 class Inventory < Parse::Object
   parse_class "Inventory"
   
-  property :product, :pointer, class_name: 'Product'
+  belongs_to :product
   property :location, :string
   property :quantity, :integer
   property :reserved_quantity, :integer, default: 0
@@ -146,12 +146,10 @@ class TransactionIntegrationTest < Minitest::Test
             product.price = 35.00
             batch.add(product)
 
-            # Create an object that will cause a failure (invalid required field)
-            invalid_product = Product.new(
-              # Missing required name field to cause server validation error
-              price: 40.00,
-              sku: nil  # This might cause validation issues
-            )
+            # Create an object that will cause a failure by trying to save with invalid objectId
+            invalid_product = Product.new(name: "Invalid Product", price: 40.00, sku: "INVALID")
+            # Set an invalid objectId to force a server error
+            invalid_product.instance_variable_set(:@id, "INVALID_ID_THAT_WILL_FAIL")
             batch.add(invalid_product)
           end
         rescue Parse::Error => e
@@ -423,7 +421,7 @@ class TransactionIntegrationTest < Minitest::Test
         assert_equal 10, responses.size, "Should have 10 responses"
 
         # Verify all products were created
-        created_products = Product.all.where(:sku.starts_with => "BCH-")
+        created_products = Product.all(:sku.starts_with => "BCH-")
         assert_equal 10, created_products.count, "All 10 products should be created"
 
         # Test updating all in another transaction
@@ -494,7 +492,7 @@ class TransactionIntegrationTest < Minitest::Test
         assert_equal main_product.id, created_inventory.product.id, "Inventory should point to main product"
 
         # Verify order references are correct
-        created_order = Order.all.where(:order_number.starts_with => "PTR-").first
+        created_order = Order.all(:order_number.starts_with => "PTR-").first
         assert created_order, "Order should be created"
         assert_equal main_product.id, created_order.items.first["product_id"], "Order should reference main product"
 
