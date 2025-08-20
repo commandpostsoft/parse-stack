@@ -984,6 +984,54 @@ module Parse
       end
     end
 
+    # A general range constraint that combines greater-than-or-equal and less-than-or-equal
+    # constraints for numeric, date/time, and string range queries. This is equivalent to using both $gte and $lte.
+    # This constraint works with numbers, dates, times, strings (alphabetical), and any comparable values.
+    #
+    #  # Find products with price between 10 and 50
+    #  Product.where(:price.between => [10, 50])
+    #  # Generates: "price": { "$gte": 10, "$lte": 50 }
+    #
+    #  # Find events between two dates
+    #  Event.where(:created_at.between => [start_date, end_date])
+    #  # Generates: "created_at": { "$gte": start_date, "$lte": end_date }
+    #
+    #  # Find users with age between 18 and 65
+    #  User.where(:age.between => [18, 65])
+    #  # Generates: "age": { "$gte": 18, "$lte": 65 }
+    #
+    #  # Find users with names alphabetically between "Alice" and "John"
+    #  User.where(:name.between => ["Alice", "John"])
+    #  # Generates: "name": { "$gte": "Alice", "$lte": "John" }
+    #
+    class BetweenConstraint < Constraint
+      # @!method between
+      # A registered method on a symbol to create the constraint.
+      # @example
+      #  q.where :field.between => [min_value, max_value]
+      # @return [BetweenConstraint]
+      register :between
+
+      # @return [Hash] the compiled constraint.
+      def build
+        value = formatted_value
+        unless value.is_a?(Array) && value.length == 2
+          raise ArgumentError, "#{self.class}: Value must be an array with exactly 2 elements [min_value, max_value]"
+        end
+        
+        min_value, max_value = value
+        
+        # Format the values using Parse's formatting (handles dates, numbers, etc.)
+        formatted_min = Parse::Constraint.formatted_value(min_value)
+        formatted_max = Parse::Constraint.formatted_value(max_value)
+        
+        { @operation.operand => { 
+          Parse::Constraint::GreaterThanOrEqualConstraint.key => formatted_min,
+          Parse::Constraint::LessThanOrEqualConstraint.key => formatted_max
+        } }
+      end
+    end
+
     # A constraint for filtering objects based on ACL read permissions for specific users or roles.
     # This constraint checks either the ACL object or the internal _rperm field to match against
     # user IDs and role names. It can handle User objects/pointers and role name strings.

@@ -2551,6 +2551,49 @@ query.or_where(:wins.lt => 5)
 results = query.results
 ```
 
+### Query Composition and Cloning
+
+Parse-Stack provides additional methods for composing and cloning queries, making it easier to build complex queries programmatically.
+
+#### Query Cloning
+Create independent copies of query objects for separate modifications:
+
+```ruby
+base_query = Song.where(:genre => "rock")
+query1 = base_query.clone.where(:year.gt => 2000)  # Rock songs after 2000
+query2 = base_query.clone.where(:duration.lt => 180) # Short rock songs
+
+# Original query remains unchanged
+base_results = base_query.results
+newer_rock = query1.results
+short_rock = query2.results
+```
+
+#### Combining Multiple Queries
+Combine multiple independent queries using class methods for cleaner composition:
+
+```ruby
+# OR logic - combine multiple queries with OR
+popular_songs = Song.where(:play_count.gt => 1000)
+recent_songs = Song.where(:created_at.gt => 1.month.ago)
+trending_songs = Song.where(:trending => true)
+
+# Any song that is popular OR recent OR trending
+combined_or = Parse::Query.or(popular_songs, recent_songs, trending_songs)
+results = combined_or.results
+
+# AND logic - combine multiple queries with AND  
+rock_songs = Song.where(:genre => "rock")
+long_songs = Song.where(:duration.gt => 300)
+popular_songs = Song.where(:play_count.gt => 500)
+
+# Songs that are rock AND long AND popular
+combined_and = Parse::Query.and(rock_songs, long_songs, popular_songs)
+results = combined_and.results
+```
+
+These composition methods work seamlessly with aggregation pipelines and all other query operations.
+
 ## Query Scopes
 This feature is a small subset of the [ActiveRecord named scopes](http://guides.rubyonrails.org/active_record_querying.html#scopes) feature. Scoping allows you to specify commonly-used queries which can be referenced as class method calls and are chainable with other scopes. You can use every `Parse::Query` method previously covered such as `where`, `includes` and `limit`.
 
