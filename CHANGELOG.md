@@ -7,6 +7,14 @@
 - NEW: `last_updated` method for retrieving the most recently updated object (ordered by updated_at desc)
 - NEW: Both methods support count parameters and constraints like the existing `first` method
 - NEW: Consistent API pattern with `first` - returns single object or array based on parameters
+- NEW: Chainable `latest()` and `last_updated()` methods added to Parse::Query for method chaining with field selection and constraints
+
+#### Query Composition and Cloning
+- NEW: `clone` method for creating independent copies of Parse::Query objects with deep copying of constraints
+- NEW: `Parse::Query.or(*queries)` class method for combining multiple queries with OR logic
+- NEW: `Parse::Query.and(*queries)` class method for combining multiple queries with AND logic
+- NEW: All query composition methods work seamlessly with aggregation pipelines and existing query operations
+- NEW: Marshal-based deep copying ensures query clones are truly independent with no shared state
 
 #### Enhanced Upsert Operations
 - **IMPROVED**: `first_or_create` now follows Rails conventions - finds existing objects unchanged or creates new unsaved objects
@@ -57,6 +65,7 @@
 #### New Query Constraints
 - NEW: `readable_by` constraint for filtering objects by ACL read permissions for users/roles
 - NEW: `writable_by` constraint for filtering objects by ACL write permissions for users/roles
+- NEW: `between` constraint for range queries on numbers, dates, strings (alphabetical), and comparable values (combines $gte and $lte)
 - NEW: Smart input handling for User objects, Role objects, Pointers, and role name strings
 - NEW: Automatic role fetching when given User objects to include user's roles in permission checks
 - NEW: Support for both ACL object field and Parse's internal _rperm/_wperm fields
@@ -99,6 +108,7 @@
 - NEW: `equals_linked_pointer` - Compare pointer fields across linked objects using aggregation
 - NEW: `does_not_equal_linked_pointer` - Negative comparison of linked pointers  
 - NEW: `between_dates` - Query records within date/time ranges
+- NEW: `between` - General range constraint for numbers, dates, and comparable values (combines $gte and $lte)
 - NEW: `matches_key_in_query` - Matches key in subquery
 - NEW: `does_not_match_key_in_query` - Does not match key in subquery
 - NEW: `starts_with` - String prefix matching constraint

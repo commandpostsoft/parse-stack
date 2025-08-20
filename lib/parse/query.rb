@@ -860,6 +860,30 @@ module Parse
       limit == 1 ? results.first : results.first(limit)
     end
 
+    # Returns the most recently created object(s) (ordered by created_at descending).
+    # @param limit [Integer] the number of items to return (default: 1).
+    # @return [Parse::Object] if limit == 1
+    # @return [Array<Parse::Object>] if limit > 1
+    def latest(limit = 1)
+      @results = nil if @limit != limit
+      @limit = limit
+      # Add created_at descending order if not already present
+      order(:created_at.desc) unless @order.any? { |o| o.operand == :created_at }
+      limit == 1 ? results.first : results.first(limit)
+    end
+
+    # Returns the most recently updated object(s) (ordered by updated_at descending).
+    # @param limit [Integer] the number of items to return (default: 1).
+    # @return [Parse::Object] if limit == 1
+    # @return [Array<Parse::Object>] if limit > 1
+    def last_updated(limit = 1)
+      @results = nil if @limit != limit
+      @limit = limit
+      # Add updated_at descending order if not already present
+      order(:updated_at.desc) unless @order.any? { |o| o.operand == :updated_at }
+      limit == 1 ? results.first : results.first(limit)
+    end
+
     # Retrieve a single object by its objectId.
     # @param object_id [String] the objectId to retrieve.
     # @return [Parse::Object] the object with the given ID.
@@ -2196,6 +2220,49 @@ module Parse
       else
         obj
       end
+    end
+
+    # Creates a deep copy of this query object, allowing independent modifications
+    # @return [Parse::Query] a new query object with the same constraints
+    def clone
+      cloned_query = Parse::Query.new(self.instance_variable_get(:@table))
+      [:count, :where, :order, :keys, :includes, :limit, :skip, :cache, :use_master_key, :client].each do |param|
+        if instance_variable_defined?(:"@#{param}")
+          value = instance_variable_get(:"@#{param}")
+          if value.is_a?(Array) || value.is_a?(Hash)
+            cloned_value = Marshal.load(Marshal.dump(value)) rescue value.dup
+          else
+            cloned_value = value
+          end
+          cloned_query.instance_variable_set(:"@#{param}", cloned_value)
+        end
+      end
+      cloned_query.instance_variable_set(:@results, nil)
+      cloned_query
+    end
+
+    # Combines multiple queries with OR logic
+    # @param queries [Array<Parse::Query>] the queries to combine with OR logic
+    # @return [Parse::Query] a new query with OR constraints
+    def self.or(*queries)
+      queries = queries.flatten.compact
+      table = queries.first.table
+      result = self.new(table)
+      queries = queries.filter { |q| q.where.present? && !q.where.empty? }
+      queries.each { |query| result.or_where(query.where) }
+      result
+    end
+
+    # Combines multiple queries with AND logic
+    # @param queries [Array<Parse::Query>] the queries to combine with AND logic
+    # @return [Parse::Query] a new query with AND constraints
+    def self.and(*queries)
+      queries = queries.flatten.compact
+      table = queries.first.table
+      result = self.new(table)
+      queries = queries.filter { |q| q.where.present? && !q.where.empty? }
+      queries.each { |query| result.where(query.where) }
+      result
     end
   end # Query
 
