@@ -8,6 +8,7 @@ require "active_support/core_ext/object"
 require "active_support/core_ext"
 require "active_model_serializers"
 require "rack"
+require "ostruct"
 require_relative "client"
 require_relative "stack"
 require_relative "model/object"
@@ -189,16 +190,25 @@ module Parse
 
         if result.is_a?(Parse::Object)
           # if it is a Parse::Object, we will call the registered ActiveModel callbacks
-          # and then send the proper changes payload
           if type == :before_save
             # returning false from the callback block only runs the before_* callback
             # Skip prepare_save! for Ruby-initiated requests to prevent redundant preparation
-            result.prepare_save! unless ruby_initiated
+            unless ruby_initiated
+              prepare_result = result.prepare_save!
+              # If prepare_save! returns false (callback chain was halted), throw an error
+              if prepare_result == false
+                raise Parse::Webhooks::ResponseError, "Save halted by before_save callback"
+              end
+            end
+            # For before_save, return the changes payload (what Parse Server expects)
             result = result.changes_payload
           elsif type == :before_delete
             result.run_callbacks(:destroy) { false }
             result = true
           end
+        elsif type == :before_save && result == false
+          # If webhook block returns false, halt the save by throwing an error
+          raise Parse::Webhooks::ResponseError, "Save halted by before_save webhook"
         elsif type == :before_save && (result == true || result.nil?)
           # Open Source Parse server does not accept true results on before_save hooks.
           result = {}

@@ -29,6 +29,17 @@ module Parse
     extend ::ActiveModel::Callbacks # callback support on save, update, delete, etc.
     extend ::ActiveModel::Naming # provides the methods for getting class names from Model classes
 
+    # Add dirty? methods as aliases for changed? methods
+    # These provide compatibility with expected API
+    def dirty?(field = nil)
+      if field.nil?
+        changed?
+      else
+        field_changed = "#{field}_changed?"
+        respond_to?(field_changed) ? send(field_changed) : false
+      end
+    end
+
     # The name of the field in a hash that contains information about the type
     # of data the hash represents.
     TYPE_FIELD = "__type".freeze

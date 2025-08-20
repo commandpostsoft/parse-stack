@@ -8,6 +8,23 @@ class TestObject < Parse::Object
   property :adventure, :string
   property :location, :string
   property :a_bool, :boolean
+  # Additional properties for integration tests
+  property :cat, :string
+  property :dog, :string
+  property :favoritePony, :string
+  property :yes, :boolean
+  property :no, :boolean
+  property :when, :date
+  property :authData, :string
+  property :time, :string
+  property :bytes, :bytes
+  # Properties for field value testing
+  property :string_field, :string
+  property :number_field, :integer
+  property :boolean_field, :boolean
+  property :array_field, :array
+  property :object_field, :object
+  property :date_field, :date
 end
 
 class Item < Parse::Object
@@ -19,9 +36,9 @@ end
 
 class Container < Parse::Object
   parse_class "Container"
-  property :item, :pointer, class_name: 'Item'
+  property :item, :relation, class_name: 'Item'
   property :items, :array
-  property :subcontainer, :pointer, class_name: 'Container'
+  property :subcontainer, :relation, class_name: 'Container'
 end
 
 # Port of the JavaScript Parse.Object test suite to Ruby
@@ -60,7 +77,7 @@ class ParseObjectIntegrationTest < Minitest::Test
       object[:favoritePony] = 'Rainbow Dash'
       result = object.save
       assert result, "Should save successfully"
-      assert_equal object, result, "Should return the same object"
+      assert_equal true, result, "Should return true on successful save"
     end
   end
 

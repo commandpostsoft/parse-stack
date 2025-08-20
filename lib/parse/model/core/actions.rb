@@ -662,7 +662,14 @@ module Parse
 
       # Runs all the registered `before_save` related callbacks.
       def prepare_save!
-        run_callbacks(:save) { false }
+        # With terminator configured, run_callbacks will return false if any callback returns false
+        # We track if the block executes to know if callbacks were halted
+        callback_success = false
+        run_callbacks(:save) do
+          callback_success = true
+          true
+        end
+        callback_success
       end
 
       # @return [Hash] a hash of the list of changes made to this instance.

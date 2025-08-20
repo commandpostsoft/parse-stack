@@ -174,7 +174,7 @@ module Parse
     #   @yield A block to execute for the callback.
     #   @see ActiveModel::Callbacks
     # @!endgroup
-    define_model_callbacks :create, :save, :destroy, only: [:after, :before]
+    define_model_callbacks :create, :save, :destroy, only: [:after, :before], terminator: ->(target, result_lambda) { result_lambda.call == false }
 
     attr_accessor :created_at, :updated_at, :acl
 
@@ -532,6 +532,15 @@ module Parse
     # @return [Array<String>] an array of property names as strings.
     def keys
       self.class.fields.keys.map(&:to_s)
+    end
+
+    # Check if a field has a value (is present and not nil).
+    # @param key [String, Symbol] the name of the field to check.
+    # @return [Boolean] true if the field has a non-nil value, false otherwise.
+    def has?(key)
+      return false unless self.class.fields[key.to_sym].present?
+      value = send(key)
+      !value.nil?
     end
   end
 end

@@ -1,5 +1,26 @@
 ## Parse-Stack Changelog
 
+### 1.12.3
+
+#### Enhanced Webhook and Callback System
+- **NEW**: Proper webhook-based hook halting mechanism for Parse Server integration
+- **NEW**: ActiveModel callbacks can now halt operations by returning `false` (added proper terminator configuration)
+- **NEW**: Webhook blocks can halt operations by returning `false` or throwing `Parse::Webhooks::ResponseError`
+- **NEW**: Enhanced change tracking with `*_was_changed?` methods for after_save hooks
+- **IMPROVED**: `prepare_save!` method now correctly returns callback chain results
+- **IMPROVED**: Webhook processing preserves Parse Server expectations while integrating with ActiveModel callbacks
+
+#### Improved Dirty Tracking
+- **NEW**: Added `dirty?` and `dirty?(field)` methods for compatibility with expected API
+- **NEW**: `*_was_changed?` methods work correctly in after_save contexts using previous_changes
+- **IMPROVED**: Enhanced change tracking preserves standard ActiveModel behavior while adding Parse Server-specific functionality
+- **IMPROVED**: Consistent dirty tracking behavior across before_save and after_save hooks
+
+#### Parse Server Integration
+- **IMPROVED**: Webhook processing now correctly handles both Ruby-initiated and client-initiated requests
+- **IMPROVED**: Before_save webhooks return proper changes_payload format for Parse Server
+- **IMPROVED**: ActiveModel callback chain integration with Parse Server webhook lifecycle
+
 ### 1.12.2
 
 #### New Query Methods

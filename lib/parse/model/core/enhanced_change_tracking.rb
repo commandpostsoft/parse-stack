@@ -3,17 +3,16 @@
 
 module Parse
   module Core
-    # Enhanced change tracking for Parse::Object that provides consistent
-    # access to _changed? and _was methods in both before_save and after_save hooks.
+    # Enhanced change tracking for Parse::Object that provides additional
+    # _was_changed? and enhanced _was methods for after_save hooks.
     #
-    # This module overrides the ActiveModel-generated _changed? and _was methods
-    # to use previous_changes when available, providing a consistent API across
-    # all hook contexts.
+    # This module adds _was_changed? methods that work correctly in after_save contexts
+    # by using previous_changes, while keeping normal _changed? methods intact.
     #
     # Key benefits:
-    # - _changed? methods work correctly in after_save hooks  
+    # - _was_changed? methods work correctly in after_save hooks  
     # - _was methods return actual previous values (not current values) in after_save
-    # - Backwards compatible with existing code
+    # - Normal _changed? methods remain unchanged (standard ActiveModel behavior)
     # - Automatically detects context using presence of previous_changes
     #
     # @example
@@ -24,7 +23,7 @@ module Parse
     #     after_save :send_price_alert
     #     
     #     def send_price_alert
-    #       if price_changed? && price_was < price
+    #       if price_was_changed? && price_was < price
     #         AlertService.send("Price increased from $#{price_was} to $#{price}")
     #       end
     #     end
@@ -49,26 +48,20 @@ module Parse
         
         private
         
-        # Create enhanced versions of _changed? and _was methods for a field
+        # Create enhanced versions of _was_changed? and _was methods for a field
         # @param field_name [Symbol] the field name to enhance
         def enhance_change_tracking_for_field(field_name)
-          changed_method = "#{field_name}_changed?"
+          was_changed_method = "#{field_name}_was_changed?"
           was_method = "#{field_name}_was"
           
-          # Store references to original methods if they exist
-          original_changed_method = "__original_#{changed_method}".to_sym
+          # Store reference to original _was method if it exists
           original_was_method = "__original_#{was_method}".to_sym
-          
-          # Alias original methods if they exist
-          if instance_method_defined?(changed_method)
-            alias_method original_changed_method, changed_method
-          end
           if instance_method_defined?(was_method)
             alias_method original_was_method, was_method
           end
           
-          # Define enhanced _changed? method
-          define_method(changed_method) do
+          # Define enhanced _was_changed? method (for after_save context)
+          define_method(was_changed_method) do
             enhanced_field_changed?(field_name.to_s)
           end
           

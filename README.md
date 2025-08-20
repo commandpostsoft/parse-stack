@@ -2751,6 +2751,46 @@ puts song.name # 'My Title'
 
 There are also a special `:create` callback. A `before_create` will be called whenever a unsaved object will be saved, and `after_create` will be called when a previously unsaved object successfully saved for the first time.
 
+### Callback Halting
+ActiveModel callbacks can now halt operations by returning `false`. When a `before_save` or `before_create` callback returns `false`, the save operation will be prevented:
+
+```ruby
+class Song < Parse::Object
+  before_save :validate_song
+  
+  private
+  
+  def validate_song
+    if name.blank?
+      puts "Song name cannot be blank"
+      return false  # This will halt the save operation
+    end
+    true
+  end
+end
+```
+
+### Enhanced Change Tracking
+Parse objects now support both standard ActiveModel dirty tracking and enhanced change tracking for after_save hooks:
+
+```ruby
+class Product < Parse::Object
+  property :name, :string
+  property :price, :float
+  
+  after_save :send_price_alert
+  
+  def send_price_alert
+    # Use *_was_changed? methods in after_save hooks
+    if price_was_changed? && price_was < price
+      AlertService.send("Price increased from $#{price_was} to $#{price}")
+    end
+  end
+end
+```
+
+The `*_was_changed?` methods work correctly in after_save contexts by using `previous_changes`, while standard `*_changed?` methods maintain their normal ActiveModel behavior.
+
 ## Schema Upgrades and Migrations
 You may change your local Parse ruby classes by adding new properties. To easily propagate the changes to your Parse Server application (MongoDB), you can call `auto_upgrade!` on the class to perform an non-destructive additive schema change. This will create the new columns in Parse for the properties you have defined in your models. Parse Stack will calculate the changes and only modify the tables which need new columns to be added.  This feature does require the use of the master key when configuring the client. *It will NOT destroy columns or data.*
 
@@ -2884,7 +2924,15 @@ You can register webhooks to handle the different object triggers: `:before_save
 
 For any `after_*` hook, return values are not needed since Parse does not utilize them. You may also register as many `after_save` or `after_delete` handlers as you prefer, all of them will be called.
 
-`before_save` and `before_delete` hooks have special functionality. When the `error!` method is called by the provided block, the framework will return the correct error response to Parse with value provided. Returning an error will prevent Parse from saving the object in the case of `before_save` and will prevent Parse from deleting the object when in a `before_delete`. In addition, for a `before_save`, the last value returned by the block will be the value returned in the success response. If the block returns nil or an `empty?` value, it will return `true` as the default response. You can also return a JSON object in a hash format to override the values that will be saved. However, we recommend modifying the `parse_object` provided since it has dirty tracking, and then returning that same object. This will automatically call your model specific `before_save` callbacks and send the proper payload back to Parse. For more details, see [Cloud Code BeforeSave Webhooks](http://docs.parseplatform.org/cloudcode/guide/#beforesave-triggers)
+`before_save` and `before_delete` hooks have special functionality and multiple ways to halt operations:
+
+1. **Using `error!` method**: Calling `error!` will return an error response to Parse Server
+2. **Returning `false`**: Webhook blocks can return `false` to halt the operation
+3. **ActiveModel callbacks**: When the webhook returns a Parse object, its `before_save` callbacks are executed and can halt by returning `false`
+
+Any of these approaches will prevent Parse from saving the object in `before_save` or deleting the object in `before_delete`.
+
+For `before_save` webhooks, the object returned by the block becomes the response. We recommend modifying the `parse_object` provided (which has dirty tracking) and returning it. This automatically calls your model-specific `before_save` callbacks and sends the proper payload back to Parse. For more details, see [Cloud Code BeforeSave Webhooks](http://docs.parseplatform.org/cloudcode/guide/#beforesave-triggers)
 
 ```ruby
 # recommended way
@@ -2903,8 +2951,13 @@ class Artist < Parse::Object
     # default San Diego
     artist.location ||= Parse::GeoPoint.new(32.82, -117.23)
 
-    # raise to fail the save
+    # Multiple ways to halt the save:
+    
+    # Method 1: Using error! (returns error response)
     error!("Name cannot be empty") if artist.name.blank?
+    
+    # Method 2: Return false to halt (returns error response)
+    return false if artist.location.nil?
 
     if artist.name_changed?
       wlog "The artist name changed!"
@@ -2913,6 +2966,17 @@ class Artist < Parse::Object
 
     # *important* returns a special hash of changed values
     artist
+  end
+  
+  # ActiveModel callback halting example
+  before_save :validate_artist
+  
+  def validate_artist
+    if some_complex_validation_fails?
+      # Method 3: ActiveModel callback returns false (halts via webhook integration)
+      return false
+    end
+    true
   end
 
   webhook :before_delete do
