@@ -3,11 +3,50 @@ require "bundler/gem_tasks"
 require "yard"
 require "rake/testtask"
 
+# Default test task runs all tests with Docker enabled
 Rake::TestTask.new do |t|
+  ENV['PARSE_TEST_USE_DOCKER'] = 'true'
   t.libs << "lib/parse/stack"
   t.test_files = FileList["test/lib/**/*_test.rb"]
   t.warning = false
   t.verbose = true
+end
+
+# Integration tests require Docker
+namespace :test do
+  desc "Run all integration tests (requires Docker)"
+  task :integration do
+    integration_files = FileList["test/lib/**/*integration_test.rb"]
+    
+    puts "Running #{integration_files.length} integration test files..."
+    integration_files.each do |file|
+      puts "\n" + "="*80
+      puts "Running: #{file}"
+      puts "="*80
+      system("PARSE_TEST_USE_DOCKER=true ruby -Itest #{file}") || exit(1)
+    end
+    puts "\n✅ All integration tests completed successfully!"
+  end
+
+  desc "Run unit tests only (no Docker required)"
+  task :unit do
+    unit_files = FileList["test/lib/**/*_test.rb"].exclude("test/lib/**/*integration_test.rb")
+    
+    puts "Running #{unit_files.length} unit test files (no Docker)..."
+    unit_files.each do |file|
+      system("PARSE_TEST_USE_DOCKER=true ruby -Itest #{file}") || exit(1)
+    end
+    puts "\n✅ All unit tests completed successfully!"
+  end
+
+  desc "List all available test files"
+  task :list do
+    puts "\nIntegration Tests:"
+    FileList["test/lib/**/*integration_test.rb"].each { |f| puts "  #{f}" }
+    
+    puts "\nUnit Tests:"
+    FileList["test/lib/**/*_test.rb"].exclude("test/lib/**/*integration_test.rb").each { |f| puts "  #{f}" }
+  end
 end
 
 task :default => :test

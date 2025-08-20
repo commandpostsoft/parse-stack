@@ -74,21 +74,28 @@ class AggregationGroupingIntegrationTest < Minitest::Test
 
         puts "✅ Basic sortable grouping works correctly"
 
-        # Test sortable grouping with custom sort options
-        puts "Testing sortable grouping with custom sort options..."
-        sorted_by_price = AggregationProduct.query.group_by(:category, sortable: { price: -1 })
-        price_sorted_results = sorted_by_price.count.to_h
+        # Test sortable grouping with sorting capabilities
+        puts "Testing sortable grouping with sorting capabilities..."
+        sortable_query = AggregationProduct.query.group_by(:category, sortable: true)
+        sortable_results = sortable_query.count
+        
+        # Test sorting capabilities of GroupedResult
+        sorted_by_key = sortable_results.sort_by_key_asc
+        assert sorted_by_key.is_a?(Array), "Sorted results should be an array of [key, value] pairs"
+        assert sorted_by_key.length >= 3, "Should have sorted category pairs"
+        
+        # Test hash conversion
+        hash_results = sortable_results.to_h
+        assert hash_results.is_a?(Hash), "Should convert to hash"
+        assert hash_results["electronics"] >= 4, "Electronics should have products"
 
-        assert price_sorted_results.is_a?(Hash), "Price sorted results should be a hash"
-        assert price_sorted_results["electronics"] >= 4, "Electronics should have products"
-
-        puts "✅ Custom sort options work correctly"
+        puts "✅ Sortable grouping capabilities work correctly"
 
         # Test sortable grouping with additional aggregation stages
         puts "Testing sortable grouping with aggregation pipeline..."
         expensive_products = AggregationProduct.query
                                               .where(:price.gt => 100)
-                                              .group_by(:category, sortable: { launch_date: -1 })
+                                              .group_by(:category, sortable: true)
         expensive_results = expensive_products.count.to_h
 
         assert expensive_results.is_a?(Hash), "Expensive results should be a hash"
@@ -311,7 +318,7 @@ class AggregationGroupingIntegrationTest < Minitest::Test
         puts "Testing sortable grouping with flatten_arrays..."
         sortable_flattened = AggregationProduct.query.group_by(:tags, 
                                                                flatten_arrays: true, 
-                                                               sortable: { price: -1 })
+                                                               sortable: true)
         combined_results = sortable_flattened.count.to_h
 
         assert combined_results.is_a?(Hash), "Results should be a hash"

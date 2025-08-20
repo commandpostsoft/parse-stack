@@ -1,4 +1,4 @@
-require_relative '../../test_helper'
+require_relative '../../test_helper_integration'
 require 'minitest/autorun'
 
 # Test model to explore after_save change tracking
