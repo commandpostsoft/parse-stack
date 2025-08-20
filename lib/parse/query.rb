@@ -1095,6 +1095,109 @@ module Parse
       Aggregation.new(self, pipeline, verbose: verbose)
     end
 
+    # Converts the current query into an aggregate pipeline and executes it.
+    # This method automatically converts all query constraints (where, order, limit, skip, etc.)
+    # into MongoDB aggregation pipeline stages.
+    # @param additional_stages [Array<Hash>] optional additional pipeline stages to append
+    # @param verbose [Boolean] whether to print verbose debug output for the aggregation
+    # @return [Aggregation] an aggregation object that can be executed
+    # @example
+    #   # Convert a regular query to aggregate pipeline
+    #   query = User.where(:age.gte => 18).order(:name).limit(10)
+    #   aggregation = query.aggregate_from_query
+    #   results = aggregation.results
+    #
+    #   # With additional pipeline stages
+    #   aggregation = query.aggregate_from_query([
+    #     { "$group" => { "_id" => "$department", "count" => { "$sum" => 1 } } }
+    #   ])
+    def aggregate_from_query(additional_stages = [], verbose: nil)
+      # Build pipeline from current query constraints
+      pipeline = build_query_aggregate_pipeline
+      
+      # Append any additional stages
+      pipeline.concat(additional_stages) if additional_stages.any?
+      
+      # Use existing aggregate method
+      aggregate(pipeline, verbose: verbose)
+    end
+
+    private
+
+    # Builds a complete aggregation pipeline from the current query's constraints
+    # @return [Array<Hash>] MongoDB aggregation pipeline stages
+    def build_query_aggregate_pipeline
+      pipeline = []
+
+      # Add $match stage from where constraints
+      unless @where.empty?
+        where_clause = Parse::Query.compile_where(@where)
+        if where_clause.any?
+          # Convert dates and other Parse-specific types for MongoDB aggregation
+          match_stage = convert_for_aggregation(where_clause)
+          pipeline << { "$match" => match_stage }
+        end
+      end
+
+      # Add $sort stage from order constraints  
+      unless @order.empty?
+        sort_stage = {}
+        @order.each do |order_obj|
+          # order_obj is a Parse::Order object with field and direction
+          field_name = order_obj.field.to_s
+          direction = order_obj.direction == :desc ? -1 : 1
+          sort_stage[field_name] = direction
+        end
+        pipeline << { "$sort" => sort_stage } if sort_stage.any?
+      end
+
+      # Add $skip stage if specified
+      if @skip > 0
+        pipeline << { "$skip" => @skip }
+      end
+
+      # Add $limit stage if specified
+      if @limit.is_a?(Numeric) && @limit > 0
+        pipeline << { "$limit" => @limit }
+      end
+
+      # Add $project stage if specific keys are requested
+      unless @keys.empty?
+        project_stage = {}
+        @keys.each { |key| project_stage[key] = 1 }
+        pipeline << { "$project" => project_stage }
+      end
+
+      pipeline
+    end
+
+    # Converts Parse query constraints to MongoDB aggregation format
+    # @param constraints [Hash] the compiled where constraints
+    # @return [Hash] constraints formatted for MongoDB aggregation
+    def convert_for_aggregation(constraints)
+      # Handle nested constraints and convert Parse-specific types
+      case constraints
+      when Hash
+        result = {}
+        constraints.each do |key, value|
+          result[key] = convert_for_aggregation(value)
+        end
+        result
+      when Array
+        constraints.map { |item| convert_for_aggregation(item) }
+      when Parse::Date
+        # Convert Parse::Date to MongoDB date format
+        { "$date" => constraints.iso }
+      when Parse::Object, Parse::Pointer
+        # Convert Parse objects/pointers to MongoDB pointer format
+        constraints.as_json
+      else
+        constraints
+      end
+    end
+
+    public
+
     # Alias for consistency
     alias_method :aggregate_pipeline, :aggregate
 
