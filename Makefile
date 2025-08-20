@@ -5,7 +5,7 @@
 # Start the test server
 test-server-start:
 	@echo "Starting Parse Server test containers..."
-	docker-compose -f docker-compose.test.yml up -d
+	docker-compose -f scripts/docker/docker-compose.test.yml up -d
 	@echo "Waiting for services to start..."
 	@sleep 10
 	@echo "Parse Server available at: http://localhost:1337/parse"
@@ -14,7 +14,7 @@ test-server-start:
 # Stop the test server
 test-server-stop:
 	@echo "Stopping Parse Server test containers..."
-	docker-compose -f docker-compose.test.yml down
+	docker-compose -f scripts/docker/docker-compose.test.yml down
 
 # Restart the test server
 test-server-restart: test-server-stop test-server-start
@@ -22,7 +22,7 @@ test-server-restart: test-server-stop test-server-start
 # Test connection to Parse Server
 test-connection:
 	@echo "Testing Parse Server connection..."
-	ruby test_server_connection.rb
+	ruby scripts/test_server_connection.rb
 
 # Run integration tests with test server
 test-integration:
@@ -32,7 +32,7 @@ test-integration:
 # Clean up containers and volumes
 clean:
 	@echo "Cleaning up containers and volumes..."
-	docker-compose -f docker-compose.test.yml down -v
+	docker-compose -f scripts/docker/docker-compose.test.yml down -v
 	docker system prune -f
 
 # View Parse Server logs
@@ -41,11 +41,11 @@ logs:
 
 # View all container logs
 logs-all:
-	docker-compose -f docker-compose.test.yml logs -f
+	docker-compose -f scripts/docker/docker-compose.test.yml logs -f
 
 # Show container status
 status:
-	docker-compose -f docker-compose.test.yml ps
+	docker-compose -f scripts/docker/docker-compose.test.yml ps
 
 # Help
 help:

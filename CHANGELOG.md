@@ -2,6 +2,34 @@
 
 ### 1.12.2
 
+#### New Query Methods
+- NEW: `latest` method for retrieving the most recently created object (ordered by created_at desc)
+- NEW: `last_updated` method for retrieving the most recently updated object (ordered by updated_at desc)
+- NEW: Both methods support count parameters and constraints like the existing `first` method
+- NEW: Consistent API pattern with `first` - returns single object or array based on parameters
+
+#### Enhanced Upsert Operations
+- **IMPROVED**: `first_or_create` now follows Rails conventions - finds existing objects unchanged or creates new unsaved objects
+- **IMPROVED**: `first_or_create!` enhanced to save new objects immediately while leaving existing objects unchanged
+- **IMPROVED**: `create_or_update!` optimized with change detection - only saves when actual changes are detected
+- NEW: Performance optimizations for upsert methods - skips unnecessary saves when no attribute changes are detected
+- NEW: Enhanced Rails-style attribute merging with proper query_attrs + resource_attrs combination
+- NEW: Comprehensive integration tests for all upsert methods with real Parse server validation
+
+#### Enhanced Object Fetching
+- NEW: `fetch_object` method for Parse::Pointer and Parse::Object to return fetched object instances
+- **IMPROVED**: `fetch` method enhanced with optional `returnObject` parameter (defaults to true)
+- NEW: Consistent object fetching behavior across both Parse::Pointer and Parse::Object classes
+- NEW: Enhanced change tracking preservation after fetch operations
+
+#### Transaction Support
+- NEW: Full atomic transaction support with `Parse::Object.transaction` method
+- NEW: Two transaction styles: explicit batch operations and automatic batching via return values
+- NEW: Automatic retry mechanism for transaction conflicts (Parse error 251) with configurable retry limits
+- NEW: Transaction rollback on any operation failure to ensure data consistency
+- NEW: Support for mixed operations (create, update, delete) within single transactions
+- NEW: Comprehensive transaction testing with complex business scenarios
+
 #### Enhanced Testing Infrastructure
 - NEW: Comprehensive webhook trigger testing for all trigger types (before_save, after_save, before_delete, after_delete, before_find, after_find)
 - NEW: Request idempotency system with `_RB_` prefix for Ruby-initiated requests to prevent duplicate operations
@@ -10,6 +38,8 @@
 - NEW: Complete test coverage for cache integration, date/timezone handling, batch operations, and model associations
 - NEW: Query aggregation pipeline tests with proper pointer conversion and MongoDB field handling
 - NEW: Cloud config variable testing for reading/writing Parse configuration settings
+- NEW: Integration tests for enhanced change tracking with after_save hook validation
+- NEW: Performance comparison testing for upsert methods with timing validation
 - IMPROVED: Webhook payload detection with `ruby_initiated?` and `client_initiated?` helper methods
 - IMPROVED: Smart callback skipping for Ruby operations to prevent callback loops
 - IMPROVED: Thread-safe request ID generation and configuration management

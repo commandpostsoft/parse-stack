@@ -193,11 +193,17 @@ result = Parse.call_function :myFunctionName, {param: value}
         - [`:scope_only`](#scope_only)
 - [Creating, Saving and Deleting Records](#creating-saving-and-deleting-records)
   - [Create](#create)
+  - [Upsert Operations](#upsert-operations)
+    - [first_or_create](#first_or_create)
+    - [first_or_create!](#first_or_create_bang)
+    - [create_or_update!](#create_or_update_bang)
   - [Saving](#saving)
   - [Saving applying User ACLs](#saving-applying-user-acls)
     - [Raising an exception when save fails](#raising-an-exception-when-save-fails)
+  - [Enhanced Object Fetching](#enhanced-object-fetching)
   - [Modifying Associations](#modifying-associations)
   - [Batch Requests](#batch-requests)
+  - [Atomic Transactions](#atomic-transactions)
   - [Magic `save_all`](#magic-save_all)
   - [Deleting](#deleting)
 - [Fetching, Finding and Counting Records](#fetching-finding-and-counting-records)
@@ -1413,41 +1419,66 @@ song.changed # ['name']
 
 ```
 
-If you want to either find the first resource matching some given criteria or just create that resource if it can't be found, you can use `first_or_create`. Note that if a match is not found, the object will not be saved to Parse automatically, since the framework provides support for heterogeneous object batch saving. This means you can group different object classes together and save them all at once through the `Array#save` method to reduce API requests. If you want to truly want to find a first or create (save) the object, you may use `first_or_create!`.
+## Upsert Operations
+Parse-Stack provides Rails-style upsert methods that follow ActiveRecord conventions for finding or creating objects with optimized performance.
+
+### first_or_create
+Find the first object matching the query conditions, or create a new **unsaved** object with the attributes. This follows Rails conventions where existing objects are returned unchanged, and new objects are created but not automatically saved.
 
 ```ruby
- # Finds matching song or creates a new unsaved object
+# Find existing song or create new unsaved object
 song = Song.first_or_create(name: "Awesome Song", available: true)
-song.id # nil since it wasn't found, and autosave is off.
-song.released = 1.day.from_now
-song.save
-song.id # now has a valid objectId ex. 'xyz1122df'
+if song.new?
+  song.released = 1.day.from_now
+  song.save  # Manually save when ready
+end
 
+# If found, returns existing object unchanged
 song = Song.first_or_create(name: "Awesome Song", available: true)
-song.id # 'xyz1122df`
-song.save # noop since nothing changed
-
-# first_or_create! : Return an existing OR newly saved object
-song = Song.first_or_create!(name: "Awesome Song", available: true)
-
+song.id # 'xyz1122df' - found existing object
 ```
 
-If the constraints you use for the query differ from the attributes you want to set for the new object, you can pass the attributes for creating a new resource as the second parameter to `#first_or_create`, also in the form of a `#Hash`.
+You can separate query conditions from creation attributes by using two hash parameters:
 
 ```ruby
-  song = Song.first_or_create({ name: "Long Way Home" }, { released: DateTime.now })
+# Query by name, but set additional attributes only if creating
+song = Song.first_or_create(
+  { name: "Long Way Home" },           # Query conditions  
+  { released: DateTime.now, genre: "rock" }  # Additional attributes for new objects
+)
 ```
 
-The above will search for a Song with name 'Long Way Home'. If it does not find a match, it will create a new instance with `name` set to 'Long Way Home' and the `released` date field to the current time, at time of execution. In this scenario, both hash arguments are merged to create a new instance with the second set of arguments overriding the first set.
+### first_or_create!
+Similar to `first_or_create`, but automatically saves new objects. Existing objects are returned unchanged.
 
 ```ruby
-  song = Song.first_or_create({ name: "Long Way Home" }, {
-          name: "Other Way Home",
-          released: DateTime.now # Time.now ok too
-    })
+# Find existing OR create and save new object
+song = Song.first_or_create!(name: "New Song", available: true)
+song.id # Always has an objectId (either found or newly saved)
 ```
 
-In the above case, if a Song is not found with name 'Long Way Home', the new instance will be created with `name` set to 'Other Way Home' and `released` set to `DateTime.now`.
+### create_or_update!
+Find the first object matching query conditions and update it with new attributes, or create a new saved object. Includes performance optimizations to skip saves when no changes are detected.
+
+```ruby
+# Update existing song or create new one
+song = Song.create_or_update!(
+  { name: "My Song" },                    # Query conditions
+  { released: Time.now, plays: 100 }     # Attributes to update/set
+)
+
+# Performance optimization: no save occurs if attributes are identical
+song = Song.create_or_update!(
+  { name: "My Song" },
+  { released: song.released }  # Same value - no save performed
+)
+```
+
+**Key Benefits:**
+- **Performance optimized**: Only saves when actual changes are detected
+- **Rails conventions**: `first_or_create` doesn't modify existing objects
+- **Flexible**: Separate query and attribute parameters for complex scenarios
+- **Batch friendly**: Unsaved objects can be grouped for efficient batch operations
 
 ### Saving
 To commit a new record or changes to an existing record to Parse, use the `#save` method. The method will automatically detect whether it is a new object or an existing one and call the appropriate workflow. The use of ActiveModel dirty tracking allows us to send only the changes that were made to the object when saving. **Saving a record will take care of both saving all the changed properties, and associations. However, any modified linked objects (ex. belongs_to) need to be saved independently.**
@@ -1505,6 +1536,32 @@ By default, we return `true` or `false` for save and destroy operations. If you 
 ```
 
 When enabled, if an error is returned by Parse due to saving or destroying a record, due to your `before_save` or `before_delete` validation cloud code triggers, `Parse::Object` will return the a `Parse::RecordNotSaved` exception type. This exception has an instance method of `#object` which contains the object that failed to save.
+
+## Enhanced Object Fetching
+Parse-Stack provides enhanced methods for fetching object data from Parse Server with improved consistency and flexibility.
+
+### fetch and fetch_object
+Both `Parse::Pointer` and `Parse::Object` support enhanced fetching methods that provide consistent behavior across different object types.
+
+```ruby
+# Enhanced fetch method with returnObject parameter (defaults to true)
+pointer = Parse::Pointer.new("Song", "xyz123")
+song_object = pointer.fetch(true)  # Returns fetched Parse::Object
+song_data = pointer.fetch(false)   # Returns raw hash data
+
+# Convenience method - always returns object
+song_object = pointer.fetch_object  # Equivalent to fetch(true)
+
+# Same methods work on existing Parse::Object instances
+song = Song.first
+refreshed_song = song.fetch_object  # Re-fetches and returns object
+```
+
+**Key Features:**
+- **Consistent API**: Same methods work for both `Parse::Pointer` and `Parse::Object`
+- **Flexible return types**: Choose between object instances or raw data
+- **Change tracking preservation**: Fetched objects maintain proper dirty tracking state
+- **Backwards compatible**: Existing `fetch` behavior preserved
 
 ### Modifying Associations
 Similar to `:array` types of properties, a `has_many` association is backed by a collection proxy class and requires the use of `#add` and `#remove` to modify the contents of the association in order for it to correctly manage changes and updates with Parse. Using `has_many` for associations has the additional functionality that we will only add items to the association if they are of a `Parse::Pointer` or `Parse::Object` type. By default, these associations are fetched with only pointer data. To fetch all the objects in the association, you can call `#fetch` or `#fetch!` on the collection. Note that because the framework supports chaining, it is better to only request the objects you need by utilizing their accessors.
@@ -1599,6 +1656,67 @@ This methodology works by continually fetching and saving older records related 
 
 If you plan on using this feature in a lot of places, we recommend making sure you have set a MongoDB index of at least `{ "_updated_at" : 1 }`.
 
+## Atomic Transactions
+Parse-Stack provides full atomic transaction support to ensure data consistency across multiple operations. All operations within a transaction either succeed completely or fail completely with automatic rollback.
+
+### Basic Transaction Usage
+Use `Parse::Object.transaction` with a block to group operations atomically:
+
+```ruby
+# Explicit batch operations
+Parse::Object.transaction do |batch|
+  # Update existing objects
+  user = Parse::User.first
+  user.score = 100
+  batch.add(user)
+  
+  # Create new objects
+  achievement = Achievement.new(user: user, name: "High Score")
+  batch.add(achievement)
+  
+  # All operations execute atomically
+end
+```
+
+### Auto-Batching with Return Values
+You can also return objects from the transaction block for automatic batching:
+
+```ruby
+# Objects returned from block are automatically batched
+Parse::Object.transaction do
+  user1 = Parse::User.first
+  user1.score = 200
+  
+  user2 = Parse::User.first(username: "player2")
+  user2.score = 150
+  
+  [user1, user2]  # Auto-batched for atomic save
+end
+```
+
+### Transaction Features
+- **Atomic operations**: All operations succeed or all fail with rollback
+- **Automatic retries**: Conflicts (error 251) are automatically retried with configurable limits
+- **Mixed operations**: Support create, update, and delete operations in single transaction
+- **Error handling**: Comprehensive error handling with meaningful exception messages
+
+```ruby
+# Transaction with custom retry limit and error handling
+begin
+  Parse::Object.transaction(retries: 10) do |batch|
+    # Complex business operations
+    order = Order.create!(items: cart_items, customer: customer)
+    inventory.update!(quantity: inventory.quantity - order.total_items)
+    customer.update!(last_order: order)
+    
+    [order, inventory, customer]
+  end
+rescue Parse::Error => e
+  puts "Transaction failed: #{e.message}"
+  # Handle failure (all changes rolled back)
+end
+```
+
 ### Deleting
 You can destroy a Parse record, just call the `#destroy` method. It will return a boolean value whether it was successful.
 
@@ -1624,6 +1742,12 @@ You can destroy a Parse record, just call the `#destroy` method. It will return 
  query = Song.where( constraints ) # returns a Parse::Query with where clauses
  song = Song.first( ... constraints ... ) # first Song matching constraints
  s1, s2, s3 = Song.first(3) # get first 3 records from Parse.
+
+ song = Song.latest( ... constraints ... ) # most recently created Song matching constraints
+ recent_songs = Song.latest(5) # get 5 most recently created Songs
+ 
+ song = Song.last_updated( ... constraints ... ) # most recently updated Song matching constraints  
+ updated_songs = Song.last_updated(3) # get 3 most recently updated Songs
 
  songs = Song.all( ... expressions ...) # get matching Song records. See Advanced Querying
 

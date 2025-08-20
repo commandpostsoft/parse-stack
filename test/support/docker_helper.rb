@@ -6,7 +6,7 @@ require 'uri'
 module Parse
   module Test
     class DockerHelper
-      COMPOSE_FILE = 'docker-compose.test.yml'
+      COMPOSE_FILE = 'scripts/docker/docker-compose.test.yml'
       CONTAINER_NAME = 'parse-stack-test-server'
       STARTUP_TIMEOUT = 30
 

@@ -238,6 +238,54 @@ module Parse
         return res.first fetch_count
       end
 
+      # Returns the most recently created object (ordered by created_at descending).
+      # @overload latest(count = 1)
+      #  @param count [Integer] The number of items to return.
+      #  @example
+      #   Object.latest(3) # => an array of the 3 most recently created objects.
+      #  @return [Parse::Object] if count == 1
+      #  @return [Array<Parse::Object>] if count > 1
+      # @overload latest(constraints = {})
+      #  @param constraints [Hash] a set of {Parse::Query} constraints.
+      #  @example
+      #   Object.latest(category: "news") # => most recent object in news category
+      #  @return [Parse::Object] the most recently created object matching constraints.
+      def latest(constraints = {})
+        fetch_count = 1
+        if constraints.is_a?(Numeric)
+          fetch_count = constraints.to_i
+          constraints = {}
+        end
+        constraints.merge!({ limit: fetch_count, order: :created_at.desc })
+        res = query(constraints).results
+        return res.first if fetch_count == 1
+        return res.first fetch_count
+      end
+
+      # Returns the most recently updated object (ordered by updated_at descending).
+      # @overload last_updated(count = 1)
+      #  @param count [Integer] The number of items to return.
+      #  @example
+      #   Object.last_updated(5) # => an array of the 5 most recently updated objects.
+      #  @return [Parse::Object] if count == 1
+      #  @return [Array<Parse::Object>] if count > 1
+      # @overload last_updated(constraints = {})
+      #  @param constraints [Hash] a set of {Parse::Query} constraints.
+      #  @example
+      #   Object.last_updated(status: "active") # => most recently updated active object
+      #  @return [Parse::Object] the most recently updated object matching constraints.
+      def last_updated(constraints = {})
+        fetch_count = 1
+        if constraints.is_a?(Numeric)
+          fetch_count = constraints.to_i
+          constraints = {}
+        end
+        constraints.merge!({ limit: fetch_count, order: :updated_at.desc })
+        res = query(constraints).results
+        return res.first if fetch_count == 1
+        return res.first fetch_count
+      end
+
       # Creates a count request which is more performant when counting objects.
       # @example
       #  # number of songs with a like count greater than 20.

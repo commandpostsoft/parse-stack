@@ -1,7 +1,7 @@
 #!/usr/bin/env ruby
-require_relative 'lib/parse/stack'
-require_relative 'test/support/test_server'
-require_relative 'test/support/docker_helper'
+require_relative '../lib/parse/stack'
+require_relative '../test/support/test_server'
+require_relative '../test/support/docker_helper'
 
 puts "Parse Stack Test Server Connection Test"
 puts "=" * 40

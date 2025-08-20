@@ -212,7 +212,7 @@ module Parse
         #   Parse::User.first_or_create({ ..query conditions..})
         #   Parse::User.first_or_create({ ..query conditions..}, {.. resource_attrs ..})
         # @param query_attrs [Hash] a set of query constraints that also are applied.
-        # @param resource_attrs [Hash] a set of attribute values to be applied if an object was not found.
+        # @param resource_attrs [Hash] a set of additional attribute values to be applied only if an object was not found.
         # @return [Parse::Object] a Parse::Object, whether found by the query or newly created.
         def first_or_create(query_attrs = {}, resource_attrs = {})
           query_attrs = query_attrs.symbolize_keys
@@ -220,9 +220,11 @@ module Parse
           obj = query(query_attrs).first
 
           if obj.blank?
-            obj = self.new query_attrs
+            # Object not found, create new one with query_attrs + resource_attrs
+            merged_attrs = query_attrs.merge(resource_attrs)
+            obj = self.new merged_attrs
           end
-          obj.apply_attributes!(resource_attrs, dirty_track: true)
+          # If object exists, return it as-is without any modifications
           
           obj
         end
@@ -245,16 +247,37 @@ module Parse
         end
 
         # Finds the first object matching the query conditions and updates it with the attributes, 
-        # or creates a new *saved* object with the attributes. 
+        # or creates a new *saved* object with the attributes. Saves new objects or existing objects with changes.
         # @example
         #   Parse::User.create_or_update!({ ..query conditions..}, {.. resource_attrs ..})
         # @param query_attrs [Hash] a set of query constraints that also are applied.
-        # @param resource_attrs [Hash] a set of attribute values to be applied if an object was not found.
+        # @param resource_attrs [Hash] a set of attribute values to be applied to found objects or used for creation.
         # @return [Parse::Object] a Parse::Object, whether found by the query or newly created.
         # @raise {Parse::RecordNotSaved} if the save fails
         def create_or_update!(query_attrs = {}, resource_attrs = {})
-          obj = first_or_create(query_attrs, resource_attrs)
-          obj.save!
+          query_attrs = query_attrs.symbolize_keys
+          resource_attrs = resource_attrs.symbolize_keys
+          obj = query(query_attrs).first
+
+          if obj.blank?
+            # Object not found, create new one with query_attrs + resource_attrs
+            merged_attrs = query_attrs.merge(resource_attrs)
+            obj = self.new merged_attrs
+            obj.save!
+          else
+            # Object exists, apply resource_attrs and save if changes detected
+            unless resource_attrs.empty?
+              # Check if any attributes would actually change before applying
+              has_changes = resource_attrs.any? do |key, value|
+                obj.respond_to?(key) && obj.send(key) != value
+              end
+              if has_changes
+                obj.apply_attributes!(resource_attrs, dirty_track: true)
+                obj.save!
+              end
+            end
+          end
+          
           obj
         end
 

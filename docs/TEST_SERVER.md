@@ -67,7 +67,7 @@ The Docker Compose setup provides:
 
 The setup uses a custom Docker image built on top of `parseplatform/parse-server:8.2.3` that includes:
 
-- **Custom startup script** (`start-parse.sh`) that sets the `PARSE_SERVER_MASTER_KEY_IPS` environment variable
+- **Custom startup script** (`scripts/start-parse.sh`) that sets the `PARSE_SERVER_MASTER_KEY_IPS` environment variable
 - **IP restriction bypass** allowing requests from any IP address (`0.0.0.0/0,::/0`)
 - **Automatic environment variable setup** for proper master key authentication
 
@@ -83,10 +83,12 @@ The setup resolves Parse Server's IP restriction for master key usage by:
 
 ```
 parse-stack-cpost/
-├── docker-compose.test.yml    # Main Docker Compose configuration
-├── Dockerfile.parse          # Custom Parse Server image
-├── start-parse.sh           # Startup script with environment setup
-├── test_server_connection.rb # Connection test script
+├── scripts/
+│   ├── docker/
+│   │   ├── docker-compose.test.yml # Main Docker Compose configuration
+│   │   └── Dockerfile.parse       # Custom Parse Server image
+│   ├── start-parse.sh             # Startup script with environment setup
+│   └── test_server_connection.rb  # Connection test script
 ├── config/
 │   └── parse-config.json    # Parse Server configuration (unused)
 ├── test/

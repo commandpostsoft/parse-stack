@@ -14,8 +14,8 @@ services:
 
   parse:
     build: 
-      context: .
-      dockerfile: Dockerfile.parse
+      context: ..
+      dockerfile: docker/Dockerfile.parse
     container_name: parse-stack-test-server
     ports:
       - "1337:1337"
@@ -23,8 +23,8 @@ services:
       mongo:
         condition: service_started
     volumes:
-      - ./test/cloud:/parse-server/cloud
-      - ./config:/parse-server/config
+      - ../../test/cloud:/parse-server/cloud
+      - ../../config:/parse-server/config
     # Remove health check for now since it's causing startup delays
     # healthcheck:
     #   test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:1337/parse/health"]
