@@ -103,7 +103,7 @@ class WebhookCallbacksTest < Minitest::Test
     result = Parse::Webhooks.call_route(:before_save, "TestObject", ruby_payload)
     
     refute prepare_save_called, "prepare_save! should not be called for Ruby-initiated requests"
-    assert_equal({ "name" => "test" }, result), "Should return changes payload"
+    assert_equal({ "name" => "test" }, result, "Should return changes payload")
     puts "✅ Ruby-initiated before_save skips prepare_save!"
     
     # Reset tracking
@@ -120,7 +120,7 @@ class WebhookCallbacksTest < Minitest::Test
     result = Parse::Webhooks.call_route(:before_save, "TestObject", client_payload)
     
     assert prepare_save_called, "prepare_save! should be called for client-initiated requests"
-    assert_equal({ "name" => "test" }, result), "Should return changes payload"
+    assert_equal({ "name" => "test" }, result, "Should return changes payload")
     puts "✅ Client-initiated before_save calls prepare_save!"
   end
   

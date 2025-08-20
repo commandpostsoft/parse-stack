@@ -92,7 +92,7 @@ module Parse
     # @return [Boolean]
     def ==(r)
       return false unless r.is_a?(Request)
-      @method == r.method && @path == r.uri && @body == r.body && @headers == r.headers
+      @method == r.method && @path == r.path && @body == r.body && @headers == r.headers
     end
 
     # Signature provies a way for us to compare different requests objects.

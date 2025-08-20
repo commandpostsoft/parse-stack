@@ -19,7 +19,16 @@ namespace :test do
     integration_files = FileList["test/lib/**/*integration_test.rb"]
     
     puts "Running #{integration_files.length} integration test files..."
-    integration_files.each do |file|
+    integration_files.each_with_index do |file, index|
+      puts "Running integration test #{index + 1}/#{integration_files.length}: #{file}"
+
+      # 10: docker integration test fails for cloud functions
+      skip_till = 0
+      if (index + 1) <= skip_till
+        puts "Skipping test #{index + 1} as per configuration\n"
+        next
+      end
+
       puts "\n" + "="*80
       puts "Running: #{file}"
       puts "="*80
@@ -33,7 +42,16 @@ namespace :test do
     unit_files = FileList["test/lib/**/*_test.rb"].exclude("test/lib/**/*integration_test.rb")
     
     puts "Running #{unit_files.length} unit test files (no Docker)..."
-    unit_files.each do |file|
+    unit_files.each_with_index do |file, index|
+      puts "Running unit test #{index + 1}/#{unit_files.length}: #{file}"
+
+      # 73 is problematic Testing Contains and Nin with Parse Objects with contains and nin 
+      skip_till = 0
+      if (index + 1) <= skip_till
+        puts "Skipping test #{index + 1} as per configuration"
+        next
+      end
+
       system("PARSE_TEST_USE_DOCKER=true ruby -Itest #{file}") || exit(1)
     end
     puts "\n✅ All unit tests completed successfully!"

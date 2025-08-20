@@ -151,6 +151,15 @@ module Parse
           
           # Wrap the batch to capture objects being added
           batch_wrapper = Object.new
+          batch_wrapper.define_singleton_method(:is_a?) do |klass|
+            klass == Parse::BatchOperation || super(klass)
+          end
+          batch_wrapper.define_singleton_method(:kind_of?) do |klass|
+            klass == Parse::BatchOperation || super(klass)
+          end
+          batch_wrapper.define_singleton_method(:instance_of?) do |klass|
+            klass == Parse::BatchOperation
+          end
           batch_wrapper.define_singleton_method(:add) do |obj|
             # Store original state when object is first added to transaction
             if obj.respond_to?(:attributes) && obj.respond_to?(:id) && !original_states.key?(obj)

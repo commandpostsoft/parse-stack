@@ -247,10 +247,26 @@ module Parse
       # @return [Boolean] true if the request originated from Ruby Parse Stack
       def ruby_initiated?
         @ruby_initiated ||= begin
-          request_id = @raw&.dig(:headers, 'x-parse-request-id') || 
-                      @raw&.dig('headers', 'x-parse-request-id') ||
-                      @raw&.dig(:headers, 'X-Parse-Request-Id') ||
-                      @raw&.dig('headers', 'X-Parse-Request-Id')
+          request_id = nil
+          
+          if @raw.respond_to?(:[])
+            # Check for headers at the top level first
+            request_id = @raw['x-parse-request-id'] || @raw['X-Parse-Request-Id'] ||
+                        @raw[:x_parse_request_id] || @raw[:'X-Parse-Request-Id']
+            
+            # If not found at top level, check nested headers
+            if request_id.nil?
+              headers_sym = @raw[:headers] if @raw[:headers].is_a?(Hash)
+              headers_str = @raw['headers'] if @raw['headers'].is_a?(Hash)
+              
+              if headers_sym
+                request_id = headers_sym['x-parse-request-id'] || headers_sym['X-Parse-Request-Id']
+              elsif headers_str
+                request_id = headers_str['x-parse-request-id'] || headers_str['X-Parse-Request-Id']
+              end
+            end
+          end
+          
           request_id&.start_with?('_RB_') || false
         end
       end

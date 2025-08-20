@@ -1,6 +1,16 @@
 require_relative '../../test_helper'
 require 'minitest/autorun'
 
+# Test class for webhook testing  
+class TestObject < Parse::Object
+  property :name
+  
+  # Override autofetch to prevent client connections in tests
+  def autofetch!(*args)
+    # No-op in tests
+  end
+end
+
 class WebhookTriggersTest < Minitest::Test
   
   def setup
@@ -9,6 +19,13 @@ class WebhookTriggersTest < Minitest::Test
     
     # Enable request idempotency for testing
     Parse::Request.enable_idempotency!
+    
+    # Setup minimal Parse client for testing to prevent connection errors
+    Parse.setup(
+      server_url: "https://test.parse.com",
+      application_id: "test",
+      api_key: "test"
+    )
   end
   
   def teardown
@@ -36,7 +53,7 @@ class WebhookTriggersTest < Minitest::Test
     
     # Test Ruby-initiated before_save
     ruby_payload_data = {
-      "triggerName" => "before_save",
+      "triggerName" => "beforeSave",
       "object" => { "className" => "TestObject", "objectId" => "test123", "name" => "original" },
       "headers" => { "x-parse-request-id" => "_RB_before_save_test" }
     }
@@ -56,7 +73,7 @@ class WebhookTriggersTest < Minitest::Test
     
     # Test client-initiated before_save
     client_payload_data = {
-      "triggerName" => "before_save",
+      "triggerName" => "beforeSave",
       "object" => { "className" => "TestObject", "objectId" => "test456", "name" => "original" },
       "headers" => { "x-parse-request-id" => "client_before_save_test" }
     }
@@ -71,7 +88,7 @@ class WebhookTriggersTest < Minitest::Test
   end
   
   def test_after_save_trigger
-    puts "\n=== Testing after_save Trigger ===
+    puts "\n=== Testing after_save Trigger ===="
     
     # Track hook execution
     hook_called = false
@@ -82,6 +99,8 @@ class WebhookTriggersTest < Minitest::Test
     test_object = Object.new
     test_object.define_singleton_method(:run_after_save_callbacks) { callback_executed = true }
     test_object.define_singleton_method(:is_a?) { |klass| klass == Parse::Object }
+    test_object.define_singleton_method(:name=) { |value| @name = value }
+    test_object.define_singleton_method(:name) { @name }
     
     # Register afterSave hook
     Parse::Webhooks.route(:after_save, "TestObject") do |payload|
@@ -92,7 +111,7 @@ class WebhookTriggersTest < Minitest::Test
     
     # Test Ruby-initiated after_save
     ruby_payload_data = {
-      "triggerName" => "after_save",
+      "triggerName" => "afterSave",
       "object" => { "className" => "TestObject", "objectId" => "after123", "name" => "saved" },
       "original" => { "className" => "TestObject", "objectId" => "after123", "name" => "old" },
       "headers" => { "x-parse-request-id" => "_RB_after_save_test" }
@@ -118,7 +137,7 @@ class WebhookTriggersTest < Minitest::Test
     
     # Test client-initiated after_save (new object)
     client_payload_data = {
-      "triggerName" => "after_save",
+      "triggerName" => "afterSave",
       "object" => { "className" => "TestObject", "objectId" => "after456", "name" => "new" },
       "original" => nil,  # New object
       "headers" => { "x-parse-request-id" => "client_after_save_test" }
@@ -141,7 +160,7 @@ class WebhookTriggersTest < Minitest::Test
   end
   
   def test_before_delete_trigger
-    puts "\n=== Testing before_delete Trigger ===
+    puts "\n=== Testing before_delete Trigger ===="
     
     # Track hook execution
     hook_called = false
@@ -152,6 +171,8 @@ class WebhookTriggersTest < Minitest::Test
     test_object = Object.new
     test_object.define_singleton_method(:run_callbacks) { |type, &block| callback_executed = true; block.call if block }
     test_object.define_singleton_method(:is_a?) { |klass| klass == Parse::Object }
+    test_object.define_singleton_method(:name=) { |value| @name = value }
+    test_object.define_singleton_method(:name) { @name }
     
     # Register beforeDelete hook
     Parse::Webhooks.route(:before_delete, "TestObject") do |payload|
@@ -165,7 +186,7 @@ class WebhookTriggersTest < Minitest::Test
     
     # Test Ruby-initiated before_delete
     ruby_payload_data = {
-      "triggerName" => "before_delete",
+      "triggerName" => "beforeDelete",
       "object" => { "className" => "TestObject", "objectId" => "delete123", "name" => "to_delete" },
       "headers" => { "x-parse-request-id" => "_RB_before_delete_test" }
     }
@@ -189,7 +210,7 @@ class WebhookTriggersTest < Minitest::Test
     
     # Test client-initiated before_delete
     client_payload_data = {
-      "triggerName" => "before_delete",
+      "triggerName" => "beforeDelete",
       "object" => { "className" => "TestObject", "objectId" => "delete456", "name" => "to_delete" },
       "headers" => { "x-parse-request-id" => "client_before_delete_test" }
     }
@@ -207,7 +228,7 @@ class WebhookTriggersTest < Minitest::Test
   end
   
   def test_after_delete_trigger
-    puts "\n=== Testing after_delete Trigger ===
+    puts "\n=== Testing after_delete Trigger ===="
     
     # Track hook execution
     hook_called = false
@@ -230,7 +251,7 @@ class WebhookTriggersTest < Minitest::Test
     
     # Test Ruby-initiated after_delete
     ruby_payload_data = {
-      "triggerName" => "after_delete",
+      "triggerName" => "afterDelete",
       "object" => { "className" => "TestObject", "objectId" => "deleted123", "name" => "was_deleted" },
       "headers" => { "x-parse-request-id" => "_RB_after_delete_test" }
     }
@@ -251,7 +272,7 @@ class WebhookTriggersTest < Minitest::Test
     
     # Test client-initiated after_delete
     client_payload_data = {
-      "triggerName" => "after_delete",
+      "triggerName" => "afterDelete",
       "object" => { "className" => "TestObject", "objectId" => "deleted456", "name" => "was_deleted" },
       "headers" => { "x-parse-request-id" => "client_after_delete_test" }
     }
@@ -266,7 +287,7 @@ class WebhookTriggersTest < Minitest::Test
   end
   
   def test_before_find_trigger
-    puts "\n=== Testing before_find Trigger ===
+    puts "\n=== Testing before_find Trigger ===="
     
     # Track hook execution
     hook_called = false
@@ -289,7 +310,7 @@ class WebhookTriggersTest < Minitest::Test
     
     # Test Ruby-initiated before_find
     ruby_payload_data = {
-      "triggerName" => "before_find",
+      "triggerName" => "beforeFind",
       "className" => "TestObject",
       "query" => { "where" => { "name" => "test" } },
       "headers" => { "x-parse-request-id" => "_RB_before_find_test" }
@@ -313,7 +334,7 @@ class WebhookTriggersTest < Minitest::Test
     
     # Test client-initiated before_find
     client_payload_data = {
-      "triggerName" => "before_find",
+      "triggerName" => "beforeFind",
       "className" => "TestObject", 
       "query" => { "where" => { "category" => "public" } },
       "headers" => { "x-parse-request-id" => "client_before_find_test" }
@@ -331,7 +352,7 @@ class WebhookTriggersTest < Minitest::Test
   end
   
   def test_after_find_trigger
-    puts "\n=== Testing after_find Trigger ===
+    puts "\n=== Testing after_find Trigger ===="
     
     # Track hook execution
     hook_called = false
@@ -357,7 +378,7 @@ class WebhookTriggersTest < Minitest::Test
     
     # Test Ruby-initiated after_find
     ruby_payload_data = {
-      "triggerName" => "after_find",
+      "triggerName" => "afterFind",
       "className" => "TestObject",
       "objects" => [
         { "className" => "TestObject", "objectId" => "found1", "name" => "result1" },
@@ -385,7 +406,7 @@ class WebhookTriggersTest < Minitest::Test
     
     # Test client-initiated after_find
     client_payload_data = {
-      "triggerName" => "after_find",
+      "triggerName" => "afterFind",
       "className" => "TestObject",
       "objects" => [
         { "className" => "TestObject", "objectId" => "found3", "name" => "result3" }
@@ -410,12 +431,12 @@ class WebhookTriggersTest < Minitest::Test
     
     # Test all trigger type identification methods
     trigger_types = [
-      { name: "before_save", method: :before_save? },
-      { name: "after_save", method: :after_save? },
-      { name: "before_delete", method: :before_delete? },
-      { name: "after_delete", method: :after_delete? },
-      { name: "before_find", method: :before_find? },
-      { name: "after_find", method: :after_find? }
+      { name: "beforeSave", method: :before_save? },
+      { name: "afterSave", method: :after_save? },
+      { name: "beforeDelete", method: :before_delete? },
+      { name: "afterDelete", method: :after_delete? },
+      { name: "beforeFind", method: :before_find? },
+      { name: "afterFind", method: :after_find? }
     ]
     
     trigger_types.each do |trigger_info|
@@ -439,8 +460,8 @@ class WebhookTriggersTest < Minitest::Test
     end
     
     # Test before_trigger? and after_trigger? helper methods
-    before_triggers = ["before_save", "before_delete", "before_find"]
-    after_triggers = ["after_save", "after_delete", "after_find"]
+    before_triggers = ["beforeSave", "beforeDelete", "beforeFind"]
+    after_triggers = ["afterSave", "afterDelete", "afterFind"]
     
     before_triggers.each do |trigger_name|
       payload = Parse::Webhooks::Payload.new("triggerName" => trigger_name)
@@ -476,7 +497,7 @@ class WebhookTriggersTest < Minitest::Test
     
     # Test multiple hooks execution
     payload_data = {
-      "triggerName" => "after_save",
+      "triggerName" => "afterSave",
       "object" => { "className" => "TestObject", "objectId" => "multi123" },
       "headers" => { "x-parse-request-id" => "_RB_multi_test" }
     }
@@ -504,7 +525,7 @@ class WebhookTriggersTest < Minitest::Test
     end
     
     before_payload_data = {
-      "triggerName" => "before_save",
+      "triggerName" => "beforeSave",
       "object" => { "className" => "TestObject", "objectId" => "single123" }
     }
     
@@ -531,7 +552,7 @@ class WebhookTriggersTest < Minitest::Test
     
     # Test Ruby request (should not error)
     ruby_payload_data = {
-      "triggerName" => "before_save",
+      "triggerName" => "beforeSave",
       "object" => { "className" => "TestObject", "objectId" => "error123" },
       "headers" => { "x-parse-request-id" => "_RB_error_test" }
     }
@@ -545,7 +566,7 @@ class WebhookTriggersTest < Minitest::Test
     
     # Test client request (should raise error when called through full webhook stack)
     client_payload_data = {
-      "triggerName" => "before_save", 
+      "triggerName" => "beforeSave", 
       "object" => { "className" => "TestObject", "objectId" => "error456" },
       "headers" => { "x-parse-request-id" => "client_error_test" }
     }
@@ -584,7 +605,7 @@ class WebhookTriggersTest < Minitest::Test
     
     # Test specific class - should call specific hook
     payload_data = {
-      "triggerName" => "after_save",
+      "triggerName" => "afterSave",
       "object" => { "className" => "TestObject", "objectId" => "wildcard123" }
     }
     
@@ -602,7 +623,7 @@ class WebhookTriggersTest < Minitest::Test
     wildcard_called = false
     
     unknown_payload_data = {
-      "triggerName" => "after_save",
+      "triggerName" => "afterSave",
       "object" => { "className" => "UnknownClass", "objectId" => "unknown123" }
     }
     

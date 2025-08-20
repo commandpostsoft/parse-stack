@@ -270,7 +270,7 @@ class RequestIdempotencyTest < Minitest::Test
     # Signature should include method, path, and body but not headers
     assert_equal :POST, signature[:method], "Signature should include method"
     assert_equal '/classes/TestObject', signature[:path], "Signature should include path"
-    assert_equal({ name: 'test' }, signature[:body]), "Signature should include body"
+    assert_equal({ name: 'test' }, signature[:body], "Signature should include body")
     
     # Signature should not include request ID (which is in headers)
     refute signature.key?(:request_id), "Signature should not include request ID"

@@ -1,5 +1,9 @@
 // Cloud Code for Parse Server testing
 
+Parse.Cloud.define('hello', () => {
+  return 'Hello world!';
+});
+
 Parse.Cloud.define('helloName', async (request) => {
   return `Hello ${request.params.name || 'World'}!`;
 });
@@ -18,7 +22,9 @@ Parse.Cloud.beforeSave('TestObject', (request) => {
 });
 
 Parse.Cloud.beforeSave('TestWithHook', (request) => {
+  console.log('BeforeSave hook triggered for TestWithHook!');
   request.object.set('beforeSaveRan', true);
+  return request.object;
 });
 
 Parse.Cloud.afterSave('TestObject', (request) => {
