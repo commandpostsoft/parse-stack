@@ -65,7 +65,7 @@ class DistinctPointerIntegrationTest < Minitest::Test
         
         # Test distinct on pointer field
         query = Parse::Query.new("Asset")
-        result = query.distinct(:project)
+        result = query.distinct_pointers(:project)
         
         # Should return Parse::Pointer objects for distinct teams
         assert_equal 3, result.size, "Should return 3 distinct teams"
@@ -212,7 +212,7 @@ class DistinctPointerIntegrationTest < Minitest::Test
         
         # Test distinct - should handle both formats
         query = Parse::Query.new("Asset")
-        result = query.distinct(:project)
+        result = query.distinct_pointers(:project)
         
         assert_equal 2, result.size, "Should return 2 distinct teams"
         
@@ -256,7 +256,7 @@ class DistinctPointerIntegrationTest < Minitest::Test
         
         # Test distinct - should handle null values appropriately
         query = Parse::Query.new("Asset")
-        result = query.distinct(:project)
+        result = query.distinct_pointers(:project)
         
         # Should return at least the team pointer, may or may not include null
         assert result.size >= 1, "Should return at least 1 result"
@@ -304,7 +304,7 @@ class DistinctPointerIntegrationTest < Minitest::Test
         start_time = Time.now
         
         query = Parse::Query.new("Asset")
-        result = query.distinct(:project)
+        result = query.distinct_pointers(:project)
         
         end_time = Time.now
         duration = end_time - start_time
@@ -318,6 +318,46 @@ class DistinctPointerIntegrationTest < Minitest::Test
         end
         
         puts "✅ Distinct performance test completed in #{duration}s"
+      end
+    end
+  end
+
+  def test_distinct_default_behavior_returns_ids
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+
+    with_parse_server do
+      with_timeout(15, "distinct default behavior test") do
+        # Create teams
+        team1 = Team.new(name: "Default Test Team 1")
+        team2 = Team.new(name: "Default Test Team 2")
+        
+        assert team1.save, "Should save team1"
+        assert team2.save, "Should save team2"
+        
+        # Create assets
+        asset1 = Asset.new(name: "Asset 1", project: team1.pointer)
+        asset2 = Asset.new(name: "Asset 2", project: team2.pointer)
+        
+        assert asset1.save, "Should save asset1"
+        assert asset2.save, "Should save asset2"
+        
+        # Test distinct without return_pointers - should return IDs
+        query = Parse::Query.new("Asset")
+        result = query.distinct(:project)
+        
+        assert_equal 2, result.size, "Should return 2 distinct team IDs"
+        
+        result.each do |id|
+          assert_kind_of String, id, "Each result should be a String ID"
+          assert id.present?, "ID should not be empty"
+        end
+        
+        # Verify the IDs match our created teams
+        result_ids = result.sort
+        expected_ids = [team1.id, team2.id].sort
+        assert_equal expected_ids, result_ids, "Should return IDs of both teams"
+        
+        puts "✅ Distinct default behavior returns IDs correctly"
       end
     end
   end

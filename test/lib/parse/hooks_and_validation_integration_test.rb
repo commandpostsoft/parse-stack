@@ -1,4 +1,5 @@
 require_relative '../../test_helper'
+require_relative '../../test_helper_integration'
 require 'minitest/autorun'
 
 # Test model with hooks, validations, and change tracking
@@ -33,26 +34,20 @@ class TestProduct < Parse::Object
     end
   end
   
-  # Hooks
-  before_save :normalize_data
+  # Hooks - track changes before normalization
   before_save :track_before_save_changes
+  before_save :normalize_data
   after_save :track_after_save_changes
   before_create :track_before_create
   after_create :track_after_create
   before_destroy :track_before_destroy
   after_destroy :track_after_destroy
   
-  def normalize_data
-    self.name = name.strip.titleize if name.present? && name_changed?
-    self.sku = sku.upcase if sku.present? && sku_changed?
-    self.last_modified_at = Time.now.utc
-  end
-  
   def track_before_save_changes
     self.before_save_called = true
     self.save_count = (self.save_count || 0) + 1
     
-    # Track what's changed
+    # Track what's changed BEFORE any normalization
     self.changes_in_before_save = {
       name_changed: name_changed?,
       price_changed: price_changed?,
@@ -78,10 +73,16 @@ class TestProduct < Parse::Object
     self.updated_by = "system"
   end
   
+  def normalize_data
+    self.name = name.strip.titleize if name.present? && name_changed?
+    self.sku = sku.upcase if sku.present? && sku_changed?
+    self.last_modified_at = Time.now.utc
+  end
+  
   def track_after_save_changes
     self.after_save_called = true
     
-    # In after_save, changes should be cleared
+    # In after_save, enhanced change tracking shows what was changed in the save that just completed
     self.changes_in_after_save = {
       name_changed: name_changed?,
       price_changed: price_changed?,
@@ -225,7 +226,7 @@ class TestAccount < Parse::Object
   def check_halt_condition
     if should_halt_save
       errors.add(:base, "Save halted by before_save hook")
-      return false  # Return false to halt the save
+      return false  # Return false to halt the save in ActiveModel hooks
     end
   end
   
@@ -328,15 +329,14 @@ class HooksAndValidationIntegrationTest < Minitest::Test
         # Save the product
         assert product.save, "Product should save successfully"
         
-        # In after_save, changes should be cleared
+        # In after_save, enhanced change tracking shows what was changed in the completed save
         assert product.after_save_called, "after_save hook should have been called"
-        assert !product.changes_in_after_save[:name_changed], "name_changed should be false in after_save"
-        assert !product.changes_in_after_save[:price_changed], "price_changed should be false in after_save"
-        assert !product.changes_in_after_save[:sku_changed], "sku_changed should be false in after_save"
+        assert product.changes_in_after_save[:name_changed], "name_changed should be true in after_save (was changed in create)"
+        assert product.changes_in_after_save[:price_changed], "price_changed should be true in after_save (was changed in create)"
+        assert product.changes_in_after_save[:sku_changed], "sku_changed should be true in after_save (was changed in create)"
         
         puts "✓ After save hook change state correct"
-        puts "  - All _changed? methods return false after save"
-        puts "  - Changes cleared: #{product.changes_in_after_save.values.all? { |v| !v }}"
+        puts "  - Enhanced _changed? methods show what was changed in the completed save"
       end
     end
   end
@@ -567,7 +567,6 @@ class HooksAndValidationIntegrationTest < Minitest::Test
   end
 
   def test_hook_halting_save
-    skip "Hook halting mechanism needs investigation - returning false from before_save doesn't halt"
     skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
     
     with_parse_server do

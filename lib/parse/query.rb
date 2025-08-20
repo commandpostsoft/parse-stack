@@ -749,6 +749,14 @@ module Parse
       end
     end
 
+    # Convenience method for distinct queries that always return Parse::Pointer objects for pointer fields.
+    # This is equivalent to calling distinct(field, return_pointers: true).
+    # @param field [Symbol, String] the field name to get distinct values for
+    # @return [Array] array of distinct values, with pointer fields converted to Parse::Pointer objects
+    def distinct_pointers(field)
+      distinct(field, return_pointers: true)
+    end
+
     # Perform a count query.
     # @example
     #  # get number of songs with a play_count > 10
