@@ -113,8 +113,51 @@ class ACLConstraintsIntegrationTest < Minitest::Test
         puts "DEBUG: Query requires aggregation: #{query_admin.requires_aggregation_pipeline?}"
         puts "DEBUG: Query pipeline: #{query_admin.pipeline.inspect}"
         
+        # Debug: Check raw document storage in MongoDB using aggregation
+        # Check for _rperm/_wperm fields and project them to see if they exist but are null/empty
+        raw_pipeline = [
+          { 
+            "$project" => { 
+              "title" => 1, 
+              "ACL" => 1, 
+              "_rperm" => 1, 
+              "_wperm" => 1,
+              "rperm_exists" => { "$ifNull" => ["$_rperm", "MISSING"] },
+              "wperm_exists" => { "$ifNull" => ["$_wperm", "MISSING"] },
+              "rperm_type" => { "$type" => "$_rperm" },
+              "wperm_type" => { "$type" => "$_wperm" },
+              "all_fields" => "$$ROOT"  # Show all fields in the document
+            } 
+          }
+        ]
+        raw_agg_query = TestDocument.new.client.aggregate_pipeline("TestDocument", raw_pipeline)
+        raw_results = raw_agg_query.results || []
+        puts "DEBUG: Raw MongoDB document structure with field analysis:"
+        raw_results.each_with_index do |doc, i|
+          puts "  Doc #{i+1}:"
+          puts "    Title: #{doc['title']}"
+          puts "    _rperm exists: #{doc['rperm_exists']}"  
+          puts "    _wperm exists: #{doc['wperm_exists']}"
+          puts "    _rperm type: #{doc['rperm_type']}"
+          puts "    _wperm type: #{doc['wperm_type']}"
+          puts "    ACL field: #{doc['ACL']}"
+          puts "    All fields keys: #{doc['all_fields']&.keys&.inspect}"
+        end
+        
+        # Debug query execution path
+        puts "DEBUG: Query requires aggregation: #{query_admin.requires_aggregation_pipeline?}"
+        puts "DEBUG: Query aggregation pipeline: #{query_admin.send(:build_aggregation_pipeline).inspect}"
+        
         admin_results = query_admin.results
         puts "DEBUG: Admin results count: #{admin_results.size}"
+        
+        # Debug: Test the aggregation pipeline directly to see if it works
+        puts "DEBUG: Testing aggregation pipeline directly:"
+        test_pipeline = [{"$match"=>{"$or"=>[{"_rperm"=>{"$in"=>["role:#{admin_role.name}", "*"]}}, {"_rperm"=>{"$exists"=>false}}]}}]
+        direct_agg_query = TestDocument.new.client.aggregate_pipeline("TestDocument", test_pipeline)
+        direct_results = direct_agg_query.results || []
+        puts "DEBUG: Direct aggregation results count: #{direct_results.size}"
+        puts "DEBUG: Direct aggregation results titles: #{direct_results.map { |r| r['title'] }.inspect}"
         
         # Test public access specifically - should find the public document
         public_query = Parse::Query.new("TestDocument")
@@ -265,11 +308,6 @@ class ACLConstraintsIntegrationTest < Minitest::Test
         query_user1.where(:ACL.readable_by => user1)
         user1_results = query_user1.results
         
-        puts "DEBUG: User1 ID: #{user1.id}"
-        puts "DEBUG: User1 query pipeline: #{query_user1.pipeline.inspect}"
-        puts "DEBUG: User1 results count: #{user1_results.size}"
-        puts "DEBUG: User1 results titles: #{user1_results.map{ |doc| doc["title"] }}"
-        
         user1_titles = user1_results.map { |doc| doc["title"] }.sort
         expected_user1_titles = ["User1 Private Doc", "Shared Doc"].sort
         assert_equal expected_user1_titles, user1_titles, "User1 should read both documents"
@@ -286,10 +324,6 @@ class ACLConstraintsIntegrationTest < Minitest::Test
         query_user1_alt = Parse::Query.new("TestDocument")
         query_user1_alt.readable_by(user1)
         user1_alt_results = query_user1_alt.results
-        
-        puts "DEBUG: User1 alt query pipeline: #{query_user1_alt.pipeline.inspect}"
-        puts "DEBUG: User1 alt results count: #{user1_alt_results.size}"
-        puts "DEBUG: User1 alt results titles: #{user1_alt_results.map{ |doc| doc["title"] }}"
         
         user1_alt_titles = user1_alt_results.map { |doc| doc["title"] }.sort
         assert_equal expected_user1_titles, user1_alt_titles, "User1 object should work consistently"

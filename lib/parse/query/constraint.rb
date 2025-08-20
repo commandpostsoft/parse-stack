@@ -103,6 +103,12 @@ module Parse
       # @return [Object] a formatted value based on the data type.
       def formatted_value(value)
         d = value
+        
+        # Handle arrays by recursively processing each element
+        if d.is_a?(Array)
+          return d.map { |item| formatted_value(item) }
+        end
+        
         d = { __type: Parse::Model::TYPE_DATE, iso: d.utc.iso8601(3) } if d.respond_to?(:utc)
         # if it responds to parse_date (most likely a time/date object), then call the conversion
         d = d.parse_date if d.respond_to?(:parse_date)

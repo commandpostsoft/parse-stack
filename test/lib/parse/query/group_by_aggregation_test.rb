@@ -219,6 +219,10 @@ class TestGroupByAggregation < Minitest::Test
     
     mock_response = Minitest::Mock.new
     mock_response.expect :success?, true
+    # Allow result to be called multiple times
+    mock_response.expect :result, [
+      { "objectId" => { "year" => 2024, "month" => 11 }, "count" => 45 }
+    ]
     mock_response.expect :result, [
       { "objectId" => { "year" => 2024, "month" => 11 }, "count" => 45 }
     ]

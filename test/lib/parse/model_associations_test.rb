@@ -10,13 +10,13 @@ class AssociationTestAuthor < Parse::Object
   property :birth_year, :integer
   
   # Has many associations  
-  has_many :books, field: :author  # query-based, look for books where author = self
+  has_many :books, as: :association_test_book, field: :author  # query-based, look for books where author = self
   has_many :articles, through: :array  # array-based
-  has_many :fans, through: :relation   # relation-based
+  has_many :fans, through: :relation, as: :association_test_fan   # relation-based
   
-  # Has one association
-  has_one :featured_book, as: :book
-  has_one :latest_book, -> { where(order: :created_at.desc) }, as: :book
+  # Has one association  
+  has_one :featured_book, as: :association_test_book, field: :author
+  has_one :latest_book, -> { order(:published_at.desc) }, as: :association_test_book, field: :author
 end
 
 class AssociationTestBook < Parse::Object
@@ -732,7 +732,7 @@ class ModelAssociationsTest < Minitest::Test
         puts "✓ Relation first() works: #{first_fan.name}"
         
         # Test limit
-        limited_fans = author_fans.limit(1).all
+        limited_fans = author_fans.limit(1).results
         assert_equal 1, limited_fans.length, "Limited query should return 1 fan"
         puts "✓ Relation limit works"
         

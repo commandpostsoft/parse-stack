@@ -179,16 +179,23 @@ class TestQueryAggregationFeatures < Minitest::Test
     mock_response.expect :error?, false
     mock_response.expect :success?, true
     mock_response.expect :result, [
-      { "objectId" => "team1", "className" => "Team" },
-      { "objectId" => "team2", "className" => "Team" }
+      { "value" => "Team$team1" },
+      { "value" => "Team$team2" }
     ]
     
     @mock_client.expect :aggregate_pipeline, mock_response do |table, pipeline, **kwargs|
       table == "TestClass" && pipeline.is_a?(Array)
     end
     
-    @query.stub :to_pointers, ->(list) {
-      list.map { |m| Parse::Pointer.new(m["className"] || "TestClass", m["objectId"]) }
+    @query.stub :to_pointers, ->(list, field = nil) {
+      list.map do |m|
+        if m.is_a?(String) && m.include?('$')
+          class_name, object_id = m.split('$', 2)
+          Parse::Pointer.new(class_name, object_id)
+        else
+          Parse::Pointer.new(m["className"] || "TestClass", m["objectId"])
+        end
+      end
     } do
       results = @query.distinct_objects(:author_team, return_pointers: true)
       

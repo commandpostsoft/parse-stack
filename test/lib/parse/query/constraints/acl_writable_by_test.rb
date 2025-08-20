@@ -13,7 +13,18 @@ class ACLWritableByConstraintTest < Minitest::Test
     constraint = @constraint_class.new(:ACL, "Admin")
     result = constraint.build
     
-    expected = { "$or" => [{ "ACL.role:Admin.write" => true }] }
+    expected = {
+      "__aggregation_pipeline" => [
+        {
+          "$match" => {
+            "$or" => [
+              { "_wperm" => { "$in" => ["role:Admin", "*"] } },
+              { "_wperm" => { "$exists" => false } }
+            ]
+          }
+        }
+      ]
+    }
     assert_equal expected, result, "Should create ACL constraint for single role"
     puts "✅ Single role string constraint works correctly"
   end
@@ -24,7 +35,18 @@ class ACLWritableByConstraintTest < Minitest::Test
     constraint = @constraint_class.new(:ACL, "role:Admin")
     result = constraint.build
     
-    expected = { "$or" => [{ "ACL.role:Admin.write" => true }] }
+    expected = {
+      "__aggregation_pipeline" => [
+        {
+          "$match" => {
+            "$or" => [
+              { "_wperm" => { "$in" => ["role:Admin", "*"] } },
+              { "_wperm" => { "$exists" => false } }
+            ]
+          }
+        }
+      ]
+    }
     assert_equal expected, result, "Should handle role: prefix correctly"
     puts "✅ Role string with prefix constraint works correctly"
   end
@@ -35,11 +57,17 @@ class ACLWritableByConstraintTest < Minitest::Test
     constraint = @constraint_class.new(:ACL, ["Admin", "Moderator"])
     result = constraint.build
     
-    expected = { 
-      "$or" => [
-        { "ACL.role:Admin.write" => true },
-        { "ACL.role:Moderator.write" => true }
-      ] 
+    expected = {
+      "__aggregation_pipeline" => [
+        {
+          "$match" => {
+            "$or" => [
+              { "_wperm" => { "$in" => ["role:Admin", "role:Moderator", "*"] } },
+              { "_wperm" => { "$exists" => false } }
+            ]
+          }
+        }
+      ]
     }
     assert_equal expected, result, "Should create ACL constraint for multiple roles"
     puts "✅ Array of role strings constraint works correctly"
@@ -59,7 +87,18 @@ class ACLWritableByConstraintTest < Minitest::Test
     constraint = @constraint_class.new(:ACL, user)
     result = constraint.build
     
-    expected = { "$or" => [{ "ACL.user123.write" => true }] }
+    expected = {
+      "__aggregation_pipeline" => [
+        {
+          "$match" => {
+            "$or" => [
+              { "_wperm" => { "$in" => ["user123", "*"] } },
+              { "_wperm" => { "$exists" => false } }
+            ]
+          }
+        }
+      ]
+    }
     assert_equal expected, result, "Should create ACL constraint for user object"
     puts "✅ User object constraint works correctly"
   end
@@ -76,7 +115,18 @@ class ACLWritableByConstraintTest < Minitest::Test
     constraint = @constraint_class.new(:ACL, user_pointer)
     result = constraint.build
     
-    expected = { "$or" => [{ "ACL.user456.write" => true }] }
+    expected = {
+      "__aggregation_pipeline" => [
+        {
+          "$match" => {
+            "$or" => [
+              { "_wperm" => { "$in" => ["user456", "*"] } },
+              { "_wperm" => { "$exists" => false } }
+            ]
+          }
+        }
+      ]
+    }
     assert_equal expected, result, "Should create ACL constraint for user pointer"
     puts "✅ User pointer constraint works correctly"
   end
@@ -101,13 +151,17 @@ class ACLWritableByConstraintTest < Minitest::Test
     constraint = @constraint_class.new(:ACL, [user, user_pointer, "Admin", "role:Moderator"])
     result = constraint.build
     
-    expected = { 
-      "$or" => [
-        { "ACL.user789.write" => true },
-        { "ACL.user101.write" => true },
-        { "ACL.role:Admin.write" => true },
-        { "ACL.role:Moderator.write" => true }
-      ] 
+    expected = {
+      "__aggregation_pipeline" => [
+        {
+          "$match" => {
+            "$or" => [
+              { "_wperm" => { "$in" => ["user789", "user101", "role:Admin", "role:Moderator", "*"] } },
+              { "_wperm" => { "$exists" => false } }
+            ]
+          }
+        }
+      ]
     }
     assert_equal expected, result, "Should handle mixed array of users and roles"
     puts "✅ Mixed array constraint works correctly"
@@ -119,7 +173,18 @@ class ACLWritableByConstraintTest < Minitest::Test
     constraint = @constraint_class.new(:_wperm, ["Admin", "Moderator"])
     result = constraint.build
     
-    expected = { "_wperm" => { "$in" => ["role:Admin", "role:Moderator", "*"] } }
+    expected = {
+      "__aggregation_pipeline" => [
+        {
+          "$match" => {
+            "$or" => [
+              { "_wperm" => { "$in" => ["role:Admin", "role:Moderator", "*"] } },
+              { "_wperm" => { "$exists" => false } }
+            ]
+          }
+        }
+      ]
+    }
     assert_equal expected, result, "Should create _wperm constraint with public access"
     puts "✅ _wperm field constraint works correctly"
   end
@@ -138,7 +203,18 @@ class ACLWritableByConstraintTest < Minitest::Test
     constraint = @constraint_class.new(:_wperm, [user, "Admin"])
     result = constraint.build
     
-    expected = { "_wperm" => { "$in" => ["user123", "role:Admin", "*"] } }
+    expected = {
+      "__aggregation_pipeline" => [
+        {
+          "$match" => {
+            "$or" => [
+              { "_wperm" => { "$in" => ["user123", "role:Admin", "*"] } },
+              { "_wperm" => { "$exists" => false } }
+            ]
+          }
+        }
+      ]
+    }
     assert_equal expected, result, "Should create _wperm constraint with user ID and roles"
     puts "✅ _wperm with user constraint works correctly"
   end
@@ -179,7 +255,18 @@ class ACLWritableByConstraintTest < Minitest::Test
     constraint = @constraint_class.new(:ACL, role)
     result = constraint.build
     
-    expected = { "$or" => [{ "ACL.role:TestRole.write" => true }] }
+    expected = {
+      "__aggregation_pipeline" => [
+        {
+          "$match" => {
+            "$or" => [
+              { "_wperm" => { "$in" => ["role:TestRole", "*"] } },
+              { "_wperm" => { "$exists" => false } }
+            ]
+          }
+        }
+      ]
+    }
     assert_equal expected, result, "Should create ACL constraint for role object"
     puts "✅ Role object constraint works correctly"
   end
@@ -194,8 +281,30 @@ class ACLWritableByConstraintTest < Minitest::Test
     writable_result = writable_constraint.build
     
     # Should be the same structure but checking different permissions
-    expected_readable = { "$or" => [{ "ACL.role:Admin.read" => true }] }
-    expected_writable = { "$or" => [{ "ACL.role:Admin.write" => true }] }
+    expected_readable = {
+      "__aggregation_pipeline" => [
+        {
+          "$match" => {
+            "$or" => [
+              { "_rperm" => { "$in" => ["role:Admin", "*"] } },
+              { "_rperm" => { "$exists" => false } }
+            ]
+          }
+        }
+      ]
+    }
+    expected_writable = {
+      "__aggregation_pipeline" => [
+        {
+          "$match" => {
+            "$or" => [
+              { "_wperm" => { "$in" => ["role:Admin", "*"] } },
+              { "_wperm" => { "$exists" => false } }
+            ]
+          }
+        }
+      ]
+    }
     
     assert_equal expected_readable, readable_result, "readable_by should check read permissions"
     assert_equal expected_writable, writable_result, "writable_by should check write permissions"

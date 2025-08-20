@@ -30,17 +30,19 @@ class TestTransactionRetry < Minitest::Test
     end
     
     # Mock sleep to speed up test
-    original_sleep = Kernel.method(:sleep)
     sleep_calls = []
-    Kernel.define_singleton_method(:sleep) do |time|
-      sleep_calls << time
+    # Override the global sleep method
+    original_sleep = Object.instance_method(:sleep)
+    Object.class_eval do
+      define_method(:sleep) do |time|
+        sleep_calls << time
+      end
     end
     
     begin
       responses = Parse::Object.transaction(retries: max_retries) do
         # Empty transaction
       end
-      
       assert_equal max_retries, attempt_count
       assert_equal 1, responses.count
       assert responses.first.success?
@@ -52,7 +54,10 @@ class TestTransactionRetry < Minitest::Test
       
     ensure
       Parse::BatchOperation.define_singleton_method(:new, &original_new)
-      Kernel.define_singleton_method(:sleep, &original_sleep)
+      # Restore the original sleep method
+      Object.class_eval do
+        define_method(:sleep, original_sleep)
+      end
     end
   end
   

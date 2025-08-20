@@ -1,6 +1,8 @@
 require_relative '../../test_helper_integration'
 
 # Test model with enhanced change tracking for integration testing
+# Enhanced tracking preserves _was and _was_changed? methods in after_save hooks,
+# while _changed? methods maintain normal behavior (false after save)
 class TrackedProduct < Parse::Object
   parse_class "TrackedProduct"
   
@@ -15,6 +17,7 @@ class TrackedProduct < Parse::Object
   # Track changes and hook execution
   attr_accessor :before_save_changes, :after_save_changes,
                 :before_save_was_values, :after_save_was_values,
+                :before_save_was_changed_values, :after_save_was_changed_values,
                 :previous_changes_snapshot, :hook_execution_log,
                 :change_summary
 
@@ -51,6 +54,16 @@ class TrackedProduct < Parse::Object
       stock_quantity_was: (stock_quantity_changed? ? stock_quantity_was : nil),
       is_active_was: (is_active_changed? ? is_active_was : nil)
     }
+    
+    # Capture _was_changed? methods in before_save
+    @before_save_was_changed_values = {
+      name_was_changed: (respond_to?(:name_was_changed?) ? name_was_changed? : false),
+      price_was_changed: (respond_to?(:price_was_changed?) ? price_was_changed? : false),
+      sku_was_changed: (respond_to?(:sku_was_changed?) ? sku_was_changed? : false),
+      category_was_changed: (respond_to?(:category_was_changed?) ? category_was_changed? : false),
+      stock_quantity_was_changed: (respond_to?(:stock_quantity_was_changed?) ? stock_quantity_was_changed? : false),
+      is_active_was_changed: (respond_to?(:is_active_was_changed?) ? is_active_was_changed? : false)
+    }
   end
 
   def capture_after_save_state
@@ -66,7 +79,7 @@ class TrackedProduct < Parse::Object
       is_active_changed: is_active_changed?
     }
 
-    # Test if _was values are available in after_save
+    # Test if _was values are available in after_save (enhanced tracking should preserve these)
     @after_save_was_values = {
       name_was: (respond_to?(:name_was) ? name_was : "method_not_available"),
       price_was: (respond_to?(:price_was) ? price_was : "method_not_available"),
@@ -74,6 +87,16 @@ class TrackedProduct < Parse::Object
       category_was: (respond_to?(:category_was) ? category_was : "method_not_available"),
       stock_quantity_was: (respond_to?(:stock_quantity_was) ? stock_quantity_was : "method_not_available"),
       is_active_was: (respond_to?(:is_active_was) ? is_active_was : "method_not_available")
+    }
+    
+    # Test if _was_changed? methods are available in after_save (enhanced tracking should preserve these)
+    @after_save_was_changed_values = {
+      name_was_changed: (respond_to?(:name_was_changed?) ? name_was_changed? : false),
+      price_was_changed: (respond_to?(:price_was_changed?) ? price_was_changed? : false),
+      sku_was_changed: (respond_to?(:sku_was_changed?) ? sku_was_changed? : false),
+      category_was_changed: (respond_to?(:category_was_changed?) ? category_was_changed? : false),
+      stock_quantity_was_changed: (respond_to?(:stock_quantity_was_changed?) ? stock_quantity_was_changed? : false),
+      is_active_was_changed: (respond_to?(:is_active_was_changed?) ? is_active_was_changed? : false)
     }
 
     # Test enhanced change tracking using previous_changes if available
@@ -165,10 +188,10 @@ class EnhancedChangeTrackingIntegrationTest < Minitest::Test
         assert product.before_save_changes[:price_changed], "price should be changed on create"
         assert product.before_save_changes[:sku_changed], "sku should be changed on create"
 
-        # In Parse Stack's enhanced change tracking, changes are preserved in after_save!
-        assert product.after_save_changes[:name_changed], "name should still be marked as changed in after_save (enhanced tracking)"
-        assert product.after_save_changes[:price_changed], "price should still be marked as changed in after_save (enhanced tracking)"
-        assert product.after_save_changes[:sku_changed], "sku should still be marked as changed in after_save (enhanced tracking)"
+        # In enhanced tracking, _changed? methods return to normal behavior (false after save)
+        refute product.after_save_changes[:name_changed], "name_changed? should be false after save (normal behavior)"
+        refute product.after_save_changes[:price_changed], "price_changed? should be false after save (normal behavior)"
+        refute product.after_save_changes[:sku_changed], "sku_changed? should be false after save (normal behavior)"
 
         # _was values should be nil on create (in before_save)
         assert_nil product.before_save_was_values[:name_was], "name_was should be nil on create"
@@ -457,9 +480,17 @@ class EnhancedChangeTrackingIntegrationTest < Minitest::Test
           puts "\nprevious_changes: not available"
         end
 
-        # Parse Stack enhanced behavior: _changed? should still be true after save!
-        assert product.after_save_changes[:name_changed], "name_changed? should still be true in after_save (enhanced tracking)"
-        assert product.after_save_changes[:price_changed], "price_changed? should still be true in after_save (enhanced tracking)"
+        # Enhanced tracking: _changed? methods have normal behavior (false after save)
+        refute product.after_save_changes[:name_changed], "name_changed? should be false after save (normal behavior)"
+        refute product.after_save_changes[:price_changed], "price_changed? should be false after save (normal behavior)"
+        
+        # But _was methods should still be available in after_save with enhanced tracking
+        assert_equal "Hook Test Product", product.after_save_was_values[:name_was], "name_was should be available in after_save"
+        assert_equal 7.50, product.after_save_was_values[:price_was], "price_was should be available in after_save"
+        
+        # And _was_changed? methods should be populated in after_save with enhanced tracking
+        assert product.after_save_was_changed_values[:name_was_changed], "name_was_changed? should be true in after_save"
+        assert product.after_save_was_changed_values[:price_was_changed], "price_was_changed? should be true in after_save"
 
         puts "✅ after_save hook availability tested"
       end
@@ -553,19 +584,23 @@ class EnhancedChangeTrackingIntegrationTest < Minitest::Test
           end
         end
 
-        # Key assertion: Enhanced tracking preserves change info in after_save
-        assert product.after_save_changes[:name_changed], "Enhanced: name_changed? should be true in after_save"
-        assert product.after_save_changes[:price_changed], "Enhanced: price_changed? should be true in after_save"
+        # Key assertion: _changed? methods have normal behavior (false after save)
+        refute product.after_save_changes[:name_changed], "Enhanced: name_changed? should be false after save (normal behavior)"
+        refute product.after_save_changes[:price_changed], "Enhanced: price_changed? should be false after save (normal behavior)"
         
-        # Key assertion: _was methods still work in after_save
+        # Key assertion: _was methods still work in after_save with enhanced tracking
         assert_equal "Comparison Test Product", product.after_save_was_values[:name_was], "Enhanced: name_was should work in after_save"
         assert_equal 25.0, product.after_save_was_values[:price_was], "Enhanced: price_was should work in after_save"
+        
+        # Key assertion: _was_changed? methods work in after_save with enhanced tracking
+        assert product.after_save_was_changed_values[:name_was_changed], "Enhanced: name_was_changed? should be true in after_save"
+        assert product.after_save_was_changed_values[:price_was_changed], "Enhanced: price_was_changed? should be true in after_save"
 
         # Key assertion: previous_changes provides detailed change information
         assert product.previous_changes_snapshot["name"], "Enhanced: previous_changes should include name"
         assert product.previous_changes_snapshot["price"], "Enhanced: previous_changes should include price"
 
-        puts "✅ Enhanced tracking provides superior change information in after_save hooks"
+        puts "✅ Enhanced tracking preserves _was methods while maintaining normal _changed? behavior in after_save hooks"
       end
     end
   end

@@ -809,16 +809,8 @@ module Parse
         { "$count" => "distinctCount" }
       ]
 
-      # Add match stage if there are where conditions
-      compiled_where = compile_where
-      if compiled_where.present?
-        # Convert field names for aggregation context and handle dates
-        aggregation_where = convert_constraints_for_aggregation(compiled_where)
-        stringified_where = convert_dates_for_aggregation(aggregation_where)
-        pipeline.unshift({ "$match" => stringified_where })
-      end
-
       # Use the Aggregation class to execute
+      # The aggregate method will automatically handle where conditions
       aggregation = aggregate(pipeline, verbose: @verbose_aggregate)
       raw_results = aggregation.raw
       
@@ -1092,7 +1084,45 @@ module Parse
     #   # With verbose output
     #   aggregation = Asset.query.aggregate(pipeline, verbose: true)
     def aggregate(pipeline, verbose: nil)
-      Aggregation.new(self, pipeline, verbose: verbose)
+      # Automatically prepend query constraints as pipeline stages
+      complete_pipeline = []
+      
+      # Add $match stage from where constraints if any exist
+      unless @where.empty?
+        where_clause = Parse::Query.compile_where(@where)
+        if where_clause.any?
+          # Convert dates and other Parse-specific types for MongoDB aggregation
+          match_stage = convert_for_aggregation(where_clause)
+          complete_pipeline << { "$match" => match_stage }
+        end
+      end
+      
+      # Append the provided pipeline stages
+      complete_pipeline.concat(pipeline)
+      
+      # Add $sort stage from order constraints if any exist
+      unless @order.empty?
+        sort_stage = {}
+        @order.each do |order_obj|
+          # order_obj is a Parse::Order object with field and direction
+          field_name = order_obj.field.to_s
+          direction = order_obj.direction == :desc ? -1 : 1
+          sort_stage[field_name] = direction
+        end
+        complete_pipeline << { "$sort" => sort_stage } if sort_stage.any?
+      end
+      
+      # Add $skip stage if specified
+      if @skip > 0
+        complete_pipeline << { "$skip" => @skip }
+      end
+      
+      # Add $limit stage if specified
+      if @limit.is_a?(Numeric) && @limit > 0
+        complete_pipeline << { "$limit" => @limit }
+      end
+      
+      Aggregation.new(self, complete_pipeline, verbose: verbose)
     end
 
     # Converts the current query into an aggregate pipeline and executes it.
@@ -1118,8 +1148,8 @@ module Parse
       # Append any additional stages
       pipeline.concat(additional_stages) if additional_stages.any?
       
-      # Use existing aggregate method
-      aggregate(pipeline, verbose: verbose)
+      # Create Aggregation directly to avoid double-applying constraints
+      Aggregation.new(self, pipeline, verbose: verbose)
     end
 
     private
@@ -1206,8 +1236,9 @@ module Parse
     def execute_aggregation_pipeline
       pipeline = build_aggregation_pipeline
       
-      # Use the Aggregation class to execute and get the internal response
-      aggregation = aggregate(pipeline, verbose: @verbose_aggregate)
+      # Create Aggregation directly to avoid double-applying constraints
+      # The aggregate() method would redundantly add where constraints again
+      aggregation = Aggregation.new(self, pipeline, verbose: @verbose_aggregate)
       aggregation.execute!  # This returns the cached response
     end
 
@@ -2085,14 +2116,19 @@ module Parse
       when 'updated_at', 'updatedAt'  
         'updatedAt'  # Parse Server uses updatedAt for aggregation
       else
-        formatted = Query.format_field(field)
-        # For pointer fields, MongoDB stores them with _p_ prefix
-        # Check if this field is defined as a pointer in the Parse class
-        parse_class = Parse::Model.const_get(@table) rescue nil
-        if parse_class && is_pointer_field?(parse_class, field, formatted)
-          "_p_#{formatted}"
+        # If field already has _p_ prefix, it's already in aggregation format
+        if field.to_s.start_with?('_p_')
+          field.to_s
         else
-          formatted
+          formatted = Query.format_field(field)
+          # For pointer fields, MongoDB stores them with _p_ prefix
+          # Check if this field is defined as a pointer in the Parse class
+          parse_class = Parse::Model.const_get(@table) rescue nil
+          if parse_class && is_pointer_field?(parse_class, field, formatted)
+            "_p_#{formatted}"
+          else
+            formatted
+          end
         end
       end
     end
@@ -2164,6 +2200,38 @@ module Parse
       end
     end
 
+    # Check server schema for pointer field information (fallback method)
+    # @param field [Symbol, String] the field name to check
+    # @return [Boolean] true if the field is a pointer field according to server schema
+    def fetch_and_check_server_schema(field)
+      # TODO: Implement actual server schema checking if needed
+      # For now, return false as a safe fallback for tests
+      false
+    end
+
+    # Detect if a field is likely a pointer field based on the values being used
+    # @param value [Object] the constraint value to analyze
+    # @return [Boolean] true if the values suggest this is a pointer field
+    def detect_pointer_field_from_values(value)
+      # Direct pointer object or hash
+      return true if value.is_a?(Parse::Pointer)
+      return true if value.is_a?(Hash) && value["__type"] == "Pointer"
+      
+      # Check nested operators (like $in, $ne, etc.)
+      if value.is_a?(Hash)
+        value.each do |op, op_value|
+          if op_value.is_a?(Array)
+            # Check if array contains pointer objects
+            return true if op_value.any? { |v| v.is_a?(Parse::Pointer) || (v.is_a?(Hash) && v["__type"] == "Pointer") }
+          elsif op_value.is_a?(Parse::Pointer) || (op_value.is_a?(Hash) && op_value["__type"] == "Pointer")
+            return true
+          end
+        end
+      end
+      
+      false
+    end
+
     # Convert various pointer representations using schema information
     # @param value [Object] the value to potentially convert (String, Hash, Parse::Pointer)
     # @param field_name [Symbol, String] the field name for schema lookup
@@ -2202,31 +2270,27 @@ module Parse
         end
         
       when String
-        if is_pointer
-          # Handle MongoDB format strings ("ClassName$objectId")
-          if value.include?('$') && value.match(/^[A-Za-z_]\w*\$[\w\d]+$/)
-            class_name, object_id = value.split('$', 2)
-            if options[:to_mongodb_format]
-              value # Already in MongoDB format
-            elsif options[:return_pointers]
-              Parse::Pointer.new(class_name, object_id)
-            else
-              object_id # Just return the object ID
-            end
-          elsif target_class
-            # Plain object ID with known target class from schema
-            if options[:to_mongodb_format]
-              "#{target_class}$#{value}"
-            elsif options[:return_pointers]
-              Parse::Pointer.new(target_class, value)
-            else
-              value # Already just an object ID
-            end
+        # Handle MongoDB format strings ("ClassName$objectId") first - regardless of schema
+        if value.include?('$') && value.match(/^[A-Za-z_]\w*\$[\w\d]+$/)
+          class_name, object_id = value.split('$', 2)
+          if options[:to_mongodb_format]
+            value # Already in MongoDB format
+          elsif options[:return_pointers]
+            Parse::Pointer.new(class_name, object_id)
           else
-            value # Can't determine pointer type
+            object_id # Just return the object ID
+          end
+        elsif is_pointer && target_class
+          # Plain object ID with known target class from schema
+          if options[:to_mongodb_format]
+            "#{target_class}$#{value}"
+          elsif options[:return_pointers]
+            Parse::Pointer.new(target_class, value)
+          else
+            value # Already just an object ID
           end
         else
-          value # Not a pointer field
+          value # Not recognizable as pointer or not a pointer field
         end
         
       else
@@ -2249,7 +2313,19 @@ module Parse
         end
         
         # Convert field name to aggregation format 
-        aggregation_field = format_aggregation_field(field)
+        # If field already has _p_ prefix, don't reformat it
+        if field.to_s.start_with?('_p_')
+          aggregation_field = field.to_s
+        else
+          # Check if we can detect this is a pointer field from the values
+          is_pointer_from_values = detect_pointer_field_from_values(value)
+          if is_pointer_from_values
+            formatted = Query.format_field(field)
+            aggregation_field = "_p_#{formatted}"
+          else
+            aggregation_field = format_aggregation_field(field)
+          end
+        end
         
         # Convert pointer values to MongoDB format (ClassName$objectId)
         if value.is_a?(Hash) && value["__type"] == "Pointer"
@@ -2267,8 +2343,8 @@ module Parse
               converted_value[op] = "#{op_value.parse_class}$#{op_value.id}"
             elsif op_value.is_a?(Array) && (op.to_s == "$in" || op.to_s == "$nin")
               # Handle arrays of pointers for $in and $nin operators
-              # Check if the original field is a pointer field using schema
-              is_pointer_field = field_is_pointer?(field)
+              # Check if the original field is a pointer field using schema or values
+              is_pointer_field = field_is_pointer?(field) || detect_pointer_field_from_values(value)
               
               converted_value[op] = op_value.map do |item|
                 if item.is_a?(Hash) && item["__type"] == "Pointer"

@@ -341,6 +341,8 @@ module Parse
       def build
         val = formatted_value
         val = [val].compact unless val.is_a?(Array)
+        
+        # Default behavior - use formatted values as-is
         { @operation.operand => { key => val } }
       end
     end

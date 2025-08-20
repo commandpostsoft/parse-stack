@@ -148,6 +148,7 @@ class QueryPointersContainsTest < Minitest::Test
         
         # Test 1: Contains with Parse objects using .in operator
         puts "\n--- Test 1: Contains with Parse objects (.in) ---"
+        
         libraries_with_author1 = QueryTestLibrary.where(:featured_authors.in => [author1]).results
         assert_equal 1, libraries_with_author1.length, "Should find library containing author1"
         

@@ -13,7 +13,18 @@ class ACLReadableByConstraintTest < Minitest::Test
     constraint = @constraint_class.new(:ACL, "Admin")
     result = constraint.build
     
-    expected = { "$or" => [{ "ACL.role:Admin.read" => true }] }
+    expected = {
+      "__aggregation_pipeline" => [
+        {
+          "$match" => {
+            "$or" => [
+              { "_rperm" => { "$in" => ["role:Admin", "*"] } },
+              { "_rperm" => { "$exists" => false } }
+            ]
+          }
+        }
+      ]
+    }
     assert_equal expected, result, "Should create ACL constraint for single role"
     puts "✅ Single role string constraint works correctly"
   end
@@ -24,7 +35,18 @@ class ACLReadableByConstraintTest < Minitest::Test
     constraint = @constraint_class.new(:ACL, "role:Admin")
     result = constraint.build
     
-    expected = { "$or" => [{ "ACL.role:Admin.read" => true }] }
+    expected = {
+      "__aggregation_pipeline" => [
+        {
+          "$match" => {
+            "$or" => [
+              { "_rperm" => { "$in" => ["role:Admin", "*"] } },
+              { "_rperm" => { "$exists" => false } }
+            ]
+          }
+        }
+      ]
+    }
     assert_equal expected, result, "Should handle role: prefix correctly"
     puts "✅ Role string with prefix constraint works correctly"
   end
@@ -35,11 +57,17 @@ class ACLReadableByConstraintTest < Minitest::Test
     constraint = @constraint_class.new(:ACL, ["Admin", "Moderator"])
     result = constraint.build
     
-    expected = { 
-      "$or" => [
-        { "ACL.role:Admin.read" => true },
-        { "ACL.role:Moderator.read" => true }
-      ] 
+    expected = {
+      "__aggregation_pipeline" => [
+        {
+          "$match" => {
+            "$or" => [
+              { "_rperm" => { "$in" => ["role:Admin", "role:Moderator", "*"] } },
+              { "_rperm" => { "$exists" => false } }
+            ]
+          }
+        }
+      ]
     }
     assert_equal expected, result, "Should create ACL constraint for multiple roles"
     puts "✅ Array of role strings constraint works correctly"
@@ -59,7 +87,18 @@ class ACLReadableByConstraintTest < Minitest::Test
     constraint = @constraint_class.new(:ACL, user)
     result = constraint.build
     
-    expected = { "$or" => [{ "ACL.user123.read" => true }] }
+    expected = {
+      "__aggregation_pipeline" => [
+        {
+          "$match" => {
+            "$or" => [
+              { "_rperm" => { "$in" => ["user123", "*"] } },
+              { "_rperm" => { "$exists" => false } }
+            ]
+          }
+        }
+      ]
+    }
     assert_equal expected, result, "Should create ACL constraint for user object"
     puts "✅ User object constraint works correctly"
   end
@@ -76,7 +115,18 @@ class ACLReadableByConstraintTest < Minitest::Test
     constraint = @constraint_class.new(:ACL, user_pointer)
     result = constraint.build
     
-    expected = { "$or" => [{ "ACL.user456.read" => true }] }
+    expected = {
+      "__aggregation_pipeline" => [
+        {
+          "$match" => {
+            "$or" => [
+              { "_rperm" => { "$in" => ["user456", "*"] } },
+              { "_rperm" => { "$exists" => false } }
+            ]
+          }
+        }
+      ]
+    }
     assert_equal expected, result, "Should create ACL constraint for user pointer"
     puts "✅ User pointer constraint works correctly"
   end
@@ -101,13 +151,17 @@ class ACLReadableByConstraintTest < Minitest::Test
     constraint = @constraint_class.new(:ACL, [user, user_pointer, "Admin", "role:Moderator"])
     result = constraint.build
     
-    expected = { 
-      "$or" => [
-        { "ACL.user789.read" => true },
-        { "ACL.user101.read" => true },
-        { "ACL.role:Admin.read" => true },
-        { "ACL.role:Moderator.read" => true }
-      ] 
+    expected = {
+      "__aggregation_pipeline" => [
+        {
+          "$match" => {
+            "$or" => [
+              { "_rperm" => { "$in" => ["user789", "user101", "role:Admin", "role:Moderator", "*"] } },
+              { "_rperm" => { "$exists" => false } }
+            ]
+          }
+        }
+      ]
     }
     assert_equal expected, result, "Should handle mixed array of users and roles"
     puts "✅ Mixed array constraint works correctly"
@@ -119,7 +173,18 @@ class ACLReadableByConstraintTest < Minitest::Test
     constraint = @constraint_class.new(:_rperm, ["Admin", "Moderator"])
     result = constraint.build
     
-    expected = { "_rperm" => { "$in" => ["role:Admin", "role:Moderator", "*"] } }
+    expected = {
+      "__aggregation_pipeline" => [
+        {
+          "$match" => {
+            "$or" => [
+              { "_rperm" => { "$in" => ["role:Admin", "role:Moderator", "*"] } },
+              { "_rperm" => { "$exists" => false } }
+            ]
+          }
+        }
+      ]
+    }
     assert_equal expected, result, "Should create _rperm constraint with public access"
     puts "✅ _rperm field constraint works correctly"
   end
@@ -138,7 +203,18 @@ class ACLReadableByConstraintTest < Minitest::Test
     constraint = @constraint_class.new(:_rperm, [user, "Admin"])
     result = constraint.build
     
-    expected = { "_rperm" => { "$in" => ["user123", "role:Admin", "*"] } }
+    expected = {
+      "__aggregation_pipeline" => [
+        {
+          "$match" => {
+            "$or" => [
+              { "_rperm" => { "$in" => ["user123", "role:Admin", "*"] } },
+              { "_rperm" => { "$exists" => false } }
+            ]
+          }
+        }
+      ]
+    }
     assert_equal expected, result, "Should create _rperm constraint with user ID and roles"
     puts "✅ _rperm with user constraint works correctly"
   end
@@ -179,7 +255,18 @@ class ACLReadableByConstraintTest < Minitest::Test
     constraint = @constraint_class.new(:ACL, role)
     result = constraint.build
     
-    expected = { "$or" => [{ "ACL.role:TestRole.read" => true }] }
+    expected = {
+      "__aggregation_pipeline" => [
+        {
+          "$match" => {
+            "$or" => [
+              { "_rperm" => { "$in" => ["role:TestRole", "*"] } },
+              { "_rperm" => { "$exists" => false } }
+            ]
+          }
+        }
+      ]
+    }
     assert_equal expected, result, "Should create ACL constraint for role object"
     puts "✅ Role object constraint works correctly"
   end
