@@ -1033,8 +1033,8 @@ module Parse
     end
 
     # A constraint for filtering objects based on ACL read permissions for specific users or roles.
-    # This constraint checks either the ACL object or the internal _rperm field to match against
-    # user IDs and role names. It can handle User objects/pointers and role name strings.
+    # This constraint queries the MongoDB _rperm field directly, which contains an array of user IDs 
+    # and role names that have read access to the object.
     #
     #  # Find objects readable by a specific user (includes user ID + their roles)
     #  Post.where(:ACL.readable_by => user)
@@ -1047,12 +1047,6 @@ module Parse
     #  
     #  # Mix users and role names
     #  Post.where(:ACL.readable_by => [user1, user2, "Admin", "Moderator"])
-    #  
-    #  # Use _rperm field directly (Parse's internal field)  
-    #  Post.where(:_rperm.readable_by => ["Admin", user])
-    #  
-    #  # This generates a query that checks the _rperm field or ACL object
-    #  # for matching user IDs and role names with read permissions
     #
     class ACLReadableByConstraint < Constraint
       # @!method readable_by
@@ -1062,7 +1056,7 @@ module Parse
       # @return [ACLReadableByConstraint]
       register :readable_by
 
-      # @return [Hash] the compiled constraint.
+      # @return [Hash] the compiled constraint using _rperm field.
       def build
         value = formatted_value
         permissions_to_check = []
@@ -1117,8 +1111,11 @@ module Parse
                 permissions_to_check << item.id if item.respond_to?(:id) && item.id.present?
               end
             elsif item.is_a?(String)
-              # Treat all strings as role names
-              if item.start_with?("role:")
+              # Treat all strings as role names or public access
+              if item == "*"
+                # Special case for public access - don't add role: prefix
+                permissions_to_check << "*"
+              elsif item.start_with?("role:")
                 permissions_to_check << item
               else
                 # Assume it's a role name, add role: prefix
@@ -1128,11 +1125,14 @@ module Parse
           end
           
         elsif value.is_a?(String)
-          # Handle single string - treat as role name
-          if value.start_with?("role:")
+          # Handle single string - only accept "*" for public access or "role:name" format
+          if value == "*"
+            # Special case for public access - don't add role: prefix
+            permissions_to_check << "*"
+          elsif value.start_with?("role:")
             permissions_to_check << value
           else
-            # Assume it's a role name
+            # For role names, add role: prefix
             permissions_to_check << "role:#{value}"
           end
           
@@ -1144,33 +1144,33 @@ module Parse
           raise ArgumentError, "ACLReadableByConstraint: no valid permissions found in provided value"
         end
         
-        # The operand should typically be 'ACL' but we'll be flexible
-        field_name = @operation.operand
+        # Query the _rperm field through aggregation pipeline since Parse Server
+        # doesn't expose _rperm/_wperm fields through regular REST API queries
+        # _rperm contains an array of user IDs and role names that have read access
+        # Also include public access "*" in the check
+        permissions_with_public = permissions_to_check + ["*"]
         
-        if field_name.to_s.downcase == 'acl'
-          # Query the ACL object field - check if any of the permission keys exist and have read: true
-          # We need to check each permission key in the ACL object
-          acl_conditions = permissions_to_check.map do |perm_key|
-            { "ACL.#{perm_key}.read" => true }
-          end
-          
-          # Use $or to match any of the read permissions
-          return { "$or" => acl_conditions }
-          
-        else
-          # Query the _rperm field directly (Parse's internal read permissions array)
-          # _rperm contains an array of user IDs and role names that have read access
-          # Also include public access "*" in the check
-          permissions_with_public = permissions_to_check + ["*"]
-          
-          return { "_rperm" => { "$in" => permissions_with_public } }
-        end
+        # Build the aggregation pipeline to match documents with _rperm field
+        # Also match documents where _rperm doesn't exist (publicly accessible)
+        pipeline = [
+          {
+            "$match" => {
+              "$or" => [
+                { "_rperm" => { "$in" => permissions_with_public } },
+                { "_rperm" => { "$exists" => false } }
+              ]
+            }
+          }
+        ]
+        
+        # Return a special marker that indicates this needs aggregation pipeline processing
+        { "__aggregation_pipeline" => pipeline }
       end
     end
 
     # A constraint for filtering objects based on ACL write permissions for specific users or roles.
-    # This constraint checks either the ACL object or the internal _wperm field to match against
-    # user IDs and role names. It can handle User objects/pointers and role name strings.
+    # This constraint queries the MongoDB _wperm field directly, which contains an array of user IDs 
+    # and role names that have write access to the object.
     #
     #  # Find objects writable by a specific user (includes user ID + their roles)
     #  Post.where(:ACL.writable_by => user)
@@ -1183,12 +1183,6 @@ module Parse
     #  
     #  # Mix users and role names
     #  Post.where(:ACL.writable_by => [user1, user2, "Admin", "Moderator"])
-    #  
-    #  # Use _wperm field directly (Parse's internal field)  
-    #  Post.where(:_wperm.writable_by => ["Admin", user])
-    #  
-    #  # This generates a query that checks the _wperm field or ACL object
-    #  # for matching user IDs and role names with write permissions
     #
     class ACLWritableByConstraint < Constraint
       # @!method writable_by
@@ -1198,7 +1192,7 @@ module Parse
       # @return [ACLWritableByConstraint]
       register :writable_by
 
-      # @return [Hash] the compiled constraint.
+      # @return [Hash] the compiled constraint using _wperm field.
       def build
         value = formatted_value
         permissions_to_check = []
@@ -1253,8 +1247,11 @@ module Parse
                 permissions_to_check << item.id if item.respond_to?(:id) && item.id.present?
               end
             elsif item.is_a?(String)
-              # Treat all strings as role names
-              if item.start_with?("role:")
+              # Treat all strings as role names or public access
+              if item == "*"
+                # Special case for public access - don't add role: prefix
+                permissions_to_check << "*"
+              elsif item.start_with?("role:")
                 permissions_to_check << item
               else
                 # Assume it's a role name, add role: prefix
@@ -1264,11 +1261,14 @@ module Parse
           end
           
         elsif value.is_a?(String)
-          # Handle single string - treat as role name
-          if value.start_with?("role:")
+          # Handle single string - only accept "*" for public access or "role:name" format
+          if value == "*"
+            # Special case for public access - don't add role: prefix
+            permissions_to_check << "*"
+          elsif value.start_with?("role:")
             permissions_to_check << value
           else
-            # Assume it's a role name
+            # For role names, add role: prefix
             permissions_to_check << "role:#{value}"
           end
           
@@ -1280,27 +1280,27 @@ module Parse
           raise ArgumentError, "ACLWritableByConstraint: no valid permissions found in provided value"
         end
         
-        # The operand should typically be 'ACL' but we'll be flexible
-        field_name = @operation.operand
+        # Query the _wperm field through aggregation pipeline since Parse Server
+        # doesn't expose _rperm/_wperm fields through regular REST API queries
+        # _wperm contains an array of user IDs and role names that have write access
+        # Also include public access "*" in the check
+        permissions_with_public = permissions_to_check + ["*"]
         
-        if field_name.to_s.downcase == 'acl'
-          # Query the ACL object field - check if any of the permission keys exist and have write: true
-          # We need to check each permission key in the ACL object
-          acl_conditions = permissions_to_check.map do |perm_key|
-            { "ACL.#{perm_key}.write" => true }
-          end
-          
-          # Use $or to match any of the write permissions
-          return { "$or" => acl_conditions }
-          
-        else
-          # Query the _wperm field directly (Parse's internal write permissions array)
-          # _wperm contains an array of user IDs and role names that have write access
-          # Also include public access "*" in the check
-          permissions_with_public = permissions_to_check + ["*"]
-          
-          return { "_wperm" => { "$in" => permissions_with_public } }
-        end
+        # Build the aggregation pipeline to match documents with _wperm field
+        # Also match documents where _wperm doesn't exist (publicly writable)
+        pipeline = [
+          {
+            "$match" => {
+              "$or" => [
+                { "_wperm" => { "$in" => permissions_with_public } },
+                { "_wperm" => { "$exists" => false } }
+              ]
+            }
+          }
+        ]
+        
+        # Return a special marker that indicates this needs aggregation pipeline processing
+        { "__aggregation_pipeline" => pipeline }
       end
     end
 

@@ -1249,6 +1249,30 @@ module Parse
       self.class.compile_where(@where || [])
     end
 
+    # Returns the aggregation pipeline for this query if it contains pipeline-based constraints
+    # @return [Array] the aggregation pipeline stages, or empty array if no pipeline needed
+    def pipeline
+      pipeline_stages = []
+      
+      # Check if any constraints generate aggregation pipelines
+      @where.each do |constraint|
+        if constraint.respond_to?(:as_json)
+          constraint_json = constraint.as_json
+          if constraint_json.is_a?(Hash) && constraint_json.has_key?("__aggregation_pipeline")
+            pipeline_stages.concat(constraint_json["__aggregation_pipeline"])
+          end
+        end
+      end
+      
+      pipeline_stages
+    end
+    
+    # Check if this query requires aggregation pipeline execution
+    # @return [Boolean] true if the query contains pipeline-based constraints
+    def requires_aggregation?
+      !pipeline.empty?
+    end
+
     # Retruns a formatted JSON string representing the query, useful for debugging.
     # @return [String]
     def pretty
@@ -2263,6 +2287,24 @@ module Parse
       queries = queries.filter { |q| q.where.present? && !q.where.empty? }
       queries.each { |query| result.where(query.where) }
       result
+    end
+
+    public
+
+    # Alias method for ACL readable_by constraint
+    # @param user_or_role [Parse::User, Parse::Role, String] the user, role, or role name to check read access for
+    # @return [Parse::Query] returns self for method chaining
+    def readable_by(user_or_role)
+      where(:ACL.readable_by => user_or_role)
+      self
+    end
+
+    # Alias method for ACL writable_by constraint  
+    # @param user_or_role [Parse::User, Parse::Role, String] the user, role, or role name to check write access for
+    # @return [Parse::Query] returns self for method chaining
+    def writable_by(user_or_role)
+      where(:ACL.writable_by => user_or_role)
+      self
     end
   end # Query
 

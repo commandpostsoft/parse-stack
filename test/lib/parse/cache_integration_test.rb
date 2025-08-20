@@ -3,6 +3,7 @@ require 'minitest/autorun'
 
 # Test model for caching tests
 class CacheTestProduct < Parse::Object
+  parse_class "CacheTestProduct"
   property :name, :string
   property :price, :float
   property :category, :string
@@ -21,6 +22,15 @@ class CacheIntegrationTest < Minitest::Test
   end
   
   def setup
+    super  # Call ParseStackIntegrationTest setup first
+    
+    # Ensure Parse client is properly set up for cache tests
+    begin
+      Parse::Client.client
+    rescue Parse::Error::ConnectionError
+      setup_parse_client_for_cache_tests
+    end
+    
     @original_caching_enabled = Parse::Middleware::Caching.enabled
     @original_logging = Parse::Middleware::Caching.logging
     Parse::Middleware::Caching.enabled = true
@@ -30,6 +40,7 @@ class CacheIntegrationTest < Minitest::Test
   def teardown
     Parse::Middleware::Caching.enabled = @original_caching_enabled
     Parse::Middleware::Caching.logging = @original_logging
+    super  # Call ParseStackIntegrationTest teardown
   end
   
   def test_cache_enabled_disabled_control
@@ -351,5 +362,17 @@ class CacheIntegrationTest < Minitest::Test
         puts "  - Application remains functional when cache fails"
       end
     end
+  end
+  
+  private
+  
+  def setup_parse_client_for_cache_tests
+    Parse::Client.setup(
+      server_url: ENV['PARSE_TEST_SERVER_URL'] || 'http://localhost:1337/parse',
+      app_id: ENV['PARSE_TEST_APP_ID'] || 'myAppId',
+      api_key: ENV['PARSE_TEST_API_KEY'] || 'test-rest-key',
+      master_key: ENV['PARSE_TEST_MASTER_KEY'] || 'myMasterKey',
+      logging: ENV['PARSE_DEBUG'] ? :debug : false
+    )
   end
 end

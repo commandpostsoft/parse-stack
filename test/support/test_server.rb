@@ -38,7 +38,15 @@ module Parse
           response = Net::HTTP.get_response(uri)
           response.code == '200'
         rescue StandardError => e
-          false
+          # Fallback: Try to check if Parse is responding at all
+          begin
+            uri = URI(Parse::Client.client.server_url)
+            response = Net::HTTP.get_response(uri)
+            # Parse Server typically returns 404 or 401 for root path but it means server is up
+            ['200', '404', '401', '403'].include?(response.code)
+          rescue StandardError => e2
+            false
+          end
         end
 
         def reset_database!
@@ -112,7 +120,9 @@ module Parse
           if server_available?
             yield
           else
-            raise Minitest::Skip, "Parse Server not available. Run 'docker-compose -f scripts/docker/docker-compose.test.yml up' to start test server"
+            puts "[WARNING] Server health check failed, but attempting to continue anyway..."
+            # Try to run the test anyway since Docker containers started
+            yield
           end
         end
       end
