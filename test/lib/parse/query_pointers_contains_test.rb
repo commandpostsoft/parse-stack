@@ -380,10 +380,63 @@ class QueryPointersContainsTest < Minitest::Test
         
         # Test 2: Query libraries by featured authors and operating days
         puts "--- Test 2: Query libraries by featured authors and operating days ---"
-        monday_libs_with_author1 = QueryTestLibrary.where(
+        
+        # Debug: Let's see what we have in the database
+        all_libraries = QueryTestLibrary.query.all
+        puts "Total libraries in database: #{all_libraries.length}"
+        all_libraries.each_with_index do |lib, i|
+          puts "Library #{i+1}: #{lib.name}"
+          if lib.featured_authors.present?
+            author_info = lib.featured_authors.map do |author|
+              if author.respond_to?(:name)
+                author.name
+              elsif author.is_a?(Hash) && author['name']
+                author['name']
+              else
+                "Unknown author type: #{author.class}"
+              end
+            end
+            puts "  Featured authors: #{author_info}"
+          else
+            puts "  Featured authors: none"
+          end
+          puts "  Operating days: #{lib.operating_days || 'none'}"
+        end
+        
+        # Debug: Try different field name approaches
+        puts "\n--- Debugging field names ---"
+        puts "Author1 ID: #{author1.id}"
+        puts "Author1 pointer: #{author1.pointer.inspect}"
+        
+        # Try with just the objectId using proper Parse Stack syntax
+        direct_query_id = QueryTestLibrary.where(:featuredAuthors.in => [author1.id])
+        puts "Direct objectId query result: #{direct_query_id.results.length}"
+        
+        # See what the actual query looks like
+        puts "Direct objectId query: #{direct_query_id.constraints.inspect}"
+        
+        # Try different field name variations
+        direct_query_snake = QueryTestLibrary.where(:featured_authors.in => [author1.id])
+        puts "Snake case with objectId query result: #{direct_query_snake.results.length}"
+        
+        # First, test each condition separately
+        author1_query = QueryTestLibrary.where(:featured_authors.in => [author1])
+        puts "Author1 query: #{author1_query.constraints.inspect}"
+        libs_with_author1 = author1_query.results
+        puts "Libraries with author1: #{libs_with_author1.length}"
+        
+        monday_query = QueryTestLibrary.where(:operating_days.in => ["Monday"])
+        puts "Monday query: #{monday_query.constraints.inspect}"
+        libs_open_monday = monday_query.results
+        puts "Libraries open on Monday: #{libs_open_monday.length}"
+        
+        combined_query = QueryTestLibrary.where(
           :featured_authors.in => [author1],
           :operating_days.in => ["Monday"]
-        ).results
+        )
+        puts "Combined query: #{combined_query.constraints.inspect}"
+        monday_libs_with_author1 = combined_query.results
+        puts "Libraries with author1 AND open on Monday: #{monday_libs_with_author1.length}"
         assert_equal 1, monday_libs_with_author1.length, "Should find 1 library with author1 open on Monday"
         
         # Test 3: Query books with related books containing specific book

@@ -83,13 +83,14 @@ class TestProduct < Parse::Object
     self.after_save_called = true
     
     # In after_save, enhanced change tracking shows what was changed in the save that just completed
+    # Use _was_changed? methods since changes have been applied in after_save
     self.changes_in_after_save = {
-      name_changed: name_changed?,
-      price_changed: price_changed?,
-      sku_changed: sku_changed?,
-      category_changed: category_changed?,
-      stock_quantity_changed: stock_quantity_changed?,
-      is_active_changed: is_active_changed?
+      name_changed: name_was_changed?,
+      price_changed: price_was_changed?,
+      sku_changed: sku_was_changed?,
+      category_changed: category_was_changed?,
+      stock_quantity_changed: stock_quantity_was_changed?,
+      is_active_changed: is_active_was_changed?
     }
   end
   
@@ -207,14 +208,15 @@ class TestAccount < Parse::Object
   property :balance, :float
   property :is_verified, :boolean
   property :verification_token, :string
+  property :should_halt_save, :boolean
   
-  attr_accessor :should_halt_save, :hook_execution_order, :balance_changes
+  attr_accessor :hook_execution_order, :balance_changes
   
   validates_presence_of :username, :email
   validates_format_of :email, with: /\A[^@\s]+@[^@\s]+\z/
   
-  before_save :check_halt_condition
   before_save :track_execution_order_1
+  before_save :check_halt_condition
   before_save :track_balance_changes
   after_save :track_execution_order_2
   
@@ -224,13 +226,17 @@ class TestAccount < Parse::Object
   end
   
   def check_halt_condition
+    puts "DEBUG: should_halt_save = #{should_halt_save.inspect}"
     if should_halt_save
+      puts "DEBUG: Adding error and returning false to halt save"
       errors.add(:base, "Save halted by before_save hook")
       return false  # Return false to halt the save in ActiveModel hooks
     end
+    puts "DEBUG: Not halting save"
   end
   
   def track_execution_order_1
+    puts "DEBUG: Executing track_execution_order_1"
     self.hook_execution_order << "before_save_1"
   end
   
@@ -246,6 +252,37 @@ class TestAccount < Parse::Object
   
   def track_execution_order_2
     self.hook_execution_order << "after_save"
+  end
+end
+
+# Test model for before_save hook chaining and modification
+class TestCounter < Parse::Object
+  property :counter_value, :integer, default: 0
+  property :name, :string
+  
+  attr_accessor :hook_execution_log
+  
+  before_save :add_one_to_counter
+  before_save :add_ten_to_counter
+  before_save :log_hook_execution
+  
+  def initialize(attrs = {})
+    super
+    self.hook_execution_log = []
+  end
+  
+  def add_one_to_counter
+    self.counter_value = (counter_value || 0) + 1
+    self.hook_execution_log << "add_one_to_counter: #{counter_value}"
+  end
+  
+  def add_ten_to_counter
+    self.counter_value = (counter_value || 0) + 10
+    self.hook_execution_log << "add_ten_to_counter: #{counter_value}"
+  end
+  
+  def log_hook_execution
+    self.hook_execution_log << "log_hook_execution: final_value=#{counter_value}"
   end
 end
 
@@ -331,12 +368,12 @@ class HooksAndValidationIntegrationTest < Minitest::Test
         
         # In after_save, enhanced change tracking shows what was changed in the completed save
         assert product.after_save_called, "after_save hook should have been called"
-        assert product.changes_in_after_save[:name_changed], "name_changed should be true in after_save (was changed in create)"
-        assert product.changes_in_after_save[:price_changed], "price_changed should be true in after_save (was changed in create)"
-        assert product.changes_in_after_save[:sku_changed], "sku_changed should be true in after_save (was changed in create)"
+        assert product.changes_in_after_save[:name_changed], "name_was_changed should be true in after_save (was changed in create)"
+        assert product.changes_in_after_save[:price_changed], "price_was_changed should be true in after_save (was changed in create)"
+        assert product.changes_in_after_save[:sku_changed], "sku_was_changed should be true in after_save (was changed in create)"
         
         puts "✓ After save hook change state correct"
-        puts "  - Enhanced _changed? methods show what was changed in the completed save"
+        puts "  - Enhanced _was_changed? methods show what was changed in the completed save"
       end
     end
   end
@@ -664,6 +701,57 @@ class HooksAndValidationIntegrationTest < Minitest::Test
         puts "  - Status changed from draft to completed"
         puts "  - Inventory updated using previous_changes detection"
         puts "  - Solution: Use previous_changes hash in after_save for change detection"
+      end
+    end
+  end
+  
+  def test_before_save_hooks_modify_object_in_chain
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    
+    with_parse_server do
+      with_timeout(10, "before_save hooks modify object in chain test") do
+        # Create a TestCounter with initial counter_value of 0
+        counter = TestCounter.new({
+          name: "Test Counter",
+          counter_value: 0
+        })
+        
+        puts "Initial counter_value: #{counter.counter_value}"
+        
+        # Save the object - this should trigger the before_save hooks in order:
+        # 1. add_one_to_counter: 0 + 1 = 1
+        # 2. add_ten_to_counter: 1 + 10 = 11
+        # 3. log_hook_execution: logs final value
+        assert counter.save, "Counter should save successfully"
+        
+        # Verify the final counter_value is 11 (1 + 10)
+        assert_equal 11, counter.counter_value, "Counter value should be 11 after both before_save hooks execute"
+        
+        # Verify the hook execution log shows the correct sequence
+        expected_log = [
+          "add_one_to_counter: 1",
+          "add_ten_to_counter: 11", 
+          "log_hook_execution: final_value=11"
+        ]
+        assert_equal expected_log, counter.hook_execution_log, "Hook execution log should show correct sequence"
+        
+        puts "✓ Before save hooks modify object in chain correctly"
+        puts "  - First hook: 0 + 1 = 1"
+        puts "  - Second hook: 1 + 10 = 11"
+        puts "  - Final saved value: #{counter.counter_value}"
+        puts "  - Hook execution log: #{counter.hook_execution_log}"
+        
+        # Test that updating the object also applies the hooks
+        counter.name = "Updated Counter"
+        counter.counter_value = 5  # Reset to 5
+        
+        assert counter.save, "Counter should save successfully on update"
+        
+        # Should be 5 + 1 + 10 = 16
+        assert_equal 16, counter.counter_value, "Counter value should be 16 after update with hooks"
+        
+        puts "✓ Before save hooks also work on updates"
+        puts "  - Updated from 5: 5 + 1 + 10 = #{counter.counter_value}"
       end
     end
   end

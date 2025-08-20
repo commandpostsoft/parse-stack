@@ -147,20 +147,25 @@ module Parse
       response = client.fetch_object(parse_class, id)
       return nil if response.error?
       
+      # Check if the result is empty - this indicates object not found
+      result = response.result
+      if result.nil? || (result.is_a?(Array) && result.empty?)
+        return nil
+      end
+      
       if returnObject
         # Convert the JSON result to a proper Parse::Object
-        result_hash = response.result
-        return nil unless result_hash.is_a?(Hash)
+        return nil unless result.is_a?(Hash)
         
         # Try to find the appropriate Parse class, fallback to Parse::Object
         klass = Parse::Model.find_class(parse_class) || Parse::Object
         # Create a new instance with the fetched data
-        obj = klass.new(result_hash)
+        obj = klass.new(result)
         obj.clear_changes!
         return obj
       end
       
-      response.result
+      result
     end
 
     # Fetches the Parse object from the data store and returns a Parse::Object instance.

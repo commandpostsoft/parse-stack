@@ -26,9 +26,30 @@ module Parse
             raise Parse::Error::ProtocolError, response.error
           end
         end
+        
+        # Handle empty results gracefully - clear the object rather than error
+        result = response.result
+        if result.nil? || (result.is_a?(Array) && result.empty?)
+          # Mark object as deleted and clear the ID
+          @_deleted = true
+          @id = nil
+          clear_changes!
+          return self
+        end
+        
+        # If we successfully fetched data, ensure the object is not marked as deleted
+        @_deleted = false
+        
         # take the result hash and apply it to the attributes.
-        apply_attributes!(response.result, dirty_track: false)
-        clear_changes!
+        apply_attributes!(result, dirty_track: false)
+        begin
+          clear_changes!
+        rescue => e
+          # If clear_changes! fails, manually reset change tracking
+          @changed_attributes = {} if instance_variable_defined?(:@changed_attributes)
+          @mutations_from_database = nil if instance_variable_defined?(:@mutations_from_database)
+          @mutations_before_last_save = nil if instance_variable_defined?(:@mutations_before_last_save)
+        end
         self
       end
 

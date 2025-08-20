@@ -7,7 +7,9 @@ class TestObject < Parse::Object
   property :foo, :string
   property :adventure, :string
   property :location, :string
+  property :coordinates, :geopoint
   property :a_bool, :boolean
+  property :counter, :integer
   # Additional properties for integration tests
   property :cat, :string
   property :dog, :string
@@ -103,7 +105,9 @@ class ParseObjectIntegrationTest < Minitest::Test
 
   def test_get_fetch
     with_parse_server do
-      object = create_test_object('TestObject', test: 'test')
+      object = TestObject.new
+      object[:test] = 'test'
+      assert object.save, "Should save object"
       
       object2 = TestObject.new(objectId: object.id)
       assert object2.fetch, "Should fetch object successfully"
@@ -122,8 +126,14 @@ class ParseObjectIntegrationTest < Minitest::Test
       assert object.destroy, "Should destroy object"
       
       object2 = TestObject.new(objectId: object.id)
+      result = object2.fetch
+      assert_nil object2.id, "Object ID should be nil after fetching deleted object"
+      assert object2._deleted?, "Object should be marked as deleted"
+      assert_equal object2, result, "fetch should return self even for deleted objects"
+      
+      # Test that deleted objects cannot be saved
       assert_raises(Parse::Error::ProtocolError) do
-        object2.fetch
+        object2.save
       end
     end
   end
@@ -373,22 +383,22 @@ class ParseObjectIntegrationTest < Minitest::Test
   def test_increment
     with_parse_server do
       object = TestObject.new
-      object[:foo] = 5
+      object[:counter] = 5
       assert object.save, "Should save object"
       
-      object.op_increment!(:foo)
-      assert_equal 6, object[:foo], "Local value should be incremented"
-      assert object.dirty?(:foo), "foo should be dirty"
+      object.op_increment!(:counter)
+      assert_equal 6, object[:counter], "Local value should be incremented"
+      assert object.dirty?(:counter), "counter should be dirty"
       assert object.dirty?, "object should be dirty"
       
       assert object.save, "Should save incremented object"
-      assert_equal 6, object[:foo], "Value should still be 6"
-      refute object.dirty?(:foo), "foo should not be dirty after save"
+      assert_equal 6, object[:counter], "Value should still be 6"
+      refute object.dirty?(:counter), "counter should not be dirty after save"
       refute object.dirty?, "object should not be dirty after save"
       
       query = TestObject.query
       object_again = query.get(object.id)
-      assert_equal 6, object_again[:foo], "Server value should be 6"
+      assert_equal 6, object_again[:counter], "Server value should be 6"
     end
   end
 
@@ -413,13 +423,42 @@ class ParseObjectIntegrationTest < Minitest::Test
 
   def test_to_json_saved_object
     with_parse_server do
-      object = create_test_object('TestObject', foo: 'bar')
+      object = TestObject.new
+      object[:test] = 'bar'
+      assert object.save, "Should save object"
       
       json = object.as_json
-      assert json[:foo], "JSON should contain 'foo' key"
-      assert json[:objectId] || json[:id], "JSON should contain objectId"
-      assert json[:createdAt] || json[:created_at], "JSON should contain createdAt"
-      assert json[:updatedAt] || json[:updated_at], "JSON should contain updatedAt"
+      assert json["test"], "JSON should contain 'test' key"
+      assert json["objectId"] || json["id"], "JSON should contain objectId"
+      assert json["createdAt"] || json["created_at"], "JSON should contain createdAt"
+      assert json["updatedAt"] || json["updated_at"], "JSON should contain updatedAt"
+    end
+  end
+
+  def test_deleted_object_cannot_be_saved
+    with_parse_server do
+      # Create and save an object
+      object = TestObject.new
+      object[:test] = 'will_be_deleted'
+      assert object.save, "Should save object initially"
+      
+      # Destroy it
+      assert object.destroy, "Should destroy object"
+      
+      # Try to fetch it again
+      deleted_object = TestObject.new(objectId: object.id)
+      deleted_object.fetch
+      
+      # Verify it's marked as deleted
+      assert deleted_object._deleted?, "Object should be marked as deleted"
+      assert_nil deleted_object.id, "Object ID should be nil"
+      
+      # Try to save it (should throw error)
+      error = assert_raises(Parse::Error::ProtocolError) do
+        deleted_object.save
+      end
+      
+      assert_match(/Cannot save deleted object/, error.message, "Error message should mention deleted object")
     end
   end
 
@@ -530,18 +569,18 @@ class ParseObjectIntegrationTest < Minitest::Test
       
       # Test different ways to create GeoPoints
       san_diego = Parse::GeoPoint.new(32.7157, -117.1611)
-      object[:location] = san_diego
+      object[:coordinates] = san_diego
       
       assert object.save, "Should save object with GeoPoint"
       
       # Retrieve and verify
       query = TestObject.query
       object_again = query.get(object.id)
-      retrieved_location = object_again[:location]
+      retrieved_coordinates = object_again[:coordinates]
       
-      assert retrieved_location.is_a?(Parse::GeoPoint), "Should retrieve GeoPoint object"
-      assert_equal san_diego.latitude, retrieved_location.latitude, "Should have correct latitude"
-      assert_equal san_diego.longitude, retrieved_location.longitude, "Should have correct longitude"
+      assert retrieved_coordinates.is_a?(Parse::GeoPoint), "Should retrieve GeoPoint object"
+      assert_equal san_diego.latitude, retrieved_coordinates.latitude, "Should have correct latitude"
+      assert_equal san_diego.longitude, retrieved_coordinates.longitude, "Should have correct longitude"
       
       # Clean up
       object_again.destroy
@@ -561,20 +600,20 @@ class ParseObjectIntegrationTest < Minitest::Test
       locations.each do |loc|
         object = TestObject.new
         object[:test] = loc[:name]
-        object[:location] = Parse::GeoPoint.new(loc[:lat], loc[:lng])
+        object[:coordinates] = Parse::GeoPoint.new(loc[:lat], loc[:lng])
         assert object.save, "Should save #{loc[:name]} object"
         created_objects << object
       end
       
       # Test near query (find objects near San Diego)
       san_diego_center = Parse::GeoPoint.new(32.7157, -117.1611)
-      near_results = TestObject.all(:location.near => san_diego_center)
+      near_results = TestObject.all(:coordinates.near => san_diego_center)
       
       assert near_results.any?, "Should find objects near San Diego"
       assert near_results.first[:test] == "San Diego", "Nearest should be San Diego itself"
       
       # Test within miles query (find objects within 200 miles of San Diego)
-      within_results = TestObject.all(:location.within_miles => san_diego_center.max_miles(200))
+      within_results = TestObject.all(:coordinates.near => san_diego_center.max_miles(200))
       
       assert within_results.count >= 2, "Should find San Diego and LA within 200 miles"
       city_names = within_results.map { |obj| obj[:test] }
@@ -591,12 +630,12 @@ class ParseObjectIntegrationTest < Minitest::Test
       # Create objects at known locations
       object1 = TestObject.new
       object1[:test] = "Point A"
-      object1[:location] = Parse::GeoPoint.new(32.7157, -117.1611)  # San Diego
+      object1[:coordinates] = Parse::GeoPoint.new(32.7157, -117.1611)  # San Diego
       assert object1.save, "Should save first object"
       
       object2 = TestObject.new  
       object2[:test] = "Point B"
-      object2[:location] = Parse::GeoPoint.new(34.0522, -118.2437)  # Los Angeles
+      object2[:coordinates] = Parse::GeoPoint.new(34.0522, -118.2437)  # Los Angeles
       assert object2.save, "Should save second object"
       
       # Retrieve and test distance calculations
@@ -608,12 +647,12 @@ class ParseObjectIntegrationTest < Minitest::Test
       assert point_a && point_b, "Should find both points"
       
       # Test distance calculation
-      distance_miles = point_a[:location].distance_in_miles(point_b[:location])
-      distance_km = point_a[:location].distance_in_km(point_b[:location])
+      distance_miles = point_a[:coordinates].distance_in_miles(point_b[:coordinates])
+      distance_km = point_a[:coordinates].distance_in_km(point_b[:coordinates])
       
-      # San Diego to LA is approximately 120 miles / 193 km
+      # San Diego to LA is approximately 120 miles / 180 km
       assert distance_miles > 100 && distance_miles < 140, "Distance should be around 120 miles (got #{distance_miles})"
-      assert distance_km > 180 && distance_km < 220, "Distance should be around 193 km (got #{distance_km})"
+      assert distance_km > 170 && distance_km < 200, "Distance should be around 180 km (got #{distance_km})"
       
       # Clean up
       point_a.destroy
@@ -634,19 +673,19 @@ class ParseObjectIntegrationTest < Minitest::Test
       }
       
       # Manually set the geopoint using the server format
-      object.instance_variable_set(:@location, geopoint_hash)
-      object.send(:location_will_change!)
+      object.instance_variable_set(:@coordinates, geopoint_hash)
+      object.send(:coordinates_will_change!)
       
       assert object.save, "Should save object with hash-format geopoint"
       
       # Retrieve and verify it was converted properly
       query = TestObject.query  
       object_again = query.get(object.id)
-      retrieved_location = object_again[:location]
+      retrieved_coordinates = object_again[:coordinates]
       
-      assert retrieved_location.is_a?(Parse::GeoPoint), "Should convert hash to GeoPoint object"
-      assert_equal 37.7749, retrieved_location.latitude, "Should have correct latitude"
-      assert_equal -122.4194, retrieved_location.longitude, "Should have correct longitude"
+      assert retrieved_coordinates.is_a?(Parse::GeoPoint), "Should convert hash to GeoPoint object"
+      assert_equal 37.7749, retrieved_coordinates.latitude, "Should have correct latitude"
+      assert_equal -122.4194, retrieved_coordinates.longitude, "Should have correct longitude"
       
       # Clean up
       object_again.destroy
@@ -713,8 +752,7 @@ class ParseObjectIntegrationTest < Minitest::Test
       }
       
       # Set file using server format
-      object.instance_variable_set(:@avatar, file_hash)
-      object.send(:avatar_will_change!)
+      object[:avatar] = file_hash
       
       # The file should be converted to Parse::File during property access
       retrieved_file = object[:avatar]

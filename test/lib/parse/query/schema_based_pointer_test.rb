@@ -4,6 +4,34 @@ class TestSchemaBasedPointer < Minitest::Test
   
   def setup
     @query = Parse::Query.new("TestClass")
+    
+    # Mock the schema response to include Team class
+    mock_response = Object.new
+    def mock_response.success?
+      true
+    end
+    def mock_response.result
+      {
+        "results" => [
+          { "className" => "Team" },
+          { "className" => "TestClass" },
+          { "className" => "Post" }
+        ]
+      }
+    end
+    
+    # Mock Parse.client.schemas to return our mock response
+    mock_client = Object.new
+    def mock_client.schemas
+      @mock_response
+    end
+    mock_client.instance_variable_set(:@mock_response, mock_response)
+    
+    # Override Parse::Client.client(:default) for this test  
+    Parse::Client.instance_variable_get(:@clients)[:default] = mock_client
+    
+    # Reset and reload known parse classes with mocked data
+    Parse::Query.reset_known_parse_classes!
   end
   
   def test_convert_pointer_value_with_schema_parse_pointer

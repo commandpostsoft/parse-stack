@@ -3,7 +3,7 @@ require_relative '../../support/test_server'
 require_relative '../../support/docker_helper'
 
 # Define test models for Docker integration testing
-class DockerTestPost < Parse::Object
+class Post < Parse::Object
   property :title, :string
   property :content, :string
   property :view_count, :integer, default: 0
@@ -11,24 +11,39 @@ class DockerTestPost < Parse::Object
   property :published_at, :date
   property :tags, :array
   property :metadata, :object
-  belongs_to :author, class_name: 'DockerTestUser'
-  has_many :comments, class_name: 'DockerTestComment'
+  belongs_to :author, class_name: 'Author'
+  has_many :comments, class_name: 'Comment'
 end
 
-class DockerTestUser < Parse::Object
+class Author < Parse::Object
   property :name, :string
   property :email, :string
   property :bio, :string
   property :profile_image, :file
   property :settings, :object
-  has_many :posts, class_name: 'DockerTestPost', as: :author
+  has_many :posts, class_name: 'Post', as: :author
 end
 
-class DockerTestComment < Parse::Object
+class Comment < Parse::Object
   property :content, :string
   property :approved, :boolean, default: false
-  belongs_to :post, class_name: 'DockerTestPost'
-  belongs_to :author, class_name: 'DockerTestUser'
+  belongs_to :post, class_name: 'Post'
+  belongs_to :author, class_name: 'Author'
+end
+
+class DockerTest < Parse::Object
+  property :test_field, :string
+  property :timestamp, :float
+end
+
+class QueryTest < Parse::Object
+  property :name, :string
+  property :value, :integer
+  property :active, :boolean
+end
+
+class TestWithHook < Parse::Object
+  property :name, :string
 end
 
 # Docker-based integration tests that specifically test against a real Parse Server
@@ -78,20 +93,18 @@ class DockerIntegrationTest < Minitest::Test
 
   def test_mongodb_backend_working
     # Create an object to verify MongoDB is working
-    test_obj = Parse::Object.new({
-      'className' => 'DockerTest', 
-      'testField' => 'docker_value',
-      'timestamp' => Time.now.to_f
-    })
+    test_obj = DockerTest.new
+    test_obj[:test_field] = 'docker_value'
+    test_obj[:timestamp] = Time.now.to_f
     
     assert test_obj.save, "Should be able to save object to MongoDB"
     assert test_obj.id.present?, "Saved object should have an ID"
     
     # Query it back to verify persistence
-    query = Parse::Query.new('DockerTest')
+    query = DockerTest.query
     results = query.results
     assert_equal 1, results.count, "Should find the saved object"
-    assert_equal 'docker_value', results.first['testField']
+    assert_equal 'docker_value', results.first[:test_field]
   end
 
   def test_master_key_schema_operations
@@ -111,10 +124,8 @@ class DockerIntegrationTest < Minitest::Test
     assert_equal 'Hello Docker!', result, "Cloud function should execute correctly"
     
     # Test cloud function with beforeSave hook
-    test_obj = Parse::Object.new({
-      'className' => 'TestWithHook',
-      'name' => 'Hook Test'
-    })
+    test_obj = TestWithHook.new
+    test_obj[:name] = 'Hook Test'
     
     assert test_obj.save, "Should save object with beforeSave hook"
     # The beforeSave hook in test/cloud/main.js adds a field
@@ -146,33 +157,32 @@ class DockerIntegrationTest < Minitest::Test
   def test_query_operations
     # Create test data
     5.times do |i|
-      Parse::Object.new({
-        'className' => 'QueryTest',
-        'name' => "Item #{i}",
-        'value' => i * 10,
-        'active' => i.even?
-      }).save
+      obj = QueryTest.new
+      obj[:name] = "Item #{i}"
+      obj[:value] = i * 10
+      obj[:active] = i.even?
+      obj.save
     end
     
     # Test basic query
-    query = Parse::Query.new('QueryTest')
+    query = QueryTest.query
     all_results = query.results
     assert_equal 5, all_results.count
     
     # Test query with constraints
-    query = Parse::Query.new('QueryTest')
+    query = QueryTest.query
     query = query.where(:active => true)
     active_results = query.results
     assert_equal 3, active_results.count, "Should find 3 active items (0, 2, 4)"
     
     # Test query with limit
-    query = Parse::Query.new('QueryTest')
+    query = QueryTest.query
     query = query.limit(2)
     limited_results = query.results
     assert_equal 2, limited_results.count
     
     # Test ordering
-    query = Parse::Query.new('QueryTest')
+    query = QueryTest.query
     query = query.order(:value)
     ordered_results = query.results
     assert_equal 0, ordered_results.first['value']
@@ -184,7 +194,7 @@ class DockerIntegrationTest < Minitest::Test
     puts "Testing schema upgrade with test models..."
     
     # Clear any existing schemas first
-    ['DockerTestPost', 'DockerTestUser', 'DockerTestComment'].each do |class_name|
+    ['Post', 'Author', 'Comment'].each do |class_name|
       begin
         Parse.client.delete_schema(class_name, use_master_key: true)
       rescue => e
@@ -201,12 +211,12 @@ class DockerIntegrationTest < Minitest::Test
     schemas = Parse.schemas
     schema_names = schemas.map { |s| s['className'] }
     
-    assert_includes schema_names, 'DockerTestPost', "DockerTestPost schema should be created"
-    assert_includes schema_names, 'DockerTestUser', "DockerTestUser schema should be created"
-    assert_includes schema_names, 'DockerTestComment', "DockerTestComment schema should be created"
+    assert_includes schema_names, 'Post', "Post schema should be created"
+    assert_includes schema_names, 'Author', "Author schema should be created"
+    assert_includes schema_names, 'Comment', "Comment schema should be created"
     
     # Verify field definitions in one of the schemas
-    post_schema = Parse.schema('DockerTestPost')
+    post_schema = Parse.schema('Post')
     assert post_schema.dig('fields', 'title'), "Post schema should have title field"
     assert post_schema.dig('fields', 'content'), "Post schema should have content field"
     assert post_schema.dig('fields', 'viewCount'), "Post schema should have viewCount field"
@@ -217,15 +227,15 @@ class DockerIntegrationTest < Minitest::Test
 
   def test_model_relationships_and_data
     # Create test data using the defined models
-    user = DockerTestUser.new(
+    user = Author.new(
       name: 'Test Author',
       email: 'author@test.com',
       bio: 'A test author for Docker integration',
       settings: { theme: 'dark', notifications: true }
     )
-    assert user.save, "Should be able to save DockerTestUser"
+    assert user.save, "Should be able to save Author"
     
-    post = DockerTestPost.new(
+    post = Post.new(
       title: 'Docker Integration Test Post',
       content: 'This is a test post for Docker integration testing.',
       view_count: 42,
@@ -235,25 +245,25 @@ class DockerIntegrationTest < Minitest::Test
       metadata: { source: 'automated_test', priority: 'high' },
       author: user
     )
-    assert post.save, "Should be able to save DockerTestPost"
+    assert post.save, "Should be able to save Post"
     
-    comment = DockerTestComment.new(
+    comment = Comment.new(
       content: 'Great post about Docker integration!',
       approved: true,
       post: post,
       author: user
     )
-    assert comment.save, "Should be able to save DockerTestComment"
+    assert comment.save, "Should be able to save Comment"
     
     # Test relationships
     assert_equal user.id, post.author.id, "Post should be linked to author"
     assert_equal post.id, comment.post.id, "Comment should be linked to post"
     
     # Test querying with relationships
-    posts_by_user = DockerTestPost.query(author: user.pointer).results
+    posts_by_user = Post.query(author: user.pointer).results
     assert_equal 1, posts_by_user.count, "Should find one post by the user"
     
-    comments_on_post = DockerTestComment.query(post: post.pointer).results  
+    comments_on_post = Comment.query(post: post.pointer).results  
     assert_equal 1, comments_on_post.count, "Should find one comment on the post"
     
     puts "  ✓ Model relationships and data operations work correctly"

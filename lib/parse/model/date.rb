@@ -36,7 +36,13 @@ module Parse
 
     # @return [String] the ISO8601 time string including milliseconds
     def iso
-      to_time.utc.iso8601(3)
+      # For Rails 8+ compatibility, avoid to_time and use appropriate UTC conversion
+      if respond_to?(:utc)
+        utc.iso8601(3)
+      else
+        # Fallback for Date objects without time zone info
+        to_datetime.utc.iso8601(3)
+      end
     end
 
     # @return (see #iso)

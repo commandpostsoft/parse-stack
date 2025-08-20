@@ -342,7 +342,23 @@ module Parse
         val = formatted_value
         val = [val].compact unless val.is_a?(Array)
         
-        # Default behavior - use formatted values as-is
+        # Special handling for array pointer fields
+        # Convert Parse objects and objectId strings to pointers for array contains queries
+        if val.is_a?(Array)
+          val = val.map do |item|
+            if item.respond_to?(:pointer)
+              # Convert Parse objects to pointers
+              item.pointer
+            elsif item.is_a?(String) && item.match?(/^[a-zA-Z0-9]{10}$/)
+              # Convert objectId strings to pointers - need to infer class name from field context
+              # For now, pass through as string - Parse Server should handle this
+              item
+            else
+              item
+            end
+          end
+        end
+        
         { @operation.operand => { key => val } }
       end
     end
@@ -380,6 +396,24 @@ module Parse
       def build
         val = formatted_value
         val = [val].compact unless val.is_a?(Array)
+        
+        # Special handling for array pointer fields
+        # Convert Parse objects and objectId strings to pointers for array contains queries
+        if val.is_a?(Array)
+          val = val.map do |item|
+            if item.respond_to?(:pointer)
+              # Convert Parse objects to pointers
+              item.pointer
+            elsif item.is_a?(String) && item.match?(/^[a-zA-Z0-9]{10}$/)
+              # Convert objectId strings to pointers - need to infer class name from field context
+              # For now, pass through as string - Parse Server should handle this
+              item
+            else
+              item
+            end
+          end
+        end
+        
         { @operation.operand => { key => val } }
       end
     end

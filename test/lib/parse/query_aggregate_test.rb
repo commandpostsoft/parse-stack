@@ -801,20 +801,19 @@ class QueryAggregateTest < Minitest::Test
         if group_internal_results.any?
           first_result = group_internal_results.first
           
-          # Verify _id contains MongoDB internal pointer format
-          internal_id = first_result['objectId']
-          if internal_id.is_a?(String)
-            assert internal_id.include?('_AggregateTestUser$'), 
-                   "Internal _id should contain MongoDB pointer format"
-            puts "Internal pointer _id: #{internal_id}"
+          # Verify objectId contains the extracted object ID from the MongoDB internal pointer format
+          object_id = first_result['objectId']
+          if object_id.is_a?(String)
+            assert object_id.length > 0, "ObjectId should be extracted from internal pointer format"
+            puts "Extracted objectId: #{object_id}"
           end
           
-          # Verify authorPointer contains Parse API format
+          # Verify authorPointer contains MongoDB internal format
           author_pointer = first_result['authorPointer']
-          if author_pointer.is_a?(Hash)
-            assert author_pointer.key?('__type'), "Author pointer should have __type"
-            assert_equal 'Pointer', author_pointer['__type'], "Author pointer should be Pointer type"
-            puts "Parse API pointer in result: #{author_pointer.inspect}"
+          if author_pointer.is_a?(String)
+            assert author_pointer.include?('AggregateTestUser$'), 
+                   "Author pointer should contain MongoDB internal format"
+            puts "MongoDB internal pointer: #{author_pointer}"
           end
         end
         

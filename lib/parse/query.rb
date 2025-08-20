@@ -65,6 +65,26 @@ module Parse
     extend ::ActiveModel::Callbacks
     include Parse::Client::Connectable
     include Enumerable
+    
+    # Known Parse classes for fast validation - dynamically loaded from schema
+    def self.known_parse_classes
+      @known_parse_classes ||= begin
+        # Get all classes from Parse schema
+        response = Parse.client.schemas
+        schema_classes = response.success? ? response.result.dig("results")&.map { |cls| cls["className"] } || [] : []
+        # Add built-in Parse classes
+        built_in_classes = %w[_User _Role _Session _Installation _Audience User Role Session Installation Audience]
+        (built_in_classes + schema_classes).uniq.freeze
+      rescue => e
+        # Fallback to built-in classes if schema query fails (e.g., during testing without server)
+        %w[_User _Role _Session _Installation _Audience User Role Session Installation Audience].freeze
+      end
+    end
+    
+    # Allow resetting the cached known classes (useful for testing)
+    def self.reset_known_parse_classes!
+      @known_parse_classes = nil
+    end
     # @!group Callbacks
     #
     # @!method before_prepare
@@ -2273,12 +2293,28 @@ module Parse
         # Handle MongoDB format strings ("ClassName$objectId") first - regardless of schema
         if value.include?('$') && value.match(/^[A-Za-z_]\w*\$[\w\d]+$/)
           class_name, object_id = value.split('$', 2)
-          if options[:to_mongodb_format]
-            value # Already in MongoDB format
-          elsif options[:return_pointers]
-            Parse::Pointer.new(class_name, object_id)
+          
+          # Validate that the class_name is a known Parse class
+          is_valid_class = self.class.known_parse_classes.include?(class_name) ||
+            begin
+              # Only do expensive lookup if not in known set
+              Parse::Model.find_class(class_name) || 
+              class_name.constantize.ancestors.include?(Parse::Object)
+            rescue NameError, TypeError
+              false
+            end
+          
+          if is_valid_class
+            if options[:to_mongodb_format]
+              value # Already in MongoDB format
+            elsif options[:return_pointers]
+              Parse::Pointer.new(class_name, object_id)
+            else
+              object_id # Just return the object ID
+            end
           else
-            object_id # Just return the object ID
+            # Not a valid Parse class, treat as regular string
+            value
           end
         elsif is_pointer && target_class
           # Plain object ID with known target class from schema

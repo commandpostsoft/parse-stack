@@ -142,9 +142,11 @@ class TransactionIntegrationTest < Minitest::Test
         error_occurred = false
         begin
           Parse::Object.transaction do |batch|
-            # Valid update
-            product.price = 35.00
+            # Add the product to the batch FIRST to capture its current state
             batch.add(product)
+            
+            # Then modify it - this should be rolled back if transaction fails
+            product.price = 35.00
 
             # Create an object that will cause a failure by trying to save with invalid objectId
             invalid_product = Product.new(name: "Invalid Product", price: 40.00, sku: "INVALID")
