@@ -1,5 +1,4 @@
 require "faraday"
-require "faraday_middleware"
 require "active_support"
 require "moneta"
 require "active_model_serializers"
@@ -481,7 +480,7 @@ module Parse
         retry
       end
       raise
-    rescue Faraday::Error::ClientError, Net::OpenTimeout => e
+    rescue Faraday::ClientError, Net::OpenTimeout => e
       if _retry_count > 0
         warn "[Parse:Retry] Retries remaining #{_retry_count} : #{_request}"
         _retry_count -= 1
@@ -594,20 +593,61 @@ module Parse
   # @return (see Parse.call_function)
   def self.trigger_job(name, body = {}, **opts)
     conn = opts[:session] || opts[:client] || :default
-    response = Parse::Client.client(conn).trigger_job(name, body)
+    
+    # Extract request options for the API call
+    request_opts = {}
+    request_opts[:session_token] = opts[:session_token] if opts[:session_token]
+    request_opts[:master_key] = opts[:master_key] if opts[:master_key]
+    
+    response = Parse::Client.client(conn).trigger_job(name, body, opts: request_opts)
     return response if opts[:raw].present?
     response.error? ? nil : response.result["result"]
+  end
+
+  # Helper method to trigger cloud jobs with a session token.
+  # This is a convenience method that ensures proper session token handling.
+  # @param name [String] the name of the cloud code job to trigger.
+  # @param body [Hash] the set of parameters to pass to the job.
+  # @param session_token [String] the session token for authenticated requests.
+  # @param opts [Hash] additional options (same as trigger_job).
+  # @return [Object] the result data of the response. nil if there was an error.
+  def self.trigger_job_with_session(name, body = {}, session_token, **opts)
+    opts[:session_token] = session_token
+    trigger_job(name, body, **opts)
   end
 
   # Helper method to call cloud functions and get results.
   # @param name [String] the name of the cloud code function to call.
   # @param body [Hash] the set of parameters to pass to the function.
   # @param opts [Hash] additional options.
+  # @option opts [String] :session_token The session token for authenticated requests.
+  # @option opts [Symbol] :session The client connection to use (alternative to :client).
+  # @option opts [Symbol] :client The client connection to use.
+  # @option opts [Boolean] :raw Whether to return the raw response object.
+  # @option opts [Boolean] :master_key Whether to use the master key for this request.
   # @return [Object] the result data of the response. nil if there was an error.
   def self.call_function(name, body = {}, **opts)
     conn = opts[:session] || opts[:client] || :default
-    response = Parse::Client.client(conn).call_function(name, body)
+    
+    # Extract request options for the API call
+    request_opts = {}
+    request_opts[:session_token] = opts[:session_token] if opts[:session_token]
+    request_opts[:master_key] = opts[:master_key] if opts[:master_key]
+    
+    response = Parse::Client.client(conn).call_function(name, body, opts: request_opts)
     return response if opts[:raw].present?
     response.error? ? nil : response.result["result"]
+  end
+
+  # Helper method to call cloud functions with a session token.
+  # This is a convenience method that ensures proper session token handling.
+  # @param name [String] the name of the cloud code function to call.
+  # @param body [Hash] the set of parameters to pass to the function.
+  # @param session_token [String] the session token for authenticated requests.
+  # @param opts [Hash] additional options (same as call_function).
+  # @return [Object] the result data of the response. nil if there was an error.
+  def self.call_function_with_session(name, body = {}, session_token, **opts)
+    opts[:session_token] = session_token
+    call_function(name, body, **opts)
   end
 end
