@@ -156,4 +156,86 @@ class TestCountDistinct < Minitest::Test
     @mock_client.verify
     mock_response.verify
   end
+
+  def test_count_distinct_with_mixed_conditions_including_dates
+    # Set up query with mixed where conditions including dates
+    now = Time.now
+    yesterday = now - 86400
+    
+    @query.where(
+      :play_count.gt => 100,
+      :genre => "rock",
+      :release_date.gte => yesterday,
+      :release_date.lte => now,
+      :featured => true
+    )
+    
+    mock_response = Minitest::Mock.new
+    mock_response.expect :error?, false
+    mock_response.expect :result, [{ "distinctCount" => 7 }]
+    # Define respond_to? to return true for the methods we expect
+    def mock_response.respond_to?(method)
+      [:error?, :result].include?(method) || super
+    end
+    
+    # The pipeline should include a $match stage with all conditions
+    expected_match = {
+      "playCount" => { "$gt" => 100 },
+      "genre" => "rock",
+      "releaseDate" => { 
+        "$gte" => { "__type" => "Date", "iso" => yesterday.iso8601(3) },
+        "$lte" => { "__type" => "Date", "iso" => now.iso8601(3) }
+      },
+      "featured" => true
+    }
+    
+    @mock_client.expect :aggregate_pipeline, mock_response do |table, pipeline, **kwargs|
+      table == "Song" && 
+      pipeline.is_a?(Array) &&
+      pipeline[0]["$match"] && # Should have a match stage
+      pipeline[1]["$group"] && # Should have a group stage
+      pipeline[2]["$count"] # Should have a count stage
+    end
+    
+    result = @query.count_distinct(:artist)
+    
+    assert_equal 7, result
+    @mock_client.verify
+    mock_response.verify
+  end
+
+  def test_count_distinct_complex_date_and_array_conditions
+    # Test with complex conditions including date ranges and array operations
+    now = Time.now
+    week_ago = now - 604800
+    
+    @query.where(
+      :created_at.gte => week_ago,
+      :created_at.lt => now,
+      :tags.in => ["popular", "trending"],
+      :rating.gte => 4.0,
+      :verified => true
+    )
+    
+    mock_response = Minitest::Mock.new
+    mock_response.expect :error?, false
+    mock_response.expect :result, [{ "distinctCount" => 12 }]
+    # Define respond_to? to return true for the methods we expect
+    def mock_response.respond_to?(method)
+      [:error?, :result].include?(method) || super
+    end
+    
+    @mock_client.expect :aggregate_pipeline, mock_response do |table, pipeline, **kwargs|
+      table == "Song" && 
+      pipeline.is_a?(Array) &&
+      pipeline.length == 3 && # Should have match, group, and count stages
+      pipeline[0]["$match"] # First stage should be match with conditions
+    end
+    
+    result = @query.count_distinct(:album)
+    
+    assert_equal 12, result
+    @mock_client.verify
+    mock_response.verify
+  end
 end

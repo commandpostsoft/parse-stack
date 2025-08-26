@@ -454,7 +454,7 @@ class TestQueryAggregationFeatures < Minitest::Test
       "iso" => "2025-08-15T07:00:00.000Z"
     }
     
-    result = @query.send(:convert_dates_for_aggregation, parse_date_obj)
+    result = @query.send(:convert_dates_for_aggregation, parse_date_obj, for_match_stage: false)
     
     # Should convert to raw ISO string
     assert_equal "2025-08-15T07:00:00.000Z", result
@@ -474,7 +474,7 @@ class TestQueryAggregationFeatures < Minitest::Test
       }
     }
     
-    result = @query.send(:convert_dates_for_aggregation, constraint_with_dates)
+    result = @query.send(:convert_dates_for_aggregation, constraint_with_dates, for_match_stage: false)
     
     # Should convert nested date objects to ISO strings
     assert_equal "2025-08-15T07:00:00.000Z", result["createdAt"]["$gte"]
@@ -503,12 +503,12 @@ class TestQueryAggregationFeatures < Minitest::Test
     
     stringified_where = query.send(:convert_dates_for_aggregation, aggregation_where)
     
-    # The final match stage should have ISO string dates, not Parse objects
+    # The final match stage should have raw ISO strings for Parse Server aggregation compatibility
     created_at_constraint = stringified_where["createdAt"] || stringified_where["_created_at"]
     
     if created_at_constraint && created_at_constraint["$gte"]
-      assert_kind_of String, created_at_constraint["$gte"], "Date should be converted to ISO string"
-      assert_match(/^\d{4}-\d{2}-\d{2}T/, created_at_constraint["$gte"], "Should be ISO format")
+      assert_kind_of String, created_at_constraint["$gte"], "Date should be converted to raw ISO string"
+      assert_match(/^\d{4}-\d{2}-\d{2}T/, created_at_constraint["$gte"], "Should be in ISO format")
     end
   end
 end

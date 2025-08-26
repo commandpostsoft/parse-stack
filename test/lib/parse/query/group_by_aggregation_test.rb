@@ -287,4 +287,95 @@ class TestGroupByAggregation < Minitest::Test
       group_by.max(nil)
     end
   end
+
+  # Test chaining where conditions with date constraints and group_by_date
+  def test_chaining_date_filters_with_group_by_date
+    # Set up date range
+    start_time = Time.new(2025, 8, 1, 0, 0, 0, "+00:00")
+    end_time = Time.new(2025, 8, 31, 23, 59, 59, "+00:00")
+    
+    # Create query with date filters
+    result = @query
+      .where(:created_at.gte => start_time)
+      .where(:created_at.lte => end_time)
+      .where(:status => "active")
+      .group_by_date(:created_at, :day)
+    
+    assert_kind_of Parse::GroupByDate, result
+    
+    # Verify where conditions are preserved in the query
+    compiled_where = @query.send(:compile_where)
+    assert compiled_where["createdAt"], "createdAt filter should be present"
+    assert compiled_where["status"], "status filter should be present"
+    
+    # Check that date constraints have the correct format
+    created_at_constraint = compiled_where["createdAt"]
+    assert created_at_constraint[:$gte], "Should have $gte constraint"
+    assert created_at_constraint[:$lte], "Should have $lte constraint"
+    
+    # Verify the date format is Parse Date format
+    gte_constraint = created_at_constraint[:$gte]
+    lte_constraint = created_at_constraint[:$lte]
+    
+    assert_equal "Date", gte_constraint[:__type], "Should have Parse Date type"
+    assert gte_constraint[:iso], "Should have ISO string"
+    assert_equal "Date", lte_constraint[:__type], "Should have Parse Date type" 
+    assert lte_constraint[:iso], "Should have ISO string"
+  end
+
+  # Test that the aggregation pipeline properly handles date filters for match stages
+  def test_group_by_date_with_date_filters_pipeline_generation
+    start_time = Time.new(2025, 8, 1, 0, 0, 0, "+00:00")
+    end_time = Time.new(2025, 8, 31, 23, 59, 59, "+00:00")
+    
+    query = @query
+      .where(:created_at.gte => start_time)
+      .where(:created_at.lte => end_time)
+      .where(:status => "active")
+    
+    group_by_date = Parse::GroupByDate.new(query, :created_at, :day)
+    
+    # Mock response
+    mock_response = Minitest::Mock.new
+    mock_response.expect :success?, true
+    # Allow result to be called multiple times
+    mock_response.expect :result, [
+      { "objectId" => { "year" => 2025, "month" => 8, "day" => 1 }, "count" => 10 },
+      { "objectId" => { "year" => 2025, "month" => 8, "day" => 2 }, "count" => 15 }
+    ]
+    mock_response.expect :result, [
+      { "objectId" => { "year" => 2025, "month" => 8, "day" => 1 }, "count" => 10 },
+      { "objectId" => { "year" => 2025, "month" => 8, "day" => 2 }, "count" => 15 }
+    ]
+    
+    @mock_client.expect :aggregate_pipeline, mock_response do |table, pipeline, **kwargs|
+      table == "Asset" && begin
+        # Should have $match stage with date constraints
+        match_stage = pipeline.find { |stage| stage.key?("$match") }
+        
+        if match_stage
+          created_at_match = match_stage["$match"]["createdAt"]
+          status_match = match_stage["$match"]["status"]
+          
+          # Verify date constraints are in Parse Date format for match stage
+          created_at_match &&
+          created_at_match["$gte"] && 
+          created_at_match["$gte"]["__type"] == "Date" &&
+          created_at_match["$gte"]["iso"] &&
+          created_at_match["$lte"] &&
+          created_at_match["$lte"]["__type"] == "Date" &&
+          created_at_match["$lte"]["iso"] &&
+          status_match == "active"
+        else
+          false
+        end
+      end
+    end
+    
+    result = group_by_date.count
+    
+    expected_result = { "2025-08-01" => 10, "2025-08-02" => 15 }
+    assert_equal expected_result, result
+    @mock_client.verify
+  end
 end

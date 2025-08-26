@@ -1228,6 +1228,11 @@ module Parse
       # Handle nested constraints and convert Parse-specific types
       case constraints
       when Hash
+        # Check if this is a Parse Date hash and convert to raw ISO string
+        if constraints.keys == [:__type, :iso] && constraints[:__type] == "Date"
+          return constraints[:iso]
+        end
+        
         result = {}
         constraints.each do |key, value|
           result[key] = convert_for_aggregation(value)
@@ -1236,8 +1241,14 @@ module Parse
       when Array
         constraints.map { |item| convert_for_aggregation(item) }
       when Parse::Date
-        # Convert Parse::Date to MongoDB date format
-        { "$date" => constraints.iso }
+        # Convert Parse::Date to raw ISO string for aggregation (Parse Server expects raw ISO strings in aggregation pipelines)
+        constraints.iso
+      when Time
+        # Convert Ruby Time objects to raw ISO string for aggregation (Parse Server expects raw ISO strings in aggregation pipelines)
+        constraints.utc.iso8601(3)
+      when DateTime
+        # Convert Ruby DateTime objects to raw ISO string for aggregation (Parse Server expects raw ISO strings in aggregation pipelines)
+        constraints.utc.iso8601(3)
       when Parse::Object, Parse::Pointer
         # Convert Parse objects/pointers to MongoDB pointer format
         constraints.as_json
@@ -2436,34 +2447,50 @@ module Parse
       result
     end
 
-    # Convert Ruby Date/Time objects to MongoDB date format for aggregation pipelines
+    # Convert Ruby Date/Time objects for aggregation pipelines
     # @param obj [Object] the object to convert (Hash, Array, or value)
-    # @return [Object] the converted object with proper MongoDB dates
-    def convert_dates_for_aggregation(obj)
+    # @param for_match_stage [Boolean] if true, converts to Parse Date format; if false (default), converts to raw ISO strings which Parse Server expects in aggregation pipelines
+    # @return [Object] the converted object with dates in the appropriate format
+    def convert_dates_for_aggregation(obj, for_match_stage: false)
       case obj
       when Hash
         # Handle Parse's JSON date format: {"__type": "Date", "iso": "..."} or {:__type => "Date", :iso => "..."}
         if (obj["__type"] == "Date" || obj[:__type] == "Date") && (obj["iso"] || obj[:iso])
-          # For Parse Server aggregation, use raw ISO string
-          obj["iso"] || obj[:iso]
+          if for_match_stage
+            # For Parse Server aggregation match stages, keep the Parse Date format
+            { "__type" => "Date", "iso" => (obj["iso"] || obj[:iso]) }
+          else
+            # For other stages, use raw ISO string
+            obj["iso"] || obj[:iso]
+          end
         else
           # Also handle field name mapping for built-in Parse fields
           converted_hash = {}
           obj.each do |key, value|
             # For Parse Server aggregation, keep standard Parse field names
             mapped_key = key
-            converted_hash[mapped_key] = convert_dates_for_aggregation(value)
+            converted_hash[mapped_key] = convert_dates_for_aggregation(value, for_match_stage: for_match_stage)
           end
           converted_hash
         end
       when Array
-        obj.map { |v| convert_dates_for_aggregation(v) }
+        obj.map { |v| convert_dates_for_aggregation(v, for_match_stage: for_match_stage) }
       when Time, DateTime
-        # Parse Server automatically converts Ruby Time objects to Date objects
-        obj
+        if for_match_stage
+          # Convert Ruby Time/DateTime objects to Parse Server's JSON date format for match stages
+          { "__type" => "Date", "iso" => obj.utc.iso8601(3) }
+        else
+          # For other stages, use raw ISO string
+          obj.utc.iso8601(3)
+        end
       when Date
-        # Parse Server automatically converts Ruby Date objects to Date objects  
-        obj
+        if for_match_stage
+          # Convert Ruby Date objects to Parse Server's JSON date format for match stages
+          { "__type" => "Date", "iso" => obj.to_time.utc.iso8601(3) }
+        else
+          # For other stages, use raw ISO string
+          obj.to_time.utc.iso8601(3)
+        end
       else
         obj
       end
@@ -2813,23 +2840,9 @@ module Parse
       formatted_group_field = @query.send(:format_aggregation_field, @group_field)
       
       # Build the aggregation pipeline
+      # Note: We don't add $match stage here because @query.aggregate() will automatically 
+      # add match stages from the query's where conditions
       pipeline = []
-      
-      # Add match stage if there are where conditions (before unwind for efficiency)
-      compiled_where = @query.send(:compile_where)
-      if compiled_where.present?
-        # Convert field names for aggregation context and handle dates
-        aggregation_where = @query.send(:convert_constraints_for_aggregation, compiled_where)
-        
-        # Debug output
-        if @query.instance_variable_get(:@verbose_aggregate)
-          puts "[DEBUG] Original constraints: #{compiled_where.inspect}"
-          puts "[DEBUG] Converted constraints: #{aggregation_where.inspect}"
-        end
-        
-        stringified_where = @query.send(:convert_dates_for_aggregation, aggregation_where)
-        pipeline << { "$match" => stringified_where }
-      end
       
       # Add unwind stage if flatten_arrays is enabled
       if @flatten_arrays
