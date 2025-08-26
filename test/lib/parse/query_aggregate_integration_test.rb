@@ -1702,4 +1702,226 @@ class QueryAggregateTest < Minitest::Test
       end
     end
   end
+  
+  def test_pointer_constraint_aggregation
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    
+    with_parse_server do
+      with_timeout(25, "pointer constraint aggregation test") do
+        puts "\n=== Testing Pointer Constraint Aggregation ==="
+        
+        # Create test data for pointer constraint testing
+        user1 = AggregateTestUser.new(name: "Pointer User 1", age: 28, city: "Boston", active: true)
+        user2 = AggregateTestUser.new(name: "Pointer User 2", age: 32, city: "Seattle", active: true)
+        user3 = AggregateTestUser.new(name: "Pointer User 3", age: 25, city: "Denver", active: false)
+        
+        assert user1.save, "User 1 should save successfully"
+        assert user2.save, "User 2 should save successfully" 
+        assert user3.save, "User 3 should save successfully"
+        
+        # Create posts with different authors
+        post1 = AggregateTestPost.new(title: "Post by User 1", author: user1, category: "tech", likes: 100)
+        post2 = AggregateTestPost.new(title: "Another Post by User 1", author: user1, category: "design", likes: 75)
+        post3 = AggregateTestPost.new(title: "Post by User 2", author: user2, category: "tech", likes: 120)
+        post4 = AggregateTestPost.new(title: "Post by User 3", author: user3, category: "writing", likes: 50)
+        
+        assert post1.save, "Post 1 should save successfully"
+        assert post2.save, "Post 2 should save successfully"
+        assert post3.save, "Post 3 should save successfully"
+        assert post4.save, "Post 4 should save successfully"
+        
+        puts "Created test data: 3 users, 4 posts with pointer relationships"
+        
+        # Test 1: Filter by specific user pointer, then group by category
+        puts "\n--- Test 1: where(author: user).group_by(:category).count ---"
+        puts "Target user ID: #{user1.id}"
+        
+        # First verify basic where query works
+        posts_by_user1 = AggregateTestPost.where(author: user1).all
+        puts "Direct where query found: #{posts_by_user1.length} posts by user1"
+        posts_by_user1.each do |post|
+          puts "  - #{post.title} (#{post.category})"
+        end
+        
+        # Show the aggregation pipeline that will be generated
+        puts "\n--- Debugging: Pipeline generation ---"
+        pipeline = AggregateTestPost.where(author: user1).group_by(:category).pipeline
+        puts "Generated pipeline:"
+        puts JSON.pretty_generate(pipeline)
+        
+        # Check the exact format of the pointer constraint in the match stage
+        match_stage = pipeline.find { |stage| stage.key?("$match") }
+        if match_stage
+          match_conditions = match_stage["$match"]
+          puts "\nMatch stage conditions:"
+          match_conditions.each do |field, condition|
+            puts "  #{field}: #{condition.inspect} (#{condition.class})"
+          end
+          
+          # Look for author constraint specifically
+          author_constraint = match_conditions["author"] || match_conditions["_p_author"]
+          if author_constraint
+            puts "Author constraint found: #{author_constraint.inspect} (#{author_constraint.class})"
+          else
+            puts "WARNING: No author constraint found in match stage"
+          end
+        end
+        
+        begin
+          result = AggregateTestPost.where(author: user1).group_by(:category).count
+          
+          puts "\nPointer constraint aggregation executed successfully!"
+          puts "Result type: #{result.class}"
+          puts "Result: #{result.inspect}"
+          
+          if result.is_a?(Hash)
+            assert !result.empty?, "Should find posts by user1"
+            
+            # Verify we get the expected categories
+            expected_categories = ["tech", "design"]  # user1 has posts in these categories
+            result.keys.each do |category|
+              assert expected_categories.include?(category), "Found unexpected category: #{category}"
+            end
+            
+            # Total should match direct query results
+            total_count = result.values.sum
+            assert total_count == posts_by_user1.length, "Aggregation count should match direct query: expected #{posts_by_user1.length}, got #{total_count}"
+            
+            puts "✅ Pointer constraint aggregation works correctly"
+          else
+            flunk "Expected Hash result, got #{result.class}: #{result.inspect}"
+          end
+          
+        rescue => e
+          puts "\n❌ Pointer constraint aggregation failed: #{e.class}: #{e.message}"
+          puts "This confirms the issue with pointer constraints in aggregation pipelines"
+          
+          # Let's also test with the raw pipeline to see if Parse Server accepts it
+          puts "\n--- Testing raw pipeline execution ---"
+          begin
+            raw_result = AggregateTestPost.new.client.aggregate_pipeline("AggregateTestPost", pipeline)
+            puts "Raw pipeline result: #{raw_result.results&.inspect || raw_result.inspect}"
+            
+            if raw_result.results.is_a?(Array) && raw_result.results.empty?
+              puts "Raw pipeline returned empty results - pointer constraint format issue confirmed"
+            end
+          rescue => raw_e
+            puts "Raw pipeline also failed: #{raw_e.class}: #{raw_e.message}"
+          end
+          
+          flunk "Pointer constraint aggregation should work: #{e.class}: #{e.message}"
+        end
+        
+        # Test 2: Multiple pointer constraints
+        puts "\n--- Test 2: Multiple constraints including pointer ---"
+        
+        begin
+          result2 = AggregateTestPost.where(author: user1, :likes.gte => 80).group_by(:category).count
+          
+          puts "Multiple constraint result: #{result2.inspect}"
+          
+          # Should only include posts by user1 with likes >= 80
+          if result2.is_a?(Hash)
+            total_count = result2.values.sum
+            expected_posts = posts_by_user1.select { |p| p.likes >= 80 }
+            assert total_count == expected_posts.length, "Should match posts with likes >= 80"
+            
+            puts "✅ Multiple constraints including pointer work correctly"
+          end
+          
+        rescue => e
+          puts "Multiple constraints failed: #{e.class}: #{e.message}"
+        end
+        
+        # Test 3: Test the exact failing pattern from user's example
+        puts "\n--- Test 3: Test exact failing patterns ---"
+        
+        # Pattern 1: Membership.where(role: x, active: true).group_by(:project).count
+        # We'll simulate with Post.where(author: x, category: y).group_by(:author).count
+        begin
+          simulated_result = AggregateTestPost.where(author: user1, category: "tech").group_by(:author).count
+          puts "Simulated membership pattern result: #{simulated_result.inspect}"
+          
+          if simulated_result.is_a?(Hash) && !simulated_result.empty?
+            puts "✅ Simulated membership pattern works"
+          elsif simulated_result.is_a?(Hash) && simulated_result.empty?
+            puts "❌ Simulated membership pattern returned empty results"
+          end
+        rescue => e
+          puts "Simulated membership pattern failed: #{e.class}: #{e.message}"
+        end
+        
+        # Test 4: Debug the internal pointer format vs expected format
+        puts "\n--- Test 4: Pointer format debugging ---"
+        
+        # Check what format Parse Server expects vs what we're sending
+        manual_pipeline = [
+          {
+            "$match" => {
+              "_p_author" => "_AggregateTestUser$#{user1.id}"  # MongoDB internal format
+            }
+          },
+          {
+            "$group" => {
+              "_id" => "$category",
+              "count" => { "$sum" => 1 }
+            }
+          }
+        ]
+        
+        puts "Manual pipeline with _p_author:"
+        puts JSON.pretty_generate(manual_pipeline)
+        
+        begin
+          manual_result = AggregateTestPost.new.client.aggregate_pipeline("AggregateTestPost", manual_pipeline)
+          puts "Manual _p_author result: #{manual_result.results&.inspect || 'nil'}"
+          
+          if manual_result.results&.any?
+            puts "✅ _p_author format works in aggregation"
+          else
+            puts "❌ _p_author format also fails"
+          end
+        rescue => e
+          puts "Manual _p_author pipeline failed: #{e.class}: #{e.message}"
+        end
+        
+        # Try with Parse API format
+        manual_pipeline2 = [
+          {
+            "$match" => {
+              "author" => {
+                "__type" => "Pointer",
+                "className" => "AggregateTestUser", 
+                "objectId" => user1.id
+              }
+            }
+          },
+          {
+            "$group" => {
+              "_id" => "$category",
+              "count" => { "$sum" => 1 }
+            }
+          }
+        ]
+        
+        puts "\nManual pipeline with Parse Pointer format:"
+        puts JSON.pretty_generate(manual_pipeline2)
+        
+        begin
+          manual_result2 = AggregateTestPost.new.client.aggregate_pipeline("AggregateTestPost", manual_pipeline2)
+          puts "Manual Parse Pointer result: #{manual_result2.results&.inspect || 'nil'}"
+          
+          if manual_result2.results&.any?
+            puts "✅ Parse Pointer format works in aggregation"
+          else
+            puts "❌ Parse Pointer format also fails"
+          end
+        rescue => e
+          puts "Manual Parse Pointer pipeline failed: #{e.class}: #{e.message}"
+        end
+        
+        puts "\n✅ Pointer constraint aggregation test completed (debugging results above)"
+      end
+    end
+  end
 end

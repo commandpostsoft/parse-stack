@@ -454,7 +454,7 @@ class TestQueryAggregationFeatures < Minitest::Test
       "iso" => "2025-08-15T07:00:00.000Z"
     }
     
-    result = @query.send(:convert_dates_for_aggregation, parse_date_obj, for_match_stage: false)
+    result = @query.send(:convert_dates_for_aggregation, parse_date_obj)
     
     # Should convert to raw ISO string
     assert_equal "2025-08-15T07:00:00.000Z", result
@@ -474,7 +474,7 @@ class TestQueryAggregationFeatures < Minitest::Test
       }
     }
     
-    result = @query.send(:convert_dates_for_aggregation, constraint_with_dates, for_match_stage: false)
+    result = @query.send(:convert_dates_for_aggregation, constraint_with_dates)
     
     # Should convert nested date objects to ISO strings
     assert_equal "2025-08-15T07:00:00.000Z", result["createdAt"]["$gte"]

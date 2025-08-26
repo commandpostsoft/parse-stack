@@ -1111,8 +1111,9 @@ module Parse
       unless @where.empty?
         where_clause = Parse::Query.compile_where(@where)
         if where_clause.any?
-          # Convert dates and other Parse-specific types for MongoDB aggregation
-          match_stage = convert_for_aggregation(where_clause)
+          # Convert field names for aggregation context and handle dates/pointers
+          aggregation_where = convert_constraints_for_aggregation(where_clause)
+          match_stage = convert_dates_for_aggregation(aggregation_where)
           complete_pipeline << { "$match" => match_stage }
         end
       end
@@ -1233,6 +1234,14 @@ module Parse
           return constraints[:iso]
         end
         
+        # Check if this is a Parse Pointer hash and convert to MongoDB format
+        if constraints.keys.sort == [:__type, :className, :objectId].sort && constraints[:__type] == "Pointer"
+          return "#{constraints[:className]}$#{constraints[:objectId]}"
+        end
+        if constraints.keys.sort == ["__type", "className", "objectId"].sort && constraints["__type"] == "Pointer"
+          return "#{constraints["className"]}$#{constraints["objectId"]}"
+        end
+        
         result = {}
         constraints.each do |key, value|
           result[key] = convert_for_aggregation(value)
@@ -1250,8 +1259,9 @@ module Parse
         # Convert Ruby DateTime objects to raw ISO string for aggregation (Parse Server expects raw ISO strings in aggregation pipelines)
         constraints.utc.iso8601(3)
       when Parse::Object, Parse::Pointer
-        # Convert Parse objects/pointers to MongoDB pointer format
-        constraints.as_json
+        # Convert Parse objects/pointers to MongoDB pointer format for aggregation
+        # Parse Server expects "ClassName$objectId" format in aggregation pipelines, not Parse API format
+        "#{constraints.parse_class}$#{constraints.id}"
       else
         constraints
       end
@@ -2447,72 +2457,36 @@ module Parse
       result
     end
 
-    # Convert Ruby Date/Time objects for aggregation pipelines
+    # Convert Ruby Date/Time objects for aggregation pipelines to raw ISO strings.
+    # Parse Server expects dates in raw ISO string format in aggregation pipelines, not the Parse Date object format.
     # @param obj [Object] the object to convert (Hash, Array, or value)
-    # @param for_match_stage [Boolean] if true, converts to Parse Date format; if false (default), converts to raw ISO strings which Parse Server expects in aggregation pipelines
-    # @return [Object] the converted object with dates in the appropriate format
-    def convert_dates_for_aggregation(obj, for_match_stage: false)
+    # @return [Object] the converted object with dates converted to raw ISO strings
+    def convert_dates_for_aggregation(obj)
       case obj
       when Hash
         # Handle Parse's JSON date format: {"__type": "Date", "iso": "..."} or {:__type => "Date", :iso => "..."}
         if (obj["__type"] == "Date" || obj[:__type] == "Date") && (obj["iso"] || obj[:iso])
-          if for_match_stage
-            # For Parse Server aggregation match stages, keep the Parse Date format
-            { "__type" => "Date", "iso" => (obj["iso"] || obj[:iso]) }
-          else
-            # For other stages, use raw ISO string
-            obj["iso"] || obj[:iso]
-          end
+          # Convert Parse Date format to raw ISO string
+          obj["iso"] || obj[:iso]
         else
-          # Also handle field name mapping for built-in Parse fields
+          # Recursively convert nested hashes
           converted_hash = {}
           obj.each do |key, value|
-            # For Parse Server aggregation, keep standard Parse field names
-            mapped_key = key
-            converted_hash[mapped_key] = convert_dates_for_aggregation(value, for_match_stage: for_match_stage)
+            converted_hash[key] = convert_dates_for_aggregation(value)
           end
           converted_hash
         end
       when Array
-        obj.map { |v| convert_dates_for_aggregation(v, for_match_stage: for_match_stage) }
+        obj.map { |v| convert_dates_for_aggregation(v) }
       when Time, DateTime
-        if for_match_stage
-          # Convert Ruby Time/DateTime objects to Parse Server's JSON date format for match stages
-          { "__type" => "Date", "iso" => obj.utc.iso8601(3) }
-        else
-          # For other stages, use raw ISO string
-          obj.utc.iso8601(3)
-        end
+        # Convert Ruby Time/DateTime objects to raw ISO string
+        obj.utc.iso8601(3)
       when Date
-        if for_match_stage
-          # Convert Ruby Date objects to Parse Server's JSON date format for match stages
-          { "__type" => "Date", "iso" => obj.to_time.utc.iso8601(3) }
-        else
-          # For other stages, use raw ISO string
-          obj.to_time.utc.iso8601(3)
-        end
+        # Convert Ruby Date objects to raw ISO string
+        obj.to_time.utc.iso8601(3)
       else
         obj
       end
-    end
-
-    # Creates a deep copy of this query object, allowing independent modifications
-    # @return [Parse::Query] a new query object with the same constraints
-    def clone
-      cloned_query = Parse::Query.new(self.instance_variable_get(:@table))
-      [:count, :where, :order, :keys, :includes, :limit, :skip, :cache, :use_master_key, :client].each do |param|
-        if instance_variable_defined?(:"@#{param}")
-          value = instance_variable_get(:"@#{param}")
-          if value.is_a?(Array) || value.is_a?(Hash)
-            cloned_value = Marshal.load(Marshal.dump(value)) rescue value.dup
-          else
-            cloned_value = value
-          end
-          cloned_query.instance_variable_set(:"@#{param}", cloned_value)
-        end
-      end
-      cloned_query.instance_variable_set(:@results, nil)
-      cloned_query
     end
 
     # Combines multiple queries with OR logic
@@ -2540,6 +2514,25 @@ module Parse
     end
 
     public
+
+    # Creates a deep copy of this query object, allowing independent modifications
+    # @return [Parse::Query] a new query object with the same constraints
+    def clone
+      cloned_query = Parse::Query.new(self.instance_variable_get(:@table))
+      [:count, :where, :order, :keys, :includes, :limit, :skip, :cache, :use_master_key, :client].each do |param|
+        if instance_variable_defined?(:"@#{param}")
+          value = instance_variable_get(:"@#{param}")
+          if value.is_a?(Array) || value.is_a?(Hash)
+            cloned_value = Marshal.load(Marshal.dump(value)) rescue value.dup
+          else
+            cloned_value = value
+          end
+          cloned_query.instance_variable_set(:"@#{param}", cloned_value)
+        end
+      end
+      cloned_query.instance_variable_set(:@results, nil)
+      cloned_query
+    end
 
     # Alias method for ACL readable_by constraint
     # @param user_or_role [Parse::User, Parse::Role, String] the user, role, or role name to check read access for
