@@ -1574,4 +1574,90 @@ class QueryIntegrationTest < Minitest::Test
       assert all_posts.length >= 2, "Should find at least 2 posts"
     end
   end
+
+  # Test mixed where conditions with dates, strings, and numbers
+  def test_mixed_where_conditions_with_dates
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    
+    with_parse_server do
+      reset_database!
+      
+      # Create test data with various attributes
+      now = Time.now
+      hour_ago = now - 3600
+      day_ago = now - 86400
+      week_ago = now - 604800
+      
+      # Create players with different attributes and join dates
+      players = []
+      players << Player.new(name: "Alice", level: 10, wins: 5, hometown: "New York").tap { |p| p.save }
+      players << Player.new(name: "Bob", level: 20, wins: 15, hometown: "Boston").tap { |p| p.save }
+      players << Player.new(name: "Charlie", level: 30, wins: 25, hometown: "Chicago").tap { |p| p.save }
+      players << Player.new(name: "Diana", level: 15, wins: 8, hometown: "Denver").tap { |p| p.save }
+      players << Player.new(name: "Eve", level: 25, wins: 20, hometown: "Seattle").tap { |p| p.save }
+      
+      # Create game scores with different timestamps and scores
+      scores = []
+      scores << GameScore.new(player_name: "Alice", score: 100, cheat_mode: false).tap { |s| s.save }
+      sleep 0.1 # Small delay to ensure different timestamps
+      scores << GameScore.new(player_name: "Bob", score: 200, cheat_mode: false).tap { |s| s.save }
+      sleep 0.1
+      scores << GameScore.new(player_name: "Charlie", score: 300, cheat_mode: true).tap { |s| s.save }
+      sleep 0.1
+      scores << GameScore.new(player_name: "Diana", score: 150, cheat_mode: false).tap { |s| s.save }
+      sleep 0.1
+      scores << GameScore.new(player_name: "Eve", score: 250, cheat_mode: true).tap { |s| s.save }
+      
+      # Complex query with mixed conditions including dates
+      recent_cutoff = now - 7200 # 2 hours ago
+      
+      # Find high-scoring games from recent time period where no cheating occurred
+      results = GameScore.query
+        .where(
+          created_at: { "$gte" => recent_cutoff },
+          score: { "$gte" => 150 },
+          cheat_mode: false
+        )
+        .order(:score.desc)
+        .results
+      
+      assert results.length >= 2, "Should find at least 2 matching scores"
+      results.each do |score|
+        assert score.score >= 150, "Score should be at least 150"
+        assert_equal false, score.cheat_mode, "Should not be cheating"
+        created_time = Time.parse(score.created_at.to_s)
+        assert created_time >= recent_cutoff, "Should be recent"
+      end
+      
+      # Another mixed query: Players with high wins and specific hometown pattern
+      high_level_players = Player.query
+        .where(
+          level: { "$gte" => 20 },
+          wins: { "$lte" => 25 },
+          hometown: { "$regex" => "^[BC]" } # Starts with B or C
+        )
+        .results
+      
+      assert high_level_players.length >= 2, "Should find matching players"
+      high_level_players.each do |player|
+        assert player.level >= 20, "Level should be at least 20"
+        assert player.wins <= 25, "Wins should be at most 25"
+        assert player.hometown.match?(/^[BC]/), "Hometown should start with B or C"
+      end
+      
+      # Test with date ranges and multiple conditions
+      all_recent_scores = GameScore.query
+        .where(
+          created_at: { "$gte" => recent_cutoff, "$lte" => now },
+          player_name: { "$in" => ["Alice", "Bob", "Charlie"] }
+        )
+        .results
+      
+      assert all_recent_scores.length >= 3, "Should find scores for Alice, Bob, and Charlie"
+      player_names = all_recent_scores.map(&:player_name).uniq
+      assert player_names.include?("Alice"), "Should include Alice"
+      assert player_names.include?("Bob"), "Should include Bob"
+      assert player_names.include?("Charlie"), "Should include Charlie"
+    end
+  end
 end

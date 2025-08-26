@@ -382,6 +382,27 @@ module Parse
       created_at != updated_at
     end
 
+    # Run after_create callbacks for this object.
+    # This method is called by webhook handlers when an object is created.
+    # @return [Boolean] true if callbacks executed successfully
+    def run_after_create_callbacks
+      run_callbacks(:create) { true }
+    end
+
+    # Run after_save callbacks for this object.
+    # This method is called by webhook handlers when an object is saved.
+    # @return [Boolean] true if callbacks executed successfully
+    def run_after_save_callbacks
+      run_callbacks(:save) { true }
+    end
+
+    # Run after_destroy callbacks for this object.
+    # This method is called by webhook handlers when an object is deleted.
+    # @return [Boolean] true if callbacks executed successfully
+    def run_after_delete_callbacks
+      run_callbacks(:destroy) { true }
+    end
+
     # Returns a hash of all the changes that have been made to the object. By default
     # changes to the Parse::Properties::BASE_KEYS are ignored unless you pass true as
     # an argument.

@@ -49,7 +49,7 @@ module Parse
     end
 
     # Default configuration
-    self.enable_request_id = false  # Disabled by default for backward compatibility
+    self.enable_request_id = true  # Enabled by default for production safety
     self.request_id_header = 'X-Parse-Request-Id'  # Standard Parse header
     self.idempotent_methods = [:post, :put, :patch]  # Methods that can benefit from idempotency
 
@@ -230,7 +230,7 @@ module Parse
     # @param enabled [Boolean] whether to enable idempotency
     # @param methods [Array<Symbol>] HTTP methods to apply idempotency to
     # @param header [String] header name to use for request IDs
-    def self.configure_idempotency(enabled: false, methods: [:post, :put, :patch], header: 'X-Parse-Request-Id')
+    def self.configure_idempotency(enabled: true, methods: [:post, :put, :patch], header: 'X-Parse-Request-Id')
       self.enable_request_id = enabled
       self.idempotent_methods = methods
       self.request_id_header = header

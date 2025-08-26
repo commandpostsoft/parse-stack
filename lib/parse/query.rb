@@ -676,10 +676,17 @@ module Parse
       # if we don't have a OR clause to reuse, then create a new one with then
       # current set of constraints
       if compound.blank?
-        compound = Parse::Constraint::CompoundQueryConstraint.new :or, [Parse::Query.compile_where(remaining_clauses)]
+        initial_constraints = Parse::Query.compile_where(remaining_clauses)
+        # Only include initial constraints if they're not empty
+        initial_values = initial_constraints.empty? ? [] : [initial_constraints]
+        compound = Parse::Constraint::CompoundQueryConstraint.new :or, initial_values
       end
       # then take the where clauses from the second query and append them.
-      compound.value.push Parse::Query.compile_where(where_clauses)
+      new_constraints = Parse::Query.compile_where(where_clauses)
+      # Only add new constraints if they're not empty
+      unless new_constraints.empty?
+        compound.value.push new_constraints
+      end
       #compound = Parse::Constraint::CompoundQueryConstraint.new :or, [remaining_clauses, or_where_query.where]
       @where = [compound]
       self #chaining
@@ -1111,8 +1118,9 @@ module Parse
       unless @where.empty?
         where_clause = Parse::Query.compile_where(@where)
         if where_clause.any?
-          # Convert dates and other Parse-specific types for MongoDB aggregation
-          match_stage = convert_for_aggregation(where_clause)
+          # Convert field names for aggregation context and handle dates/pointers
+          aggregation_where = convert_constraints_for_aggregation(where_clause)
+          match_stage = convert_dates_for_aggregation(aggregation_where)
           complete_pipeline << { "$match" => match_stage }
         end
       end
@@ -1228,6 +1236,19 @@ module Parse
       # Handle nested constraints and convert Parse-specific types
       case constraints
       when Hash
+        # Check if this is a Parse Date hash and convert to raw ISO string
+        if constraints.keys == [:__type, :iso] && constraints[:__type] == "Date"
+          return constraints[:iso]
+        end
+        
+        # Check if this is a Parse Pointer hash and convert to MongoDB format
+        if constraints.keys.sort == [:__type, :className, :objectId].sort && constraints[:__type] == "Pointer"
+          return "#{constraints[:className]}$#{constraints[:objectId]}"
+        end
+        if constraints.keys.sort == ["__type", "className", "objectId"].sort && constraints["__type"] == "Pointer"
+          return "#{constraints["className"]}$#{constraints["objectId"]}"
+        end
+        
         result = {}
         constraints.each do |key, value|
           result[key] = convert_for_aggregation(value)
@@ -1236,11 +1257,18 @@ module Parse
       when Array
         constraints.map { |item| convert_for_aggregation(item) }
       when Parse::Date
-        # Convert Parse::Date to MongoDB date format
-        { "$date" => constraints.iso }
+        # Convert Parse::Date to raw ISO string for aggregation (Parse Server expects raw ISO strings in aggregation pipelines)
+        constraints.iso
+      when Time
+        # Convert Ruby Time objects to raw ISO string for aggregation (Parse Server expects raw ISO strings in aggregation pipelines)
+        constraints.utc.iso8601(3)
+      when DateTime
+        # Convert Ruby DateTime objects to raw ISO string for aggregation (Parse Server expects raw ISO strings in aggregation pipelines)
+        constraints.utc.iso8601(3)
       when Parse::Object, Parse::Pointer
-        # Convert Parse objects/pointers to MongoDB pointer format
-        constraints.as_json
+        # Convert Parse objects/pointers to MongoDB pointer format for aggregation
+        # Parse Server expects "ClassName$objectId" format in aggregation pipelines, not Parse API format
+        "#{constraints.parse_class}$#{constraints.id}"
       else
         constraints
       end
@@ -2436,38 +2464,109 @@ module Parse
       result
     end
 
-    # Convert Ruby Date/Time objects to MongoDB date format for aggregation pipelines
+    # Convert Ruby Date/Time objects for aggregation pipelines to raw ISO strings.
+    # Parse Server expects dates in raw ISO string format in aggregation pipelines, not the Parse Date object format.
     # @param obj [Object] the object to convert (Hash, Array, or value)
-    # @return [Object] the converted object with proper MongoDB dates
+    # @return [Object] the converted object with dates converted to raw ISO strings
     def convert_dates_for_aggregation(obj)
       case obj
       when Hash
         # Handle Parse's JSON date format: {"__type": "Date", "iso": "..."} or {:__type => "Date", :iso => "..."}
         if (obj["__type"] == "Date" || obj[:__type] == "Date") && (obj["iso"] || obj[:iso])
-          # For Parse Server aggregation, use raw ISO string
+          # Convert Parse Date format to raw ISO string
           obj["iso"] || obj[:iso]
         else
-          # Also handle field name mapping for built-in Parse fields
+          # Recursively convert nested hashes
           converted_hash = {}
           obj.each do |key, value|
-            # For Parse Server aggregation, keep standard Parse field names
-            mapped_key = key
-            converted_hash[mapped_key] = convert_dates_for_aggregation(value)
+            converted_hash[key] = convert_dates_for_aggregation(value)
           end
           converted_hash
         end
       when Array
         obj.map { |v| convert_dates_for_aggregation(v) }
       when Time, DateTime
-        # Parse Server automatically converts Ruby Time objects to Date objects
-        obj
+        # Convert Ruby Time/DateTime objects to raw ISO string
+        obj.utc.iso8601(3)
       when Date
-        # Parse Server automatically converts Ruby Date objects to Date objects  
-        obj
+        # Convert Ruby Date objects to raw ISO string
+        obj.to_time.utc.iso8601(3)
       else
         obj
       end
     end
+
+    # Combines multiple queries with OR logic using full pipeline approach
+    # Each query's complete constraint set becomes one branch of the OR condition
+    # @param queries [Array<Parse::Query>] the queries to combine with OR logic
+    # @return [Parse::Query] a new query with OR constraints
+    # @raise [ArgumentError] if the queries don't all target the same Parse class
+    def self.or(*queries)
+      queries = queries.flatten.compact
+      return nil if queries.empty?
+      
+      # Get the table from the first query
+      table = queries.first.table
+      
+      # Ensure all queries are for the same table
+      unless queries.all? { |q| q.table == table }
+        raise ArgumentError, "All queries passed to Parse::Query.or must be for the same Parse class."
+      end
+      
+      # Start with an empty query for this table
+      result = self.new(table)
+      
+      # Filter to only queries that have constraints
+      queries = queries.filter { |q| q.where.present? && !q.where.empty? }
+      
+      # Add each query's complete constraint set as an OR branch
+      queries.each do |query|
+        # Compile the where constraints to check if they result in empty conditions
+        compiled_where = Parse::Query.compile_where(query.where)
+        unless compiled_where.empty?
+          result.or_where(query.where)
+        end
+      end
+      
+      result
+    end
+
+    # Combines multiple queries with AND logic using full pipeline approach
+    # Each query's complete constraint set is ANDed together
+    # @param queries [Array<Parse::Query>] the queries to combine with AND logic
+    # @return [Parse::Query] a new query with AND constraints
+    # @raise [ArgumentError] if the queries don't all target the same Parse class
+    def self.and(*queries)
+      queries = queries.flatten.compact
+      return nil if queries.empty?
+      
+      # Get the table from the first query
+      table = queries.first.table
+      
+      # Ensure all queries are for the same table
+      unless queries.all? { |q| q.table == table }
+        raise ArgumentError, "All queries passed to Parse::Query.and must be for the same Parse class."
+      end
+      
+      # Start with an empty query for this table
+      result = self.new(table)
+      
+      # Filter to only queries that have constraints
+      queries = queries.filter { |q| q.where.present? && !q.where.empty? }
+      
+      # Add each query's complete constraint set with AND logic
+      queries.each do |query|
+        # Compile the where constraints to check if they result in empty conditions
+        compiled_where = Parse::Query.compile_where(query.where)
+        unless compiled_where.empty?
+          result.where(query.where)
+        end
+      end
+      
+      result
+    end
+
+    public
 
     # Creates a deep copy of this query object, allowing independent modifications
     # @return [Parse::Query] a new query object with the same constraints
@@ -2477,7 +2576,14 @@ module Parse
         if instance_variable_defined?(:"@#{param}")
           value = instance_variable_get(:"@#{param}")
           if value.is_a?(Array) || value.is_a?(Hash)
-            cloned_value = Marshal.load(Marshal.dump(value)) rescue value.dup
+            # Use Marshal for deep copy of complex constraint objects
+            begin
+              cloned_value = Marshal.load(Marshal.dump(value))
+            rescue => e
+              # Fallback to shallow copy if Marshal fails
+              puts "[Parse::Query.clone] Marshal failed for #{param}: #{e.message}, falling back to dup"
+              cloned_value = value.dup
+            end
           else
             cloned_value = value
           end
@@ -2487,32 +2593,6 @@ module Parse
       cloned_query.instance_variable_set(:@results, nil)
       cloned_query
     end
-
-    # Combines multiple queries with OR logic
-    # @param queries [Array<Parse::Query>] the queries to combine with OR logic
-    # @return [Parse::Query] a new query with OR constraints
-    def self.or(*queries)
-      queries = queries.flatten.compact
-      table = queries.first.table
-      result = self.new(table)
-      queries = queries.filter { |q| q.where.present? && !q.where.empty? }
-      queries.each { |query| result.or_where(query.where) }
-      result
-    end
-
-    # Combines multiple queries with AND logic
-    # @param queries [Array<Parse::Query>] the queries to combine with AND logic
-    # @return [Parse::Query] a new query with AND constraints
-    def self.and(*queries)
-      queries = queries.flatten.compact
-      table = queries.first.table
-      result = self.new(table)
-      queries = queries.filter { |q| q.where.present? && !q.where.empty? }
-      queries.each { |query| result.where(query.where) }
-      result
-    end
-
-    public
 
     # Alias method for ACL readable_by constraint
     # @param user_or_role [Parse::User, Parse::Role, String] the user, role, or role name to check read access for
@@ -2813,23 +2893,9 @@ module Parse
       formatted_group_field = @query.send(:format_aggregation_field, @group_field)
       
       # Build the aggregation pipeline
+      # Note: We don't add $match stage here because @query.aggregate() will automatically 
+      # add match stages from the query's where conditions
       pipeline = []
-      
-      # Add match stage if there are where conditions (before unwind for efficiency)
-      compiled_where = @query.send(:compile_where)
-      if compiled_where.present?
-        # Convert field names for aggregation context and handle dates
-        aggregation_where = @query.send(:convert_constraints_for_aggregation, compiled_where)
-        
-        # Debug output
-        if @query.instance_variable_get(:@verbose_aggregate)
-          puts "[DEBUG] Original constraints: #{compiled_where.inspect}"
-          puts "[DEBUG] Converted constraints: #{aggregation_where.inspect}"
-        end
-        
-        stringified_where = @query.send(:convert_dates_for_aggregation, aggregation_where)
-        pipeline << { "$match" => stringified_where }
-      end
       
       # Add unwind stage if flatten_arrays is enabled
       if @flatten_arrays

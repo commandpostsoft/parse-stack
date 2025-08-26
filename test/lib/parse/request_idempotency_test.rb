@@ -4,28 +4,28 @@ require 'minitest/autorun'
 class RequestIdempotencyTest < Minitest::Test
   
   def setup
-    # Reset configuration before each test
-    Parse::Request.configure_idempotency(enabled: false)
+    # Reset configuration to defaults before each test
+    Parse::Request.configure_idempotency(enabled: true)
   end
   
   def teardown
-    # Reset configuration after each test
-    Parse::Request.configure_idempotency(enabled: false)
+    # Reset configuration to defaults after each test
+    Parse::Request.configure_idempotency(enabled: true)
   end
   
   def test_default_configuration
     puts "\n=== Testing Default Idempotency Configuration ==="
     
     # Test default values
-    refute Parse::Request.enable_request_id, "Request ID should be disabled by default"
+    assert Parse::Request.enable_request_id, "Request ID should be enabled by default"
     assert_equal 'X-Parse-Request-Id', Parse::Request.request_id_header, "Should use standard Parse header"
     assert_equal [:post, :put, :patch], Parse::Request.idempotent_methods, "Should default to modifying methods"
     
-    # Test that requests don't get request IDs by default
+    # Test that requests DO get request IDs by default
     request = Parse::Request.new(:post, '/classes/TestObject', body: { name: 'test' })
-    refute request.idempotent?, "Request should not be idempotent by default"
-    assert_nil request.request_id, "Request should not have request ID by default"
-    refute request.headers.key?('X-Parse-Request-Id'), "Headers should not contain request ID by default"
+    assert request.idempotent?, "Request should be idempotent by default"
+    assert_not_nil request.request_id, "Request should have request ID by default"
+    assert request.headers.key?('X-Parse-Request-Id'), "Headers should contain request ID by default"
     
     puts "✅ Default configuration verified"
   end
