@@ -351,15 +351,17 @@ module Parse
       #  Object.find "<objectId>"
       #  Object.find "<objectId>", "<objectId>"....
       #  Object.find ["<objectId>", "<objectId>"]
+      #  Object.find "<objectId>", cache: false  # bypass cache
       # @param parse_ids [String] the objectId to find.
       # @param type [Symbol] the fetching methodology to use if more than one id was passed.
       #  - *:parallel* : Utilizes parrallel HTTP requests to fetch all objects requested.
       #  - *:batch* : This uses a batch fetch request using a contained_in clause.
       # @param compact [Boolean] whether to remove nil items from the returned array for objects
       #  that were not found.
+      # @param cache [Boolean] whether to use cache. Set to false to bypass cache entirely.
       # @return [Parse::Object] if only one id was provided as a parameter.
       # @return [Array<Parse::Object>] if more than one id was provided as a parameter.
-      def find(*parse_ids, type: :parallel, compact: true)
+      def find(*parse_ids, type: :parallel, compact: true, cache: true)
         # flatten the list of Object ids.
         parse_ids.flatten!
         parse_ids.compact!
@@ -367,9 +369,14 @@ module Parse
         as_array = parse_ids.count > 1
         results = []
 
+        # Extract cache option for client requests
+        client_opts = cache == false ? { cache: false } : {}
+
         if type == :batch
           # use a .in query with the given id as a list
-          results = self.class.all(:id.in => parse_ids)
+          query = self.class.query(:id.in => parse_ids)
+          query.cache = cache if cache == false
+          results = query.results
         else
           # use Parallel to make multiple threaded requests for finding these objects.
           # The benefit of using this as default is that each request goes to a specific URL
@@ -377,7 +384,7 @@ module Parse
           # individual objects.
           results = parse_ids.threaded_map do |parse_id|
             next nil unless parse_id.present?
-            response = client.fetch_object(parse_class, parse_id)
+            response = client.fetch_object(parse_class, parse_id, **client_opts)
             next nil if response.error?
             Parse::Object.build response.result, parse_class
           end
