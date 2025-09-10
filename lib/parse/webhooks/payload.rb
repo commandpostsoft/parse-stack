@@ -114,6 +114,11 @@ module Parse
         @function_name.present?
       end
 
+      # true if the master key was used for this request.
+      def master?
+        @master.present?
+      end
+
       # @return [String] the name of the Parse class for this request.
       def parse_class
         return @webhook_class if @webhook_class.present?
