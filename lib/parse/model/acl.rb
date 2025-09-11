@@ -423,6 +423,139 @@ module Parse
       end
     end
 
+    # Returns an array of all user IDs and role names that have read access to this object.
+    # @return [Array<String>] list of user IDs and role names (e.g., ["*", "user123", "role:Admin"])
+    def readable_by
+      permissions.select { |k, v| v.read }.keys
+    end
+
+    # Returns an array of all user IDs and role names that have write access to this object.
+    # @return [Array<String>] list of user IDs and role names (e.g., ["*", "user123", "role:Admin"])
+    def writeable_by
+      permissions.select { |k, v| v.write }.keys
+    end
+    alias_method :writable_by, :writeable_by
+
+    # Checks if a specific user or role has read access to this object.
+    # @param user_or_role [String, Parse::User, Parse::Role] the user ID, role name, user object, or role object
+    # @return [Boolean] true if the user/role has read access
+    def readable_by?(user_or_role)
+      key = normalize_permission_key(user_or_role)
+      return false unless key
+      permissions[key]&.read == true
+    end
+
+    # Checks if a specific user or role has write access to this object.
+    # @param user_or_role [String, Parse::User, Parse::Role] the user ID, role name, user object, or role object
+    # @return [Boolean] true if the user/role has write access
+    def writeable_by?(user_or_role)
+      key = normalize_permission_key(user_or_role)
+      return false unless key
+      permissions[key]&.write == true
+    end
+    alias_method :writable_by?, :writeable_by?
+    alias_method :can_read?, :readable_by?
+    alias_method :can_write?, :writeable_by?
+
+    # Checks if the object has public read access.
+    # @return [Boolean] true if public can read this object
+    def public_read?
+      permissions[PUBLIC]&.read == true
+    end
+
+    # Checks if the object has public write access.
+    # @return [Boolean] true if public can write to this object
+    def public_write?
+      permissions[PUBLIC]&.write == true
+    end
+
+    # Checks if the object has no read permissions for anyone (master key only).
+    # @return [Boolean] true if no one has read access
+    def no_read?
+      permissions.values.none? { |v| v.read }
+    end
+
+    # Checks if the object has no write permissions for anyone (master key only).
+    # @return [Boolean] true if no one has write access
+    def no_write?
+      permissions.values.none? { |v| v.write }
+    end
+
+    # Checks if the object is read-only (has read permissions but no write permissions).
+    # @return [Boolean] true if object has read access but no write access
+    def read_only?
+      permissions.values.any? { |v| v.read } && permissions.values.none? { |v| v.write }
+    end
+
+    # Checks if the object is write-only (has write permissions but no read permissions).
+    # @return [Boolean] true if object has write access but no read access
+    def write_only?
+      permissions.values.any? { |v| v.write } && permissions.values.none? { |v| v.read }
+    end
+
+    # Returns an array of all user IDs and role names that have both read and write access.
+    # @return [Array<String>] list of user IDs and role names with full access
+    def owners
+      permissions.select { |k, v| v.read && v.write }.keys
+    end
+
+    # Checks if a specific user or role has both read and write access to this object.
+    # @param user_or_role [String, Parse::User, Parse::Role] the user ID, role name, user object, or role object
+    # @return [Boolean] true if the user/role has both read and write access
+    def owner?(user_or_role)
+      key = normalize_permission_key(user_or_role)
+      return false unless key
+      perm = permissions[key]
+      perm&.read == true && perm&.write == true
+    end
+
+    # Checks if the ACL has no permissions (master key only access).
+    # @return [Boolean] true if no permissions exist
+    def empty?
+      permissions.empty? || permissions.values.none? { |v| v.present? }
+    end
+    alias_method :master_key_only?, :empty?
+    alias_method :master_only?, :empty?
+
+    private
+
+    # Normalizes a user or role input to the appropriate permission key format.
+    # @param user_or_role [String, Parse::User, Parse::Role] the input to normalize
+    # @return [String, nil] the normalized key or nil if invalid
+    def normalize_permission_key(user_or_role)
+      case user_or_role
+      when String
+        # Handle role names, user IDs, or public
+        if user_or_role == "*" || user_or_role.to_sym == :public
+          PUBLIC
+        elsif user_or_role.start_with?("role:")
+          user_or_role
+        else
+          # Could be a role name without prefix or a user ID
+          # Check if it exists as-is first, then try as role
+          if permissions.key?(user_or_role)
+            user_or_role
+          elsif permissions.key?("role:#{user_or_role}")
+            "role:#{user_or_role}"
+          else
+            user_or_role # Return as-is, might be a user ID
+          end
+        end
+      when Parse::User
+        user_or_role.id if user_or_role.respond_to?(:id)
+      when Parse::Role
+        "role:#{user_or_role.name}" if user_or_role.respond_to?(:name)
+      when Parse::Pointer
+        user_or_role.id if user_or_role.respond_to?(:id)
+      when Symbol
+        user_or_role == :public ? PUBLIC : user_or_role.to_s
+      else
+        nil
+      end
+    end
+
+    public
+
     # The Permission class tracks the read and write permissions for a specific
     # ACL entry. The value of an Parse-ACL hash only contains two keys: "read" and "write".
     #
