@@ -1,5 +1,11 @@
 ## Parse-Stack Changelog
 
+### 2.0.5
+
+- **NEW**: Added `force:` parameter to `save`, `save!`, `update`, and `update!` methods to trigger callbacks and webhooks even when there are no changes
+- **NEW**: When `force: true` is used on objects with no changes, `updated_at` is temporarily marked as changed to ensure a non-empty update payload triggers Parse Server hooks
+- **IMPROVED**: Refactored `run_after_create_callbacks`, `run_after_save_callbacks`, and `run_after_delete_callbacks` to only execute after callbacks (not all callbacks) using new `run_callbacks_from_list` helper method
+
 ### 2.0.4
 
 - **NEW**: Added ACL alias methods for easier access control management

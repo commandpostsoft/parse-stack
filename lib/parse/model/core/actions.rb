@@ -609,10 +609,19 @@ module Parse
       # Save the object regardless of whether there are changes. This would call
       # any beforeSave and afterSave cloud code hooks you have registered for this class.
       # @return [Boolean] true/false whether it was successful.
-      def update!(raw: false)
+      def update!(raw: false, force: false)
         if valid? == false
           errors.full_messages.each do |msg|
             warn "[#{parse_class}] warning: #{msg}"
+          end
+        end
+        if force == true && attribute_changes?.blank? && !new?
+          # if we are forcing an update, but there are no attribute changes,
+          # we should still mark the updated_at field as changed so that
+          # the server updates it.
+          if self.class.fields[:updated_at].present?
+            self.updated_at = Time.now.utc
+            self.updated_at_will_change! if respond_to?(:updated_at_will_change!)
           end
         end
         response = client.update_object(parse_class, id, attribute_updates, session_token: _session_token)
@@ -628,10 +637,11 @@ module Parse
       end
 
       # Save all the changes related to this object.
+      # @param force [Boolean] whether to send the update even if there are no changes.
       # @return [Boolean] true/false whether it was successful.
-      def update
-        return true unless attribute_changes?
-        update!
+      def update(force: false)
+        return true unless attribute_changes? || force
+        update!(force: force)
       end
 
       # Save the object as a new record, running all callbacks.
@@ -682,16 +692,17 @@ module Parse
       # @raise ArgumentError if a non-nil value is passed to `session` that doesn't provide a session token string.
       # @param session [String] a session token in order to apply ACLs to this operation.
       # @param autoraise [Boolean] whether to raise an exception if the save fails.
+      # @param force [Boolean] whether to run callbacks and send request even if there are no changes.
       # @return [Boolean] whether the save was successful.
-      def save(session: nil, autoraise: false)
+      def save(session: nil, autoraise: false, force: false)
         # Prevent saving objects that have been fetched and found to be deleted
         if _deleted?
           error_msg = "Cannot save deleted object. Object with id '#{@id}' no longer exists on the server."
           raise Parse::Error::ProtocolError, error_msg
         end
-        
+
         @_session_token = _validate_session_token! session, :save
-        return true unless changed?
+        return true unless changed? || force
         success = false
         
         # Track if callbacks are halted by a before_save hook returning false
@@ -700,7 +711,7 @@ module Parse
           callback_executed = true
           #first process the create/update action if any
           #then perform any relation changes that need to be performed
-          success = new? ? create : update
+          success = new? ? create : update(force: force)
 
           # if the save was successful and we have relational changes
           # let's update send those next.
@@ -734,9 +745,10 @@ module Parse
       # @raise {Parse::RecordNotSaved} if the save fails
       # @raise ArgumentError if a non-nil value is passed to `session` that doesn't provide a session token string.
       # @param session (see #save)
+      # @param force (see #save)
       # @return (see #save)
-      def save!(session: nil)
-        save(autoraise: true, session: session)
+      def save!(session: nil, force: false)
+        save(autoraise: true, session: session, force: force)
       end
 
       # Returns true if this object has been fetched and found to be deleted from the server.

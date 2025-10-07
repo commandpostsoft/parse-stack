@@ -386,22 +386,24 @@ module Parse
     # This method is called by webhook handlers when an object is created.
     # @return [Boolean] true if callbacks executed successfully
     def run_after_create_callbacks
-      run_callbacks(:create) { true }
+      run_callbacks_from_list(self.class._create_callbacks, :after)
     end
 
     # Run after_save callbacks for this object.
     # This method is called by webhook handlers when an object is saved.
     # @return [Boolean] true if callbacks executed successfully
     def run_after_save_callbacks
-      run_callbacks(:save) { true }
+      run_callbacks_from_list(self.class._save_callbacks, :after)
     end
 
     # Run after_destroy callbacks for this object.
     # This method is called by webhook handlers when an object is deleted.
     # @return [Boolean] true if callbacks executed successfully
     def run_after_delete_callbacks
-      run_callbacks(:destroy) { true }
+      run_callbacks_from_list(self.class._destroy_callbacks, :after)
     end
+
+   
 
     # Returns a hash of all the changes that have been made to the object. By default
     # changes to the Parse::Properties::BASE_KEYS are ignored unless you pass true as
@@ -562,6 +564,24 @@ module Parse
       return false unless self.class.fields[key.to_sym].present?
       value = send(key)
       !value.nil?
+    end
+
+    private
+
+    # Helper to run a set of callbacks of a certain kind (e.g., :after)
+    def run_callbacks_from_list(callbacks, kind)
+      callbacks.select { |cb| cb.kind == kind }.each do |callback|
+        # 'filter' can be a Symbol (method name), String (code), or Proc.
+        case callback.filter
+        when Symbol
+          send(callback.filter)
+        when Proc
+          instance_exec(&callback.filter)
+        when String
+          instance_eval(callback.filter)
+        end
+      end
+      true
     end
   end
 end
