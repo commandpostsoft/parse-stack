@@ -1,5 +1,14 @@
 ## Parse-Stack Changelog
 
+### 2.0.4
+
+- **NEW**: Added ACL alias methods for easier access control management
+- **NEW**: Added `master?` method to check for presence of a master key
+- **NEW**: ACLs can now be modified for User objects
+- **NEW**: Added explicit `cache:` argument for `find` method to control caching behavior
+- **FIXED**: Corrected `or_where` behavior in query operations
+- **CHANGED**: Request idempotency is now enabled by default for improved reliability
+
 ### 2.0.0 - Major Release 🚀
 
 **BREAKING CHANGES:**
