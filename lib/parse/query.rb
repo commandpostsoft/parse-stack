@@ -1729,19 +1729,19 @@ module Parse
     #   # Sortable date results:
     #   Asset.group_by_date(:created_at, :day, sortable: true).count.sort_by_value_desc
     #   # => [["2024-11-25", 45], ["2024-11-24", 23], ...]
-    def group_by_date(field, interval, sortable: false, return_pointers: false)
+    def group_by_date(field, interval, sortable: false, return_pointers: false, timezone: nil)
       if field.nil? || !field.respond_to?(:to_s)
         raise ArgumentError, "Invalid field name passed to `group_by_date`."
       end
 
-      unless [:year, :month, :week, :day, :hour].include?(interval.to_sym)
-        raise ArgumentError, "Invalid interval. Must be one of: :year, :month, :week, :day, :hour"
+      unless [:year, :month, :week, :day, :hour, :minute].include?(interval.to_sym)
+        raise ArgumentError, "Invalid interval. Must be one of: :year, :month, :week, :day, :hour, :minute"
       end
 
       if sortable
-        SortableGroupByDate.new(self, field, interval.to_sym, return_pointers: return_pointers)
+        SortableGroupByDate.new(self, field, interval.to_sym, return_pointers: return_pointers, timezone: timezone)
       else
-        GroupByDate.new(self, field, interval.to_sym, return_pointers: return_pointers)
+        GroupByDate.new(self, field, interval.to_sym, return_pointers: return_pointers, timezone: timezone)
       end
     end
 
@@ -3171,12 +3171,14 @@ module Parse
   class GroupByDate
     # @param query [Parse::Query] the base query to group
     # @param date_field [Symbol, String] the date field to group by
-    # @param interval [Symbol] the time interval (:year, :month, :week, :day, :hour)
-    def initialize(query, date_field, interval, return_pointers: false)
+    # @param interval [Symbol] the time interval (:year, :month, :week, :day, :hour, :minute)
+    # @param timezone [String] the timezone for date operations (e.g., "America/New_York", "+05:00")
+    def initialize(query, date_field, interval, return_pointers: false, timezone: nil)
       @query = query
       @date_field = date_field
       @interval = interval
       @return_pointers = return_pointers
+      @timezone = timezone
     end
 
     # Returns the MongoDB aggregation pipeline that would be used for a count operation.
@@ -3201,34 +3203,8 @@ module Parse
         pipeline << { "$match" => stringified_where }
       end
       
-      # Create date grouping expression based on interval
-      date_expr = case @interval
-      when :year
-        { "year" => { "$year" => "$#{formatted_date_field}" } }
-      when :month
-        { 
-          "year" => { "$year" => "$#{formatted_date_field}" },
-          "month" => { "$month" => "$#{formatted_date_field}" }
-        }
-      when :week
-        { 
-          "year" => { "$year" => "$#{formatted_date_field}" },
-          "week" => { "$week" => "$#{formatted_date_field}" }
-        }
-      when :day
-        { 
-          "year" => { "$year" => "$#{formatted_date_field}" },
-          "month" => { "$month" => "$#{formatted_date_field}" },
-          "day" => { "$dayOfMonth" => "$#{formatted_date_field}" }
-        }
-      when :hour
-        { 
-          "year" => { "$year" => "$#{formatted_date_field}" },
-          "month" => { "$month" => "$#{formatted_date_field}" },
-          "day" => { "$dayOfMonth" => "$#{formatted_date_field}" },
-          "hour" => { "$hour" => "$#{formatted_date_field}" }
-        }
-      end
+      # Create date grouping expression based on interval using shared method
+      date_expr = build_date_group_expression(formatted_date_field)
       
       # Add group and project stages (using count as example aggregation)
       pipeline.concat([
@@ -3392,31 +3368,48 @@ module Parse
     # @param field_name [String] the formatted date field name.
     # @return [Hash] the MongoDB date grouping expression.
     def build_date_group_expression(field_name)
+      # Helper to create date operator with optional timezone
+      date_op = lambda do |operator|
+        if @timezone
+          { operator => { "date" => "$#{field_name}", "timezone" => @timezone } }
+        else
+          { operator => "$#{field_name}" }
+        end
+      end
+
       case @interval
       when :year
-        { "$year" => "$#{field_name}" }
+        date_op.call("$year")
       when :month
         {
-          "year" => { "$year" => "$#{field_name}" },
-          "month" => { "$month" => "$#{field_name}" }
+          "year" => date_op.call("$year"),
+          "month" => date_op.call("$month")
         }
       when :week
         {
-          "year" => { "$year" => "$#{field_name}" },
-          "week" => { "$week" => "$#{field_name}" }
+          "year" => date_op.call("$year"),
+          "week" => date_op.call("$week")
         }
       when :day
         {
-          "year" => { "$year" => "$#{field_name}" },
-          "month" => { "$month" => "$#{field_name}" },
-          "day" => { "$dayOfMonth" => "$#{field_name}" }
+          "year" => date_op.call("$year"),
+          "month" => date_op.call("$month"),
+          "day" => date_op.call("$dayOfMonth")
         }
       when :hour
         {
-          "year" => { "$year" => "$#{field_name}" },
-          "month" => { "$month" => "$#{field_name}" },
-          "day" => { "$dayOfMonth" => "$#{field_name}" },
-          "hour" => { "$hour" => "$#{field_name}" }
+          "year" => date_op.call("$year"),
+          "month" => date_op.call("$month"),
+          "day" => date_op.call("$dayOfMonth"),
+          "hour" => date_op.call("$hour")
+        }
+      when :minute
+        {
+          "year" => date_op.call("$year"),
+          "month" => date_op.call("$month"),
+          "day" => date_op.call("$dayOfMonth"),
+          "hour" => date_op.call("$hour"),
+          "minute" => date_op.call("$minute")
         }
       end
     end
@@ -3455,6 +3448,15 @@ module Parse
         hour = date_key["hour"]
         return "null" if year.nil? || month.nil? || day.nil? || hour.nil?
         sprintf("%04d-%02d-%02d %02d:00", year, month, day, hour)
+      when :minute
+        return "null" if date_key.nil? || !date_key.is_a?(Hash)
+        year = date_key["year"]
+        month = date_key["month"]
+        day = date_key["day"]
+        hour = date_key["hour"]
+        minute = date_key["minute"]
+        return "null" if year.nil? || month.nil? || day.nil? || hour.nil? || minute.nil?
+        sprintf("%04d-%02d-%02d %02d:%02d", year, month, day, hour, minute)
       end
     end
   end
