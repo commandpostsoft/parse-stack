@@ -795,11 +795,27 @@ module Parse
     #  query.count
     # @return [Integer] the count result
     def count
-      old_value = @count
-      @count = 1
-      res = client.find_objects(@table, compile.as_json, **_opts).count
-      @count = old_value
-      res
+      # Check if this query requires aggregation pipeline processing
+      if requires_aggregation_pipeline?
+        # Build aggregation pipeline with $count stage
+        pipeline = build_aggregation_pipeline
+        pipeline << { "$count" => "count" }
+
+        # Execute aggregation
+        aggregation = Aggregation.new(self, pipeline, verbose: @verbose_aggregate)
+        response = aggregation.execute!
+
+        # Extract count from aggregation result
+        return 0 if response.error? || !response.result.is_a?(Array) || response.result.empty?
+        response.result.first["count"] || 0
+      else
+        # Use standard count endpoint for non-aggregation queries
+        old_value = @count
+        @count = 1
+        res = client.find_objects(@table, compile.as_json, **_opts).count
+        @count = old_value
+        res
+      end
     end
 
     # Perform a count distinct query using MongoDB aggregation pipeline.
@@ -1734,8 +1750,8 @@ module Parse
         raise ArgumentError, "Invalid field name passed to `group_by_date`."
       end
 
-      unless [:year, :month, :week, :day, :hour, :minute].include?(interval.to_sym)
-        raise ArgumentError, "Invalid interval. Must be one of: :year, :month, :week, :day, :hour, :minute"
+      unless [:year, :month, :week, :day, :hour, :minute, :second].include?(interval.to_sym)
+        raise ArgumentError, "Invalid interval. Must be one of: :year, :month, :week, :day, :hour, :minute, :second"
       end
 
       if sortable
@@ -3411,6 +3427,15 @@ module Parse
           "hour" => date_op.call("$hour"),
           "minute" => date_op.call("$minute")
         }
+      when :second
+        {
+          "year" => date_op.call("$year"),
+          "month" => date_op.call("$month"),
+          "day" => date_op.call("$dayOfMonth"),
+          "hour" => date_op.call("$hour"),
+          "minute" => date_op.call("$minute"),
+          "second" => date_op.call("$second")
+        }
       end
     end
 
@@ -3457,6 +3482,16 @@ module Parse
         minute = date_key["minute"]
         return "null" if year.nil? || month.nil? || day.nil? || hour.nil? || minute.nil?
         sprintf("%04d-%02d-%02d %02d:%02d", year, month, day, hour, minute)
+      when :second
+        return "null" if date_key.nil? || !date_key.is_a?(Hash)
+        year = date_key["year"]
+        month = date_key["month"]
+        day = date_key["day"]
+        hour = date_key["hour"]
+        minute = date_key["minute"]
+        second = date_key["second"]
+        return "null" if year.nil? || month.nil? || day.nil? || hour.nil? || minute.nil? || second.nil?
+        sprintf("%04d-%02d-%02d %02d:%02d:%02d", year, month, day, hour, minute, second)
       end
     end
   end

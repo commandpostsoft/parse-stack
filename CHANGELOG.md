@@ -1,5 +1,12 @@
 ## Parse-Stack Changelog
 
+### 2.0.6
+
+- **NEW**: Added `:minute` and `:second` interval support to `group_by_date` for minute-level and second-level time grouping
+- **NEW**: Added `timezone:` parameter to `group_by_date` for timezone-aware date grouping (e.g., `timezone: "America/New_York"` or `timezone: "+05:00"`)
+- **IMPROVED**: MongoDB date operators now support timezone conversion at the database level using the `timezone` parameter
+- **FIXED**: `count` method now properly handles aggregation pipeline constraints (`:ACL.readable_by`, `:ACL.writable_by`, etc.) by routing through aggregation endpoint instead of standard count endpoint
+
 ### 2.0.5
 
 - **NEW**: Added `force:` parameter to `save`, `save!`, `update`, and `update!` methods to trigger callbacks and webhooks even when there are no changes
