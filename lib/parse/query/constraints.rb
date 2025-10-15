@@ -1125,9 +1125,18 @@ module Parse
           # Handle pointer to User or Role
           if value.respond_to?(:parse_class) && (value.parse_class == "User" || value.parse_class == "_User")
             permissions_to_check << value.id if value.respond_to?(:id) && value.id.present?
-            
-            # For user pointers, we could optionally fetch the full user and their roles
-            # but that would require additional queries, so for now just use the ID
+
+            # Query roles directly using the user pointer (no need to fetch the full user)
+            begin
+              if value.respond_to?(:id) && value.id.present? && defined?(Parse::Role)
+                user_roles = Parse::Role.all(users: value)
+                user_roles.each do |role|
+                  permissions_to_check << "role:#{role.name}" if role.respond_to?(:name) && role.name.present?
+                end
+              end
+            rescue => e
+              # If role fetching fails, continue with just the user ID
+            end
           elsif value.respond_to?(:parse_class) && (value.parse_class == "Role" || value.parse_class == "_Role")
             # For role pointers, we need the role name, but we only have the ID
             # We'd need to fetch the role to get its name, so for now skip this
@@ -1261,9 +1270,18 @@ module Parse
           # Handle pointer to User or Role
           if value.respond_to?(:parse_class) && (value.parse_class == "User" || value.parse_class == "_User")
             permissions_to_check << value.id if value.respond_to?(:id) && value.id.present?
-            
-            # For user pointers, we could optionally fetch the full user and their roles
-            # but that would require additional queries, so for now just use the ID
+
+            # Query roles directly using the user pointer (no need to fetch the full user)
+            begin
+              if value.respond_to?(:id) && value.id.present? && defined?(Parse::Role)
+                user_roles = Parse::Role.all(users: value)
+                user_roles.each do |role|
+                  permissions_to_check << "role:#{role.name}" if role.respond_to?(:name) && role.name.present?
+                end
+              end
+            rescue => e
+              # If role fetching fails, continue with just the user ID
+            end
           elsif value.respond_to?(:parse_class) && (value.parse_class == "Role" || value.parse_class == "_Role")
             # For role pointers, we need the role name, but we only have the ID
             # We'd need to fetch the role to get its name, so for now skip this

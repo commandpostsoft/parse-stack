@@ -3338,7 +3338,9 @@ module Parse
       # Add match stage if there are where conditions
       compiled_where = @query.send(:compile_where)
       if compiled_where.present?
-        stringified_where = @query.send(:convert_dates_for_aggregation, JSON.parse(compiled_where.to_json))
+        # Convert field names for aggregation context and handle dates
+        aggregation_where = @query.send(:convert_constraints_for_aggregation, compiled_where)
+        stringified_where = @query.send(:convert_dates_for_aggregation, aggregation_where)
         pipeline.unshift({ "$match" => stringified_where })
       end
 

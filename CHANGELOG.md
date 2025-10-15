@@ -1,5 +1,16 @@
 ## Parse-Stack Changelog
 
+### 2.0.7
+
+- **NEW**: `readable_by?`, `writeable_by?`, and `owner?` ACL methods now accept arrays for OR logic
+- **NEW**: ACL permission methods now support Parse::Pointer to User objects with automatic role expansion
+- **ENHANCED**: ACL permission checking methods support checking if ANY user/role in an array has the specified permission
+- **ENHANCED**: When passed a Parse::User object or Parse::Pointer to User, automatically queries and checks the user's roles
+- **ENHANCED**: Array support works with user IDs and role names (strings)
+- **IMPROVED**: Better flexibility for checking permissions across multiple users and roles simultaneously
+- **IMPROVED**: Parse::Pointer to User queries roles without needing to fetch the full user object
+- **FIXED**: `group_by_date` now properly converts Parse pointer constraints to MongoDB aggregation format, fixing empty result issues when filtering by Parse object references
+
 ### 2.0.6
 
 - **NEW**: Added `:minute` and `:second` interval support to `group_by_date` for minute-level and second-level time grouping
