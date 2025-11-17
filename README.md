@@ -1,18 +1,29 @@
 ![Parse Stack - The Parse Server Ruby Client SDK](https://raw.githubusercontent.com/modernistik/parse-stack/master/parse-stack.png?raw=true)
 
-A full featured Active Model ORM and Ruby REST API for Parse-Server. [Parse Stack](https://github.com/modernistik/parse-stack) is the [Parse Server](http://parseplatform.org/) SDK, REST Client and ORM framework for [Ruby](https://www.ruby-lang.org/en/). It provides a client adapter, a query engine, an object relational mapper (ORM) and a Cloud Code Webhooks rack application.
+# Parse Stack - Extended Edition
 
-Below is a [quick start guide](https://github.com/modernistik/parse-stack#overview), but you can also check out the full *[API Reference](https://www.modernistik.com/gems/parse-stack/index.html)* for more detailed information about our Parse Server SDK.
+A full featured Active Model ORM and Ruby REST API for Parse-Server. [Parse Stack](https://github.com/commandpostsoft/parse-stack) is the [Parse Server](http://parseplatform.org/) SDK, REST Client and ORM framework for [Ruby](https://www.ruby-lang.org/en/). It provides a client adapter, a query engine, an object relational mapper (ORM) and a Cloud Code Webhooks rack application.
 
-### Hire Us
+**This is an extended and enhanced fork with additional features including:**
+- MongoDB Aggregation Framework support
+- Advanced ACL query constraints (readable_by, writable_by)
+- Full transaction support with automatic retry
+- Comprehensive integration testing with Docker
+- Enhanced change tracking and webhooks
+- Request idempotency system
+- Timezone support for date operations
+- And many more improvements (see [CHANGELOG.md](./CHANGELOG.md))
 
-Interested in our work? You can find us here: [https://www.modernistik.com](https://www.modernistik.com)
+Below is a [quick start guide](#overview), but you can also check out the full *[API Reference](https://www.modernistik.com/gems/parse-stack/index.html)* for more detailed information about our Parse Server SDK.
+
+### Credits
+
+This project is based on the excellent [Parse Stack framework](https://github.com/modernistik/parse-stack) originally created by [Modernistik](https://www.modernistik.com). We are grateful for their foundational work and continue to build upon it.
 
 ### Code Status
-[![Gem Version](https://img.shields.io/gem/v/parse-stack.svg)](https://github.com/modernistik/parse-stack)
+[![Gem Version](https://img.shields.io/gem/v/parse-stack.svg)](https://github.com/commandpostsoft/parse-stack)
 [![Downloads](https://img.shields.io/gem/dt/parse-stack.svg)](https://rubygems.org/gems/parse-stack)
-[![Build Status](https://travis-ci.org/modernistik/parse-stack.svg?branch=master)](https://travis-ci.org/modernistik/parse-stack)
-[![API Reference](http://img.shields.io/badge/api-docs-blue.svg)](https://www.modernistik.com/gems/parse-stack/index.html)
+[![Releases](https://img.shields.io/github/v/release/commandpostsoft/parse-stack)](https://github.com/commandpostsoft/parse-stack/releases)
 
 #### Tutorial Videos
 1. Getting Started: https://youtu.be/zoYSGmciDlQ
@@ -36,14 +47,13 @@ Or install it yourself as:
 $ gem install parse-stack
 ```
 ### Rack / Sinatra
-Parse-Stack API, models and webhooks easily integrate in your existing Rack/Sinatra based applications. For more details see [Parse-Stack Rack Example](https://github.com/modernistik/parse-stack-example).
+Parse-Stack API, models and webhooks easily integrate in your existing Rack/Sinatra based applications.
 
 ### Rails
 Parse-Stack comes with support for Rails by adding additional rake tasks and generators. After adding `parse-stack` as a gem dependency in your Gemfile and running `bundle`, you should run the install script:
 ```bash
 $ rails g parse_stack:install
 ```
-For a more details on the rails integration see [Parse-Stack Rails Example](https://github.com/modernistik/parse-stack-rails-example).
 
 ### Interactive Command Line Playground
 You can also used the bundled `parse-console` command line to connect and interact with your Parse Server and its data in an IRB-like console. This is useful for trying concepts and debugging as it will automatically connect to your Parse Server, and if provided the master key, automatically generate all the models entities.
@@ -131,6 +141,135 @@ songs.save
 result = Parse.call_function :myFunctionName, {param: value}
 
 ```
+
+## What's New in 2.0
+
+Version 2.0 represents a major upgrade with extensive new functionality and breaking changes. **Minimum Ruby version is now 3.2+**.
+
+### Transaction Support
+
+Full atomic transaction support with automatic retry on conflicts:
+
+```ruby
+# Explicit batch operations
+Parse::Object.transaction do |batch|
+  song.name = "New Name"
+  batch.save(song)
+
+  artist.popularity += 1
+  batch.save(artist)
+end
+
+# Automatic batching via return values
+Parse::Object.transaction do
+  song.update(name: "New Name")
+  artist.update(popularity: artist.popularity + 1)
+end
+```
+
+### MongoDB Aggregation Framework
+
+Powerful aggregation capabilities including group_by, count_distinct, and custom pipelines:
+
+```ruby
+# Group by with aggregation
+Song.query.group_by(:artist,
+  count: true,
+  sum: :plays,
+  avg: :duration
+)
+
+# Group by date with timezone support
+Song.query.group_by_date(:released, :month,
+  timezone: "America/New_York",
+  count: true
+)
+
+# Count distinct values
+Song.query.count_distinct(:artist)
+
+# Custom aggregation pipeline
+Song.query.aggregate([
+  { "$match" => { "plays" => { "$gt" => 1000 } } },
+  { "$group" => { "_id" => "$artist", "total" => { "$sum" => "$plays" } } }
+])
+```
+
+### ACL Query Constraints
+
+Filter queries based on ACL permissions:
+
+```ruby
+# Find all songs readable by a specific user
+songs = Song.all(:ACL.readable_by => current_user)
+
+# Find songs writable by any of multiple users/roles
+songs = Song.all(:ACL.writable_by => [user1, user2, "AdminRole"])
+
+# Works with User objects, role names, and Parse::Pointers
+songs = Song.all(:ACL.readable_by => Parse::Pointer.new("_User", user_id))
+```
+
+### Enhanced Change Tracking
+
+Improved change tracking that works correctly in `after_save` hooks:
+
+```ruby
+class Song < Parse::Object
+  after_save :notify_if_published
+
+  def notify_if_published
+    # Now works correctly in after_save
+    if published_was == false && published == true
+      send_notification("Song published!")
+    end
+  end
+end
+```
+
+### Request Idempotency (Enabled by Default)
+
+Automatic request idempotency prevents duplicate operations:
+
+```ruby
+# Idempotency is enabled by default
+song.save  # Uses unique request ID
+
+# Control per-request
+Parse.client.idempotency = false
+song.save  # No request ID
+Parse.client.idempotency = true
+```
+
+### Advanced Query Operations
+
+New query methods for common patterns:
+
+```ruby
+# Get latest records
+recent_songs = Song.query.latest.limit(10)
+
+# Get last updated records
+updated_songs = Song.query.last_updated.limit(10)
+
+# Combine queries with OR
+query1 = Song.query(genre: "rock")
+query2 = Song.query(genre: "pop")
+combined = Parse::Query.or(query1, query2)
+
+# Range queries
+songs = Song.all(:plays.between => [100, 1000])
+```
+
+### Breaking Changes
+
+- **Minimum Ruby 3.2+** (dropped support for Ruby < 3.2)
+- **`distinct` method** now returns object IDs by default. Use `distinct(field, return_pointers: true)` for Parse::Pointer objects
+- **Faraday 2.x** (removed faraday_middleware dependency)
+- **Fixed typo** "constaint" → "constraint" throughout codebase
+
+For complete details, see [CHANGELOG.md](./CHANGELOG.md) and [Releases](https://github.com/commandpostsoft/parse-stack/releases).
+
 ## Table of Contents
 
 <!-- START doctoc generated TOC please keep comment here to allow auto update -->
@@ -3117,7 +3256,9 @@ end
 
 ## Contributing
 
-Bug reports and pull requests are welcome on GitHub at [https://github.com/modernistik/parse-stack](https://github.com/modernistik/parse-stack).
+Bug reports and pull requests are welcome on GitHub at [https://github.com/commandpostsoft/parse-stack](https://github.com/commandpostsoft/parse-stack).
+
+This project is a fork of the original [Parse Stack](https://github.com/modernistik/parse-stack) by [Modernistik](https://www.modernistik.com).
 
 ## Testing
 
