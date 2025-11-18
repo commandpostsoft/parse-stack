@@ -559,7 +559,7 @@ module Parse
 
     # alias for includes
     def include(*fields)
-      includes(**fields)
+      includes(*fields)
     end
 
     # Combine a list of {Parse::Constraint} objects
@@ -895,12 +895,24 @@ module Parse
       results.to_a
     end
 
-    # @param limit [Integer] the number of first items to return.
-    # @return [Parse::Object] the first object from the result.
-    def first(limit = 1)
-      @results = nil if @limit != limit
-      @limit = limit
-      limit == 1 ? results.first : results.first(limit)
+    # @overload first(limit = 1)
+    #   @param limit [Integer] the number of first items to return.
+    #   @return [Parse::Object] the first object from the result.
+    # @overload first(constraints = {})
+    #   @param constraints [Hash] query constraints to apply before fetching.
+    #   @return [Parse::Object] the first object from the result.
+    def first(limit_or_constraints = 1)
+      fetch_count = 1
+      if limit_or_constraints.is_a?(Hash)
+        conditions(limit_or_constraints)
+        # Check if limit was set in constraints, otherwise use 1
+        fetch_count = @limit || 1
+      else
+        fetch_count = limit_or_constraints.to_i
+        @results = nil if @limit != fetch_count
+        @limit = fetch_count
+      end
+      fetch_count == 1 ? results.first : results.first(fetch_count)
     end
 
     # Returns the most recently created object(s) (ordered by created_at descending).
