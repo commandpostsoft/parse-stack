@@ -1,5 +1,10 @@
 ## Parse-Stack Changelog
 
+### 2.0.8
+
+- **FIXED**: `include` method alias now properly forwards arguments to `includes` using single splat (`*fields`) instead of double splat (`**fields`), fixing "TypeError: no implicit conversion of Array into Hash" when calling `.include("field.name")`
+- **ENHANCED**: `Query#first` method now accepts both integer limit and hash of constraints (similar to model-level `first` method), enabling syntax like `.first(keys: [...], include: [...])` for consistent API usage
+
 ### 2.0.7
 
 - **NEW**: `readable_by?`, `writeable_by?`, and `owner?` ACL methods now accept arrays for OR logic
