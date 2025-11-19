@@ -1,5 +1,10 @@
 ## Parse-Stack Changelog
 
+### 2.0.9
+
+- **FIXED**: `Query#where` method now routes through `conditions` to properly handle special keywords like `keys:`, `include:`, `limit:`, etc. when chaining (e.g., `Model.query.where(keys: [...])`)
+- **FIXED**: `conditions` method now normalizes hash keys to symbols before comparison, allowing special keywords to work correctly whether passed as strings or symbols
+
 ### 2.0.8
 
 - **FIXED**: `include` method alias now properly forwards arguments to `includes` using single splat (`*fields`) instead of double splat (`**fields`), fixing "TypeError: no implicit conversion of Array into Hash" when calling `.include("field.name")`

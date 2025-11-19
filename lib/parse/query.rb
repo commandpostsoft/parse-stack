@@ -341,23 +341,26 @@ module Parse
     # @return [self]
     def conditions(expressions = {})
       expressions.each do |expression, value|
-        if expression == :order
+        # Normalize to symbol for comparison (handles both string and symbol keys)
+        expr_sym = expression.respond_to?(:to_sym) ? expression.to_sym : expression
+
+        if expr_sym == :order
           order value
-        elsif expression == :keys
+        elsif expr_sym == :keys
           keys value
-        elsif expression == :key
+        elsif expr_sym == :key
           keys [value]
-        elsif expression == :skip
+        elsif expr_sym == :skip
           skip value
-        elsif expression == :limit
+        elsif expr_sym == :limit
           limit value
-        elsif expression == :include || expression == :includes
+        elsif expr_sym == :include || expr_sym == :includes
           includes(value)
-        elsif expression == :cache
+        elsif expr_sym == :cache
           self.cache = value
-        elsif expression == :use_master_key
+        elsif expr_sym == :use_master_key
           self.use_master_key = value
-        elsif expression == :session
+        elsif expr_sym == :session
           # you can pass a session token or a Parse::Session
           self.session_token = value
         else
@@ -638,12 +641,11 @@ module Parse
     # @param opts [Hash] a set of options when adding the constraints. This is
     #  specific for each Parse::Constraint.
     # @return [self]
-    def where(conditions = nil, opts = {})
-      return @where if conditions.nil?
-      if conditions.is_a?(Hash)
-        conditions.each do |operator, value|
-          add_constraint(operator, value, opts)
-        end
+    def where(expressions = nil, opts = {})
+      return @where if expressions.nil?
+      if expressions.is_a?(Hash)
+        # Route through conditions to handle special keywords like :keys, :include, etc.
+        conditions(expressions)
       end
       self #chaining
     end
