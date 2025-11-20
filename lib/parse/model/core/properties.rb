@@ -551,9 +551,17 @@ module Parse
       when :geopoint
         val = Parse::GeoPoint.new(val) unless val.blank?
       when :file
-        val = Parse::File.new(val) unless val.blank?
+        if val.is_a?(Hash) && val["__type"] == "File"
+          val = Parse::File.new(val)
+        elsif !val.blank?
+          val = Parse::File.new(val)
+        end
       when :bytes
-        val = Parse::Bytes.new(val) unless val.blank?
+        if val.is_a?(Hash) && val["__type"] == "Bytes"
+          val = Parse::Bytes.new(val["base64"] || val[:base64])
+        elsif !val.blank?
+          val = Parse::Bytes.new(val)
+        end
       when :integer
         if val.nil? || val.respond_to?(:to_i) == false
           val = nil

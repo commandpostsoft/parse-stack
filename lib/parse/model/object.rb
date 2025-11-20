@@ -28,6 +28,7 @@ require_relative "core/schema"
 require_relative "core/properties"
 require_relative "core/errors"
 require_relative "core/builder"
+require_relative "core/enhanced_change_tracking"
 require_relative "associations/has_one"
 require_relative "associations/belongs_to"
 require_relative "associations/has_many"
@@ -127,6 +128,7 @@ module Parse
   # @see Associations::HasMany
   class Object < Pointer
     include Properties
+    include Core::EnhancedChangeTracking
     include Associations::HasOne
     include Associations::BelongsTo
     include Associations::HasMany
@@ -172,7 +174,7 @@ module Parse
     #   @yield A block to execute for the callback.
     #   @see ActiveModel::Callbacks
     # @!endgroup
-    define_model_callbacks :create, :save, :destroy, only: [:after, :before]
+    define_model_callbacks :create, :save, :destroy, only: [:after, :before], terminator: ->(target, result_lambda) { result_lambda.call == false }
 
     attr_accessor :created_at, :updated_at, :acl
 
@@ -380,6 +382,29 @@ module Parse
       created_at != updated_at
     end
 
+    # Run after_create callbacks for this object.
+    # This method is called by webhook handlers when an object is created.
+    # @return [Boolean] true if callbacks executed successfully
+    def run_after_create_callbacks
+      run_callbacks_from_list(self.class._create_callbacks, :after)
+    end
+
+    # Run after_save callbacks for this object.
+    # This method is called by webhook handlers when an object is saved.
+    # @return [Boolean] true if callbacks executed successfully
+    def run_after_save_callbacks
+      run_callbacks_from_list(self.class._save_callbacks, :after)
+    end
+
+    # Run after_destroy callbacks for this object.
+    # This method is called by webhook handlers when an object is deleted.
+    # @return [Boolean] true if callbacks executed successfully
+    def run_after_delete_callbacks
+      run_callbacks_from_list(self.class._destroy_callbacks, :after)
+    end
+
+   
+
     # Returns a hash of all the changes that have been made to the object. By default
     # changes to the Parse::Properties::BASE_KEYS are ignored unless you pass true as
     # an argument.
@@ -523,6 +548,41 @@ module Parse
       return unless self.class.fields[key.to_sym].present?
       send("#{key}=", value)
     end
+
+    # Returns an array of property names (keys) for this Parse::Object.
+    # Similar to Hash#keys, this method returns all the defined field names
+    # for this object's class.
+    # @return [Array<String>] an array of property names as strings.
+    def keys
+      self.class.fields.keys.map(&:to_s)
+    end
+
+    # Check if a field has a value (is present and not nil).
+    # @param key [String, Symbol] the name of the field to check.
+    # @return [Boolean] true if the field has a non-nil value, false otherwise.
+    def has?(key)
+      return false unless self.class.fields[key.to_sym].present?
+      value = send(key)
+      !value.nil?
+    end
+
+    private
+
+    # Helper to run a set of callbacks of a certain kind (e.g., :after)
+    def run_callbacks_from_list(callbacks, kind)
+      callbacks.select { |cb| cb.kind == kind }.each do |callback|
+        # 'filter' can be a Symbol (method name), String (code), or Proc.
+        case callback.filter
+        when Symbol
+          send(callback.filter)
+        when Proc
+          instance_exec(&callback.filter)
+        when String
+          instance_eval(callback.filter)
+        end
+      end
+      true
+    end
   end
 end
 
@@ -541,7 +601,7 @@ end
 class Array
   # This helper method selects or converts all objects in an array that are either inherit from
   # Parse::Pointer or are a JSON Parse hash. If it is a hash, a Pare::Object will be built from it
-  # if it constains the proper fields. Non-convertible objects will be removed.
+  # if it constrains the proper fields. Non-convertible objects will be removed.
   # If the className is not contained or known, you can pass a table name as an argument
   # @param className [String] the name of the Parse class if it could not be detected.
   # @return [Array<Parse::Object>] an array of Parse::Object subclasses.

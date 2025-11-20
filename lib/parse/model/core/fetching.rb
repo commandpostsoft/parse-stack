@@ -18,19 +18,62 @@ module Parse
         response = client.fetch_object(parse_class, id, **opts)
         if response.error?
           puts "[Fetch Error] #{response.code}: #{response.error}"
+          # Raise appropriate error based on response code
+          case response.code
+          when 101 # Object not found
+            raise Parse::Error::ProtocolError, "Object not found"
+          else
+            raise Parse::Error::ProtocolError, response.error
+          end
         end
+        
+        # Handle empty results gracefully - clear the object rather than error
+        result = response.result
+        if result.nil? || (result.is_a?(Array) && result.empty?)
+          # Mark object as deleted and clear the ID
+          @_deleted = true
+          @id = nil
+          clear_changes!
+          return self
+        end
+        
+        # If we successfully fetched data, ensure the object is not marked as deleted
+        @_deleted = false
+        
         # take the result hash and apply it to the attributes.
-        apply_attributes!(response.result, dirty_track: false)
-        clear_changes!
+        apply_attributes!(result, dirty_track: false)
+        begin
+          clear_changes!
+        rescue => e
+          # If clear_changes! fails, manually reset change tracking
+          @changed_attributes = {} if instance_variable_defined?(:@changed_attributes)
+          @mutations_from_database = nil if instance_variable_defined?(:@mutations_from_database)
+          @mutations_before_last_save = nil if instance_variable_defined?(:@mutations_before_last_save)
+        end
         self
       end
 
-      # Fetches the object from the Parse data store if the object is in a Pointer
-      # state. This is similar to the `fetchIfNeeded` action in the standard Parse client SDK.
-      # @return [self] the current object.
-      def fetch
-        # if it is a pointer, then let's go fetch the rest of the content
-        pointer? ? fetch! : self
+      # Fetches the object from the Parse data store. Unlike fetchIfNeeded, this always
+      # fetches from the server and updates the local object with fresh data.
+      # @param returnObject [Boolean] if true (default), returns the Parse::Object; if false, returns JSON
+      # @return [self] the current object when called without parameters, or a fetched object when returnObject=true.
+      def fetch(returnObject = true)
+        if returnObject
+          fetch! # This always updates self with fresh data from server
+          self   # Return the updated self
+        else
+          # Return the raw JSON data without updating the current object
+          response = client.fetch_object(parse_class, id)
+          return nil if response.error?
+          response.result
+        end
+      end
+
+      # Fetches the Parse object from the data store and returns a Parse::Object instance.
+      # This is a convenience method that calls fetch(true).
+      # @return [Parse::Object] the fetched Parse::Object (self if already fetched).
+      def fetch_object
+        fetch(true)
       end
 
       # Autofetches the object based on a key that is not part {Parse::Properties::BASE_KEYS}.
