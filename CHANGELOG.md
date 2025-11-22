@@ -1,5 +1,10 @@
 ## Parse-Stack Changelog
 
+### 2.1.2
+
+- **FIXED**: Partial fetch now correctly handles fields with default values - unfetched fields no longer return their defaults, instead triggering autofetch (or raising `UnfetchedFieldAccessError` if autofetch is disabled)
+- **FIXED**: `apply_defaults!` now skips unfetched fields on partially fetched objects to preserve autofetch behavior
+
 ### 2.1.1
 
 - **REMOVED**: `active_model_serializers` gem dependency (discontinued/unmaintained)

@@ -338,4 +338,120 @@ class PartialFetchTest < Minitest::Test
       pass
     end
   end
+
+  # Tests for partial fetch with default fields
+  # These ensure that unfetched fields with defaults do NOT return the default value
+
+  def test_unfetched_boolean_field_with_default_is_nil
+    # Use build to simulate actual partial fetch behavior
+    json = { "objectId" => "abc123", "title" => "Test" }
+    obj = PartialFetchTestModel.build(json, "PartialFetchTestModel",
+                                       fetched_keys: [:title])
+    obj.disable_autofetch!
+
+    # is_published has default: false, but since it wasn't fetched, it should raise
+    error = assert_raises(Parse::UnfetchedFieldAccessError) do
+      obj.is_published
+    end
+
+    assert_equal :is_published, error.field_name
+  end
+
+  def test_unfetched_integer_field_with_default_is_nil
+    # Use build to simulate actual partial fetch behavior
+    json = { "objectId" => "abc123", "title" => "Test" }
+    obj = PartialFetchTestModel.build(json, "PartialFetchTestModel",
+                                       fetched_keys: [:title])
+    obj.disable_autofetch!
+
+    # view_count has default: 0, but since it wasn't fetched, it should raise
+    error = assert_raises(Parse::UnfetchedFieldAccessError) do
+      obj.view_count
+    end
+
+    assert_equal :view_count, error.field_name
+  end
+
+  def test_unfetched_array_field_with_default_is_nil
+    # Use build to simulate actual partial fetch behavior
+    json = { "objectId" => "abc123", "title" => "Test" }
+    obj = PartialFetchTestModel.build(json, "PartialFetchTestModel",
+                                       fetched_keys: [:title])
+    obj.disable_autofetch!
+
+    # tags has default: [], but since it wasn't fetched, it should raise
+    error = assert_raises(Parse::UnfetchedFieldAccessError) do
+      obj.tags
+    end
+
+    assert_equal :tags, error.field_name
+  end
+
+  def test_fetched_field_with_default_returns_server_value
+    json = {
+      "objectId" => "abc123",
+      "title" => "Test",
+      "viewCount" => 42,
+      "isPublished" => true
+    }
+
+    obj = PartialFetchTestModel.build(json, "PartialFetchTestModel",
+                                       fetched_keys: [:title, :view_count, :is_published])
+    obj.disable_autofetch!
+
+    # Should return the server values, not the defaults
+    assert_equal 42, obj.view_count
+    assert_equal true, obj.is_published
+  end
+
+  def test_fetched_field_with_default_uses_default_when_server_returns_nil
+    json = {
+      "objectId" => "abc123",
+      "title" => "Test"
+      # viewCount and isPublished not included in JSON (nil from server)
+    }
+
+    obj = PartialFetchTestModel.build(json, "PartialFetchTestModel",
+                                       fetched_keys: [:title, :view_count, :is_published])
+    obj.disable_autofetch!
+
+    # Should return defaults since the field was fetched but nil from server
+    assert_equal 0, obj.view_count
+    assert_equal false, obj.is_published
+  end
+
+  def test_new_object_gets_all_defaults
+    # New objects (without id) should get all defaults applied
+    obj = PartialFetchTestModel.new(title: "Test")
+
+    assert_equal 0, obj.view_count
+    assert_equal false, obj.is_published
+  end
+
+  def test_apply_defaults_skips_unfetched_fields
+    # Create a partially fetched object via build
+    json = { "objectId" => "abc123", "title" => "Test" }
+    obj = PartialFetchTestModel.build(json, "PartialFetchTestModel",
+                                       fetched_keys: [:title])
+
+    # The instance variables for unfetched fields with defaults should not be set
+    refute obj.instance_variable_defined?(:@view_count) && !obj.instance_variable_get(:@view_count).nil?,
+           "Unfetched field view_count should not have default applied"
+    refute obj.instance_variable_defined?(:@is_published) && !obj.instance_variable_get(:@is_published).nil?,
+           "Unfetched field is_published should not have default applied"
+  end
+
+  def test_fetched_field_with_default_has_ivar_set
+    json = {
+      "objectId" => "abc123",
+      "title" => "Test",
+      "viewCount" => 100
+    }
+
+    obj = PartialFetchTestModel.build(json, "PartialFetchTestModel",
+                                       fetched_keys: [:title, :view_count])
+
+    # The instance variable should be set for fetched fields
+    assert_equal 100, obj.instance_variable_get(:@view_count)
+  end
 end

@@ -330,6 +330,10 @@ module Parse
     # @return [Array] list of default fields
     def apply_defaults!
       self.class.defaults_list.each do |key|
+        # Skip applying defaults to unfetched fields on partially fetched objects.
+        # This preserves the ability to autofetch when the field is accessed.
+        next if partially_fetched? && !field_was_fetched?(key)
+
         send(key) # should call set default proc/values if nil
       end
     end
