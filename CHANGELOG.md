@@ -1,5 +1,10 @@
 ## Parse-Stack Changelog
 
+### 2.1.1
+
+- **REMOVED**: `active_model_serializers` gem dependency (discontinued/unmaintained)
+- **FIXED**: Deprecation warning "ActiveSupport::Configurable is deprecated" from Rails 8.2
+
 ### 2.1.0
 
 #### Partial Fetch Tracking System
