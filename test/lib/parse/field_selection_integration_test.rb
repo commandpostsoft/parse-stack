@@ -70,24 +70,26 @@ class FieldSelectionIntegrationTest < Minitest::Test
         # Test keys with single field
         posts_with_title = FieldSelectionPost.query.keys(:title).results
         assert_equal 2, posts_with_title.length, "Should return all posts"
-        
+
         post = posts_with_title.first
+        post.disable_autofetch!  # Prevent autofetch when checking unfetched fields
         assert post.title.present?, "Title should be present"
-        assert_nil post.content, "Content should not be loaded"
-        assert_nil post.category, "Category should not be loaded"
-        assert_nil post.author_name, "Author name should not be loaded"
+        refute post.field_was_fetched?(:content), "Content should not be fetched"
+        refute post.field_was_fetched?(:category), "Category should not be fetched"
+        refute post.field_was_fetched?(:author_name), "Author name should not be fetched"
 
         # Test keys with multiple fields
         posts_with_multiple = FieldSelectionPost.query.keys(:title, :category, :published).results
         assert_equal 2, posts_with_multiple.length, "Should return all posts"
-        
+
         post = posts_with_multiple.first
+        post.disable_autofetch!  # Prevent autofetch when checking unfetched fields
         assert post.title.present?, "Title should be present"
         assert post.category.present?, "Category should be present"
         assert [true, false].include?(post.published), "Published should be present"
-        assert_nil post.content, "Content should not be loaded"
-        assert_nil post.author_name, "Author name should not be loaded"
-        assert_equal 0, post.view_count, "View count should be default (not loaded)"
+        refute post.field_was_fetched?(:content), "Content should not be fetched"
+        refute post.field_was_fetched?(:author_name), "Author name should not be fetched"
+        refute post.field_was_fetched?(:view_count), "View count should not be fetched"
 
         puts "✅ keys method correctly limits returned fields"
       end
@@ -114,24 +116,27 @@ class FieldSelectionIntegrationTest < Minitest::Test
         # Test select_fields (alias for keys)
         users_with_select_fields = FieldSelectionUser.query.select_fields(:name, :email).results
         assert_equal 1, users_with_select_fields.length, "Should return the user"
-        
+
         user_result = users_with_select_fields.first
+        user_result.disable_autofetch!  # Prevent autofetch when checking unfetched fields
         assert_equal "Test User", user_result.name, "Name should be present"
         assert_equal "test@example.com", user_result.email, "Email should be present"
-        assert_nil user_result.bio, "Bio should not be loaded"
-        assert_nil user_result.age, "Age should be nil (not loaded)"
+        refute user_result.field_was_fetched?(:bio), "Bio should not be fetched"
+        refute user_result.field_was_fetched?(:age), "Age should not be fetched"
 
         # Test that keys and select_fields produce same result
         users_with_keys = FieldSelectionUser.query.keys(:name, :email).results
         users_with_select = FieldSelectionUser.query.select_fields(:name, :email).results
-        
+
         user_keys = users_with_keys.first
+        user_keys.disable_autofetch!  # Prevent autofetch when checking unfetched fields
         user_select = users_with_select.first
-        
+        user_select.disable_autofetch!  # Prevent autofetch when checking unfetched fields
+
         assert_equal user_keys.name, user_select.name, "Name should be same with both methods"
         assert_equal user_keys.email, user_select.email, "Email should be same with both methods"
-        assert_nil user_keys.bio, "Bio should be nil with keys"
-        assert_nil user_select.bio, "Bio should be nil with select_fields"
+        refute user_keys.field_was_fetched?(:bio), "Bio should not be fetched with keys"
+        refute user_select.field_was_fetched?(:bio), "Bio should not be fetched with select_fields"
 
         puts "✅ select_fields alias works correctly"
       end
@@ -160,10 +165,11 @@ class FieldSelectionIntegrationTest < Minitest::Test
         # Test selecting array field
         posts_with_tags = FieldSelectionPost.query.keys(:title, :tags).results
         post_result = posts_with_tags.first
-        
+        post_result.disable_autofetch!  # Prevent autofetch when checking unfetched fields
+
         assert_equal "Complex Post", post_result.title, "Title should be present"
         assert_equal ["ruby", "parse", "testing"], post_result.tags, "Tags array should be present"
-        assert_nil post_result.content, "Content should not be loaded"
+        refute post_result.field_was_fetched?(:content), "Content should not be fetched"
 
         # Test selecting object field
         posts_with_meta = FieldSelectionPost.query.keys(:title, :meta_data).results
@@ -201,13 +207,14 @@ class FieldSelectionIntegrationTest < Minitest::Test
                                       .where(category: "tech")
                                       .keys(:title, :view_count)
                                       .results
-        
+
         assert_equal 2, tech_posts.length, "Should return 2 tech posts"
         tech_posts.each do |post|
+          post.disable_autofetch!  # Prevent autofetch when checking unfetched fields
           assert post.title.present?, "Title should be present"
           assert post.view_count > 0, "View count should be present"
-          assert_nil post.category, "Category should not be loaded (even though used in where)"
-          assert [true, false].include?(post.published), "Published should be default (not loaded)"
+          refute post.field_was_fetched?(:category), "Category should not be fetched (even though used in where)"
+          refute post.field_was_fetched?(:published), "Published should not be fetched"
         end
 
         # Test field selection with ordering
@@ -215,12 +222,13 @@ class FieldSelectionIntegrationTest < Minitest::Test
                                          .keys(:title, :view_count)
                                          .order(:view_count.desc)
                                          .results
-        
+
         assert_equal 3, ordered_posts.length, "Should return all posts ordered"
         assert ordered_posts.first.view_count >= ordered_posts.last.view_count, "Should be ordered by view count desc"
         ordered_posts.each do |post|
+          post.disable_autofetch!  # Prevent autofetch when checking unfetched fields
           assert post.title.present?, "Title should be present"
-          assert_nil post.category, "Category should not be loaded"
+          refute post.field_was_fetched?(:category), "Category should not be fetched"
         end
 
         # Test field selection with limit
@@ -228,11 +236,12 @@ class FieldSelectionIntegrationTest < Minitest::Test
                                          .keys(:title)
                                          .limit(2)
                                          .results
-        
+
         assert_equal 2, limited_posts.length, "Should return limited number of posts"
         limited_posts.each do |post|
+          post.disable_autofetch!  # Prevent autofetch when checking unfetched fields
           assert post.title.present?, "Title should be present"
-          assert_nil post.content, "Content should not be loaded"
+          refute post.field_was_fetched?(:content), "Content should not be fetched"
         end
 
         puts "✅ Field selection with constraints works correctly"
@@ -257,23 +266,26 @@ class FieldSelectionIntegrationTest < Minitest::Test
         # Test chaining with first()
         user = FieldSelectionUser.query.keys(:name).first
         assert user, "Should return a user"
+        user.disable_autofetch!  # Prevent autofetch when checking unfetched fields
         assert user.name.present?, "Name should be present"
-        assert_nil user.email, "Email should not be loaded"
+        refute user.field_was_fetched?(:email), "Email should not be fetched"
 
         # Test chaining with first(n)
         users = FieldSelectionUser.query.keys(:name, :age).first(2)
         assert_equal 2, users.length, "Should return 2 users"
         users.each do |u|
+          u.disable_autofetch!  # Prevent autofetch when checking unfetched fields
           assert u.name.present?, "Name should be present"
           assert u.age > 0, "Age should be present"
-          assert_nil u.email, "Email should not be loaded"
+          refute u.field_was_fetched?(:email), "Email should not be fetched"
         end
 
         # Test latest() method combined with field selection
         latest_user = FieldSelectionUser.query.keys(:name).latest
         assert latest_user, "Should return latest user"
+        latest_user.disable_autofetch!  # Prevent autofetch when checking unfetched fields
         assert latest_user.name.present?, "Name should be present"
-        assert_nil latest_user.email, "Email should not be loaded"
+        refute latest_user.field_was_fetched?(:email), "Email should not be fetched"
 
         # Test chaining with count() 
         count = FieldSelectionUser.query.keys(:name).count
@@ -321,10 +333,11 @@ class FieldSelectionIntegrationTest < Minitest::Test
         limited_load_time = Time.now - start_time
         
         # Verify data differences
+        limited_post.disable_autofetch!  # Prevent autofetch when checking unfetched fields
         assert_equal full_post.title, limited_post.title, "Titles should match"
         assert_equal full_post.view_count, limited_post.view_count, "View counts should match"
         assert full_post.content.length > 1000, "Full post should have large content"
-        assert_nil limited_post.content, "Limited post should not have content loaded"
+        refute limited_post.field_was_fetched?(:content), "Content should not be fetched"
         
         # Performance should be better (though this can vary in test environment)
         puts "Full object load time: #{(full_load_time * 1000).round(2)}ms"
@@ -354,9 +367,10 @@ class FieldSelectionIntegrationTest < Minitest::Test
         
         assert_equal full_users.length, limited_users.length, "Should return same number of users"
         limited_users.each do |user|
+          user.disable_autofetch!  # Prevent autofetch when checking unfetched fields
           assert user.name.present?, "Name should be present"
           assert user.age > 0, "Age should be present"
-          assert_nil user.bio, "Bio should not be loaded"
+          refute user.field_was_fetched?(:bio), "Bio should not be fetched"
         end
 
         puts "✅ Field selection provides performance benefits"
@@ -667,10 +681,11 @@ class FieldSelectionIntegrationTest < Minitest::Test
 
         assert_equal 2, posts_by_experienced_limited_fields.length, "Should find 2 posts by experienced users"
         posts_by_experienced_limited_fields.each do |post|
+          post.disable_autofetch!  # Prevent autofetch when checking unfetched fields
           assert post.title.present?, "Title should be present"
           assert post.author_name.present?, "Author name should be present"
-          assert_nil post.content, "Content should not be loaded"
-          assert_nil post.category, "Category should not be loaded"
+          refute post.field_was_fetched?(:content), "Content should not be fetched"
+          refute post.field_was_fetched?(:category), "Category should not be fetched"
         end
 
         # Test error handling for invalid constraint values

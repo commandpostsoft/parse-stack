@@ -4,6 +4,8 @@
 
 - **REMOVED**: `active_model_serializers` gem dependency (discontinued/unmaintained)
 - **FIXED**: Deprecation warning "ActiveSupport::Configurable is deprecated" from Rails 8.2
+- **FIXED**: Infinite recursion in enhanced change tracking when `_was` methods were aliased multiple times
+- **FIXED**: Field selection integration tests updated to use `disable_autofetch!` for compatibility with new autofetch behavior
 
 ### 2.1.0
 

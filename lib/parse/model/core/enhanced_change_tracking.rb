@@ -53,10 +53,11 @@ module Parse
         def enhance_change_tracking_for_field(field_name)
           was_changed_method = "#{field_name}_was_changed?"
           was_method = "#{field_name}_was"
-          
+
           # Store reference to original _was method if it exists
+          # Only alias if not already aliased (prevents infinite recursion)
           original_was_method = "__original_#{was_method}".to_sym
-          if instance_method_defined?(was_method)
+          if instance_method_defined?(was_method) && !instance_method_defined?(original_was_method)
             alias_method original_was_method, was_method
           end
           

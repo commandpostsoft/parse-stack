@@ -36,7 +36,7 @@ class TimeQueryIntegrationTest < Minitest::Test
   end
 
   class Author < Parse::Object
-    parse_class "Author"
+    parse_class "TimeQueryAuthor"
     property :name, :string
     property :email, :string
     property :bio, :string
@@ -44,23 +44,23 @@ class TimeQueryIntegrationTest < Minitest::Test
   end
 
   class Article < Parse::Object
-    parse_class "Article"
+    parse_class "TimeQueryArticle"
     property :title, :string
     property :content, :string
     property :published_at, :date
     property :view_count, :integer
     property :is_published, :boolean
-    belongs_to :author, as: :author
-    belongs_to :editor, as: :author
+    belongs_to :author, as: :time_query_author
+    belongs_to :editor, as: :time_query_author
   end
 
   class Comment < Parse::Object
-    parse_class "Comment"
+    parse_class "TimeQueryComment"
     property :text, :string
     property :posted_at, :date
     property :likes, :integer
-    belongs_to :author, as: :author
-    belongs_to :article, as: :article
+    belongs_to :author, as: :time_query_author
+    belongs_to :article, as: :time_query_article
   end
 
   def setup_time_test_data
