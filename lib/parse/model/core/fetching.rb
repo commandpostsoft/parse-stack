@@ -42,6 +42,11 @@ module Parse
         
         # take the result hash and apply it to the attributes.
         apply_attributes!(result, dirty_track: false)
+
+        # Clear partial fetch tracking - object is now fully fetched
+        @_fetched_keys = nil
+        @_nested_fetched_keys = nil
+
         begin
           clear_changes!
         rescue => e
@@ -78,14 +83,16 @@ module Parse
 
       # Autofetches the object based on a key that is not part {Parse::Properties::BASE_KEYS}.
       # If the key is not a Parse standard key, and the current object is in a
-      # Pointer state, then fetch the data related to this record from the Parse
-      # data store.
+      # Pointer state or was partially fetched, then fetch the data related to
+      # this record from the Parse data store.
       # @param key [String] the name of the attribute being accessed.
       # @return [Boolean]
       def autofetch!(key)
         key = key.to_sym
         @fetch_lock ||= false
-        if @fetch_lock != true && pointer? && key != :acl && Parse::Properties::BASE_KEYS.include?(key) == false && respond_to?(:fetch)
+        # Autofetch if object is a pointer OR was partially fetched
+        needs_fetch = pointer? || partially_fetched?
+        if @fetch_lock != true && needs_fetch && key != :acl && Parse::Properties::BASE_KEYS.include?(key) == false && respond_to?(:fetch)
           #puts "AutoFetching Triggerd by: #{self.class}.#{key} (#{id})"
           @fetch_lock = true
           send :fetch

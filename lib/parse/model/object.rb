@@ -311,11 +311,13 @@ module Parse
       # ACL.typecast will auto convert of Parse::ACL
       self.acl = self.class.default_acls.as_json if self.acl.nil?
 
-      clear_changes! if @id.present? #then it was an import
-
       # do not apply defaults on a pointer because it will stop it from being
       # a pointer and will cause its field to be autofetched (for sync)
       apply_defaults! unless pointer?
+
+      # clear changes AFTER applying defaults, so fields set by defaults
+      # are not marked dirty when fetching with specific keys
+      clear_changes! if @id.present? #then it was an import
       # do not call super since it is Pointer subclass
     end
 
@@ -380,6 +382,77 @@ module Parse
         return false
       end
       created_at != updated_at
+    end
+
+    # Returns whether this object was fetched with specific keys (partial fetch).
+    # When partially fetched, accessing unfetched fields will trigger an autofetch.
+    # @return [Boolean] true if the object was fetched with specific keys.
+    def partially_fetched?
+      @_fetched_keys.present? && @_fetched_keys.any?
+    end
+
+    # Returns the array of keys that were fetched for this object.
+    # Empty array means the object was fully fetched.
+    # @return [Array<Symbol>] the keys that were fetched.
+    def fetched_keys
+      @_fetched_keys || []
+    end
+
+    # Sets the fetched keys for this object. Used internally when building
+    # objects from partial fetch queries.
+    # @param keys [Array] the keys that were fetched
+    # @return [Array] the stored keys
+    def fetched_keys=(keys)
+      if keys.nil? || keys.empty?
+        @_fetched_keys = nil
+      else
+        # Always include :id and convert to symbols
+        @_fetched_keys = keys.map { |k| Parse::Query.format_field(k).to_sym }
+        @_fetched_keys << :id unless @_fetched_keys.include?(:id)
+        @_fetched_keys << :objectId unless @_fetched_keys.include?(:objectId)
+        @_fetched_keys.uniq!
+      end
+      @_fetched_keys
+    end
+
+    # Returns whether a specific field was fetched for this object.
+    # Base keys (id, created_at, updated_at) are always considered fetched.
+    # @param key [Symbol, String] the field name to check
+    # @return [Boolean] true if the field was fetched or if object is fully fetched.
+    def field_was_fetched?(key)
+      # If not partially fetched, all fields are considered fetched
+      return true unless partially_fetched?
+
+      key = key.to_sym
+      # Base keys are always considered fetched
+      return true if Parse::Properties::BASE_KEYS.include?(key)
+      return true if key == :acl || key == :ACL
+
+      # Check both local key and remote field name
+      remote_key = self.field_map[key]
+      fetched_keys.include?(key) || (remote_key && fetched_keys.include?(remote_key))
+    end
+
+    # Returns the nested fetched keys map for building nested objects.
+    # @return [Hash] map of field names to their fetched keys
+    def nested_fetched_keys
+      @_nested_fetched_keys || {}
+    end
+
+    # Sets the nested fetched keys map for building nested objects.
+    # @param keys_map [Hash] map of field names to their fetched keys
+    # @return [Hash] the stored map
+    def nested_fetched_keys=(keys_map)
+      @_nested_fetched_keys = keys_map.is_a?(Hash) ? keys_map : nil
+    end
+
+    # Gets the fetched keys for a specific nested field.
+    # @param field_name [Symbol, String] the field name
+    # @return [Array, nil] the fetched keys for the nested object, or nil if not specified
+    def nested_keys_for(field_name)
+      return nil unless @_nested_fetched_keys.present?
+      field_name = field_name.to_sym
+      @_nested_fetched_keys[field_name]
     end
 
     # Run after_create callbacks for this object.
@@ -485,8 +558,10 @@ module Parse
     #   post = Post.build({"title" => "My Title"})
     # @param json [Hash] a JSON hash that contains a Parse object.
     # @param table [String] the Parse class for this hash. If not passed it will be detected.
+    # @param fetched_keys [Array] optional array of keys that were fetched (for partial fetch tracking).
+    # @param nested_fetched_keys [Hash] optional map of field names to their fetched keys for nested objects.
     # @return [Parse::Object] an instance of the Parse subclass
-    def self.build(json, table = nil)
+    def self.build(json, table = nil, fetched_keys: nil, nested_fetched_keys: nil)
       className = table
       className ||= (json[Parse::Model::KEY_CLASS_NAME] || json[:className]) if json.is_a?(Hash)
       if json.is_a?(Hash) && json["error"].present? && json["code"].present?
@@ -501,7 +576,12 @@ module Parse
       if klass.present?
         # when creating objects from Parse JSON data, don't use dirty tracking since
         # we are considering these objects as "pristine"
-        o = klass.new(json)
+        o = klass.allocate
+        # Set nested fetched keys BEFORE apply_attributes! so nested objects can use them
+        o.instance_variable_set(:@_nested_fetched_keys, nested_fetched_keys) if nested_fetched_keys.present?
+        o.send(:initialize, json)
+        # Set fetched keys for partial fetch tracking
+        o.fetched_keys = fetched_keys if fetched_keys.present?
       else
         o = Parse::Pointer.new className, (json[Parse::Model::OBJECT_ID] || json[:objectId])
       end

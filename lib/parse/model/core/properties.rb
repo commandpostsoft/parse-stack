@@ -273,8 +273,10 @@ module Parse
 
           # If the value is nil and this current Parse::Object instance is a pointer?
           # then someone is calling the getter for this, which means they probably want
-          # its value - so let's go turn this pointer into a full object record
-          if value.nil? && pointer?
+          # its value - so let's go turn this pointer into a full object record.
+          # Also autofetch if object was partially fetched and this field wasn't included.
+          should_autofetch = value.nil? && (pointer? || (partially_fetched? && !field_was_fetched?(key)))
+          if should_autofetch
             # call autofetch to fetch the entire record
             # and then get the ivar again cause it might have been updated.
             autofetch!(key)

@@ -165,7 +165,9 @@ module Parse
             # hash, lets try to buid a Pointer of that type.
 
             if val.is_a?(Hash) && (val["__type"] == "Pointer" || val["__type"] == "Object")
-              val = Parse::Object.build val, (val[Parse::Model::KEY_CLASS_NAME] || klassName)
+              # Get nested fetched keys for this field if available
+              nested_keys = nested_keys_for(key)
+              val = Parse::Object.build val, (val[Parse::Model::KEY_CLASS_NAME] || klassName), fetched_keys: nested_keys
               instance_variable_set ivar, val
             end
             val
@@ -189,7 +191,9 @@ module Parse
             if val == Parse::Properties::DELETE_OP
               val = nil
             elsif val.is_a?(Hash) && (val["__type"] == "Pointer" || val["__type"] == "Object")
-              val = Parse::Object.build val, (val[Parse::Model::KEY_CLASS_NAME] || klassName)
+              # Get nested fetched keys for this field if available
+              nested_keys = nested_keys_for(key)
+              val = Parse::Object.build val, (val[Parse::Model::KEY_CLASS_NAME] || klassName), fetched_keys: nested_keys
             end
 
             if track == true

@@ -1,5 +1,21 @@
 ## Parse-Stack Changelog
 
+### 2.1.0
+
+#### Partial Fetch Tracking System
+- **NEW**: Partial fetch tracking for objects fetched with specific `keys` parameter
+- **NEW**: `partially_fetched?` method to check if object was fetched with limited fields
+- **NEW**: `fetched_keys` / `fetched_keys=` methods to get/set the array of fetched field names
+- **NEW**: `field_was_fetched?(key)` method to check if a specific field was included in the fetch
+- **NEW**: Autofetch triggers automatically when accessing unfetched fields on partially fetched objects
+- **NEW**: Nested partial fetch tracking for included objects via `include:` parameter
+- **NEW**: `nested_fetched_keys` / `nested_keys_for(field)` methods for tracking nested object fields
+- **NEW**: `parse_includes_to_nested_keys` helper parses include patterns like `["team.time_zone", "team.name"]`
+- **FIXED**: Objects fetched with `keys:` parameter no longer have dirty tracking for fields with default values
+- **FIXED**: `clear_changes!` now called after `apply_defaults!` to prevent false dirty tracking
+- **IMPROVED**: Before-save hooks can now reliably access unfetched fields (triggers autofetch)
+- **IMPROVED**: Saving partially fetched objects only updates actually changed fields, not default values
+
 ### 2.0.9
 
 - **FIXED**: `Query#where` method now routes through `conditions` to properly handle special keywords like `keys:`, `include:`, `limit:`, etc. when chaining (e.g., `Model.query.where(keys: [...])`)

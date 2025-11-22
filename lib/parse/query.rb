@@ -1375,7 +1375,53 @@ module Parse
     # @param list [Array<Hash>] a list of Parse JSON hashes
     # @return [Array<Parse::Object>] an array of Parse::Object subclasses.
     def decode(list)
-      list.map { |m| Parse::Object.build(m, @table) }.compact
+      # Pass fetched keys for partial fetch tracking (only if keys were specified)
+      fetch_keys = @keys.present? && @keys.any? ? @keys : nil
+
+      # Parse includes to build nested fetched keys map
+      nested_keys = parse_includes_to_nested_keys(@includes) if @includes.present?
+
+      list.map { |m| Parse::Object.build(m, @table, fetched_keys: fetch_keys, nested_fetched_keys: nested_keys) }.compact
+    end
+
+    # Parses include patterns to build a map of nested fetched keys.
+    # For example, ["team.time_zone", "team.name", "author"] becomes:
+    # { team: [:time_zone, :name], author: [] }
+    # @param includes [Array<Symbol>] the include patterns
+    # @return [Hash] a map of nested field names to their fetched keys
+    def parse_includes_to_nested_keys(includes)
+      return {} if includes.nil? || includes.empty?
+
+      nested_map = {}
+
+      includes.each do |include_path|
+        parts = include_path.to_s.split('.')
+        next if parts.empty?
+
+        # First part is the field name on the parent object
+        field_name = parts.first.to_sym
+
+        # Initialize the array for this field if not already
+        nested_map[field_name] ||= []
+
+        # If there are more parts, they are fields on the nested object
+        if parts.length > 1
+          nested_field = parts[1].to_sym
+          nested_map[field_name] << nested_field unless nested_map[field_name].include?(nested_field)
+
+          # Handle deeper nesting (e.g., team.manager.name)
+          if parts.length > 2
+            # For now, we'll create a key for the second level too
+            # This would need recursive handling for deeper nesting
+            second_level_field = parts[1].to_sym
+            nested_map[second_level_field] ||= []
+            nested_field = parts[2].to_sym
+            nested_map[second_level_field] << nested_field unless nested_map[second_level_field].include?(nested_field)
+          end
+        end
+      end
+
+      nested_map
     end
 
     # Builds Parse::Pointer objects based on the set of Parse JSON hashes in an array.
