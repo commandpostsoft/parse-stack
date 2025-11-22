@@ -723,11 +723,13 @@ module Parse
               success = update_relations
               if success
                 changes_applied!
+                clear_partial_fetch_state!
               elsif self.class.raise_on_save_failure || autoraise.present?
                 raise Parse::RecordNotSaved.new(self), "Failed updating relations. #{self.parse_class} partially saved."
               end
             else
               changes_applied!
+              clear_partial_fetch_state!
             end
           elsif self.class.raise_on_save_failure || autoraise.present?
             raise Parse::RecordNotSaved.new(self), "Failed to create or save attributes. #{self.parse_class} was not saved."

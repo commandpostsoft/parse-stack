@@ -1385,8 +1385,9 @@ module Parse
     end
 
     # Parses include patterns to build a map of nested fetched keys.
-    # For example, ["team.time_zone", "team.name", "author"] becomes:
-    # { team: [:time_zone, :name], author: [] }
+    # Handles arbitrary nesting depth (e.g., "a.b.c.d" creates entries for a, b, c).
+    # For example, ["team.time_zone", "team.name", "author", "team.manager.email"] becomes:
+    # { team: [:time_zone, :name, :manager], author: [], manager: [:email] }
     # @param includes [Array<Symbol>] the include patterns
     # @return [Hash] a map of nested field names to their fetched keys
     def parse_includes_to_nested_keys(includes)
@@ -1398,25 +1399,16 @@ module Parse
         parts = include_path.to_s.split('.')
         next if parts.empty?
 
-        # First part is the field name on the parent object
-        field_name = parts.first.to_sym
+        # Process each level of nesting
+        # For path "a.b.c.d": a gets b, b gets c, c gets d
+        parts.each_with_index do |part, index|
+          field_name = part.to_sym
+          nested_map[field_name] ||= []
 
-        # Initialize the array for this field if not already
-        nested_map[field_name] ||= []
-
-        # If there are more parts, they are fields on the nested object
-        if parts.length > 1
-          nested_field = parts[1].to_sym
-          nested_map[field_name] << nested_field unless nested_map[field_name].include?(nested_field)
-
-          # Handle deeper nesting (e.g., team.manager.name)
-          if parts.length > 2
-            # For now, we'll create a key for the second level too
-            # This would need recursive handling for deeper nesting
-            second_level_field = parts[1].to_sym
-            nested_map[second_level_field] ||= []
-            nested_field = parts[2].to_sym
-            nested_map[second_level_field] << nested_field unless nested_map[second_level_field].include?(nested_field)
+          # If there's a next part, add it to this field's nested keys
+          if index < parts.length - 1
+            next_field = parts[index + 1].to_sym
+            nested_map[field_name] << next_field unless nested_map[field_name].include?(next_field)
           end
         end
       end

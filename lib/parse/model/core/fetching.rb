@@ -91,9 +91,16 @@ module Parse
         key = key.to_sym
         @fetch_lock ||= false
         # Autofetch if object is a pointer OR was partially fetched
+        # Skip if autofetch is disabled for this instance
         needs_fetch = pointer? || partially_fetched?
-        if @fetch_lock != true && needs_fetch && key != :acl && Parse::Properties::BASE_KEYS.include?(key) == false && respond_to?(:fetch)
-          #puts "AutoFetching Triggerd by: #{self.class}.#{key} (#{id})"
+        can_fetch = @fetch_lock != true && !autofetch_disabled? && needs_fetch && key != :acl && Parse::Properties::BASE_KEYS.include?(key) == false && respond_to?(:fetch)
+        if can_fetch
+          # Log info about autofetch being triggered
+          if partially_fetched?
+            puts "[Parse::Autofetch] Fetching #{self.class}##{id} - field :#{key} was not included in partial fetch"
+          else
+            puts "[Parse::Autofetch] Fetching #{self.class}##{id} - pointer accessed field :#{key}"
+          end
           @fetch_lock = true
           send :fetch
           @fetch_lock = false

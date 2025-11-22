@@ -313,7 +313,12 @@ module Parse
 
       # do not apply defaults on a pointer because it will stop it from being
       # a pointer and will cause its field to be autofetched (for sync)
-      apply_defaults! unless pointer?
+      # Use fetch_lock to prevent autofetch during default application when partially fetched
+      if !pointer?
+        @fetch_lock = true if partially_fetched?
+        apply_defaults!
+        @fetch_lock = false
+      end
 
       # clear changes AFTER applying defaults, so fields set by defaults
       # are not marked dirty when fetching with specific keys
@@ -388,14 +393,34 @@ module Parse
     # When partially fetched, accessing unfetched fields will trigger an autofetch.
     # @return [Boolean] true if the object was fetched with specific keys.
     def partially_fetched?
-      @_fetched_keys.present? && @_fetched_keys.any?
+      @_fetched_keys&.any? || false
     end
 
     # Returns the array of keys that were fetched for this object.
     # Empty array means the object was fully fetched.
+    # Returns a frozen duplicate to prevent external mutation.
     # @return [Array<Symbol>] the keys that were fetched.
     def fetched_keys
-      @_fetched_keys || []
+      (@_fetched_keys || []).dup.freeze
+    end
+
+    # Disables autofetch for this object instance.
+    # Useful for preventing automatic network requests.
+    # @return [void]
+    def disable_autofetch!
+      @_autofetch_disabled = true
+    end
+
+    # Enables autofetch for this object instance (default behavior).
+    # @return [void]
+    def enable_autofetch!
+      @_autofetch_disabled = false
+    end
+
+    # Returns whether autofetch is disabled for this instance.
+    # @return [Boolean] true if autofetch is disabled
+    def autofetch_disabled?
+      @_autofetch_disabled == true
     end
 
     # Sets the fetched keys for this object. Used internally when building
@@ -429,8 +454,9 @@ module Parse
       return true if key == :acl || key == :ACL
 
       # Check both local key and remote field name
-      remote_key = self.field_map[key]
-      fetched_keys.include?(key) || (remote_key && fetched_keys.include?(remote_key))
+      # Convert remote_key to symbol for consistent comparison
+      remote_key = self.field_map[key]&.to_sym
+      @_fetched_keys.include?(key) || (remote_key && @_fetched_keys.include?(remote_key))
     end
 
     # Returns the nested fetched keys map for building nested objects.
@@ -453,6 +479,14 @@ module Parse
       return nil unless @_nested_fetched_keys.present?
       field_name = field_name.to_sym
       @_nested_fetched_keys[field_name]
+    end
+
+    # Clears all partial fetch tracking state.
+    # Called after successful save since server returns updated object.
+    # @return [void]
+    def clear_partial_fetch_state!
+      @_fetched_keys = nil
+      @_nested_fetched_keys = nil
     end
 
     # Run after_create callbacks for this object.
@@ -577,11 +611,20 @@ module Parse
         # when creating objects from Parse JSON data, don't use dirty tracking since
         # we are considering these objects as "pristine"
         o = klass.allocate
-        # Set nested fetched keys BEFORE apply_attributes! so nested objects can use them
+
+        # Set BOTH nested_fetched_keys AND fetched_keys BEFORE initialize
+        # to ensure partially_fetched? returns correct value during attribute application
         o.instance_variable_set(:@_nested_fetched_keys, nested_fetched_keys) if nested_fetched_keys.present?
+        if fetched_keys.present?
+          # Process fetched_keys like the setter does - convert to symbols and include :id
+          processed_keys = fetched_keys.map { |k| Parse::Query.format_field(k).to_sym }
+          processed_keys << :id unless processed_keys.include?(:id)
+          processed_keys << :objectId unless processed_keys.include?(:objectId)
+          processed_keys.uniq!
+          o.instance_variable_set(:@_fetched_keys, processed_keys)
+        end
+
         o.send(:initialize, json)
-        # Set fetched keys for partial fetch tracking
-        o.fetched_keys = fetched_keys if fetched_keys.present?
       else
         o = Parse::Pointer.new className, (json[Parse::Model::OBJECT_ID] || json[:objectId])
       end

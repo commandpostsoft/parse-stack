@@ -16,6 +16,23 @@
 - **IMPROVED**: Before-save hooks can now reliably access unfetched fields (triggers autofetch)
 - **IMPROVED**: Saving partially fetched objects only updates actually changed fields, not default values
 
+#### Code Quality & Security Improvements
+- **NEW**: `disable_autofetch!` method to prevent automatic network requests on an instance
+- **NEW**: `enable_autofetch!` method to re-enable autofetch
+- **NEW**: `autofetch_disabled?` method to check if autofetch is disabled
+- **NEW**: `clear_partial_fetch_state!` public method for clearing partial fetch tracking
+- **NEW**: `Parse::UnfetchedFieldAccessError` raised when accessing unfetched fields with autofetch disabled
+- **FIXED**: Inconsistent state in `build` - both `nested_fetched_keys` and `fetched_keys` now set before `initialize`
+- **FIXED**: Deep nesting support - `parse_includes_to_nested_keys` now handles arbitrary depth (e.g., `a.b.c.d`)
+- **FIXED**: String/symbol mismatch in `field_was_fetched?` - remote_key now converted to symbol
+- **IMPROVED**: `fetched_keys` getter returns frozen duplicate to prevent external mutation
+- **IMPROVED**: Autofetch prevented during `apply_defaults!` when object is partially fetched
+- **IMPROVED**: Info-level logging when autofetch is triggered (shows class, id, and field that triggered fetch)
+
+#### Testing
+- **NEW**: 34 unit tests for partial fetch functionality (no Docker required)
+- **NEW**: 18 integration tests for partial fetch with real Parse Server
+
 ### 2.0.9
 
 - **FIXED**: `Query#where` method now routes through `conditions` to properly handle special keywords like `keys:`, `include:`, `limit:`, etc. when chaining (e.g., `Model.query.where(keys: [...])`)
