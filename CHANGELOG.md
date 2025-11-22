@@ -1,5 +1,12 @@
 ## Parse-Stack Changelog
 
+### 2.1.3
+
+- **FIXED**: Assignment to unfetched fields on partially fetched objects no longer triggers autofetch - writes don't need to know the previous value
+- **FIXED**: Change tracking now works correctly when assigning to unfetched fields - `changed` array properly includes modified fields
+- **IMPROVED**: Assigned fields are automatically added to `@_fetched_keys`, preventing subsequent reads from triggering autofetch
+- **NEW**: 5 new integration tests for assignment behavior on partially fetched objects
+
 ### 2.1.2
 
 - **FIXED**: Partial fetch now correctly handles fields with default values - unfetched fields no longer return their defaults, instead triggering autofetch (or raising `UnfetchedFieldAccessError` if autofetch is disabled)

@@ -510,6 +510,13 @@ module Parse
 
             # send dirty tracking if set
             if track == true
+              # Before calling will_change!, mark this field as fetched to prevent autofetch.
+              # This is necessary because will_change! calls the getter to capture the old value,
+              # and we don't want assignment to trigger a network fetch.
+              if partially_fetched? && !field_was_fetched?(key)
+                @_fetched_keys ||= []
+                @_fetched_keys << key unless @_fetched_keys.include?(key)
+              end
               send will_change_method unless val == instance_variable_get(ivar)
             end
             # TODO: Only allow empty proxy collection class as a value or nil.

@@ -702,4 +702,227 @@ class PartialFetchIntegrationTest < Minitest::Test
       end
     end
   end
+
+  def test_assignment_to_unfetched_field_does_not_trigger_autofetch
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+
+    with_parse_server do
+      with_timeout(15, "assignment no autofetch test") do
+        puts "\n=== Testing Assignment to Unfetched Field Does Not Trigger Autofetch ==="
+
+        # Create post with content
+        post = PartialFetchPost.new(
+          title: "Test Post",
+          content: "Original Content",
+          category: "tech",
+          view_count: 100
+        )
+        assert post.save, "Post should save"
+
+        # Fetch with only :title (content is not fetched)
+        fetched_post = PartialFetchPost.first(keys: [:id, :title])
+
+        # Verify it's partially fetched and content was not fetched
+        assert fetched_post.partially_fetched?, "Post should be partially fetched"
+        refute fetched_post.field_was_fetched?(:content), "Content should not be fetched initially"
+
+        # Assign to unfetched field - this should NOT trigger autofetch
+        # The object should still be partially fetched (not fully fetched)
+        fetched_post.content = "New Content"
+
+        # After assignment, content should now be marked as fetched
+        # (since we've defined its value, no need to fetch from server)
+        assert fetched_post.field_was_fetched?(:content), "Content should be marked as fetched after assignment"
+
+        # Other unfetched fields should still not be fetched
+        refute fetched_post.field_was_fetched?(:category), "Category should still not be fetched"
+        refute fetched_post.field_was_fetched?(:view_count), "View count should still not be fetched"
+
+        # The object should still be considered partially fetched
+        # (because other fields like category and view_count are still not fetched)
+        assert fetched_post.partially_fetched?, "Post should still be partially fetched"
+
+        puts "Assignment to unfetched field does not trigger autofetch"
+      end
+    end
+  end
+
+  def test_assignment_to_unfetched_field_tracks_changes
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+
+    with_parse_server do
+      with_timeout(15, "assignment change tracking test") do
+        puts "\n=== Testing Assignment to Unfetched Field Tracks Changes ==="
+
+        # Create post with content
+        post = PartialFetchPost.new(
+          title: "Test Post",
+          content: "Original Content",
+          category: "tech"
+        )
+        assert post.save, "Post should save"
+        post_id = post.id
+
+        # Fetch with only :title (content is not fetched)
+        fetched_post = PartialFetchPost.first(keys: [:id, :title])
+
+        # Verify initial state
+        assert fetched_post.partially_fetched?, "Post should be partially fetched"
+        assert_empty fetched_post.changed, "No fields should be changed initially"
+
+        # Assign to unfetched field
+        fetched_post.content = "New Content"
+
+        # The field should be marked as changed
+        assert fetched_post.content_changed?, "Content should be marked as changed"
+        assert_includes fetched_post.changed, "content", "Changed array should include content"
+
+        # Save and verify the change was persisted
+        assert fetched_post.save, "Save should succeed"
+
+        # Fetch fresh copy to verify
+        fresh_post = PartialFetchPost.find(post_id)
+        assert_equal "New Content", fresh_post.content, "Content should be updated"
+        assert_equal "Test Post", fresh_post.title, "Title should be unchanged"
+        assert_equal "tech", fresh_post.category, "Category should be unchanged"
+
+        puts "Assignment to unfetched field tracks changes correctly"
+      end
+    end
+  end
+
+  def test_multiple_assignments_to_unfetched_fields
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+
+    with_parse_server do
+      with_timeout(15, "multiple assignments test") do
+        puts "\n=== Testing Multiple Assignments to Unfetched Fields ==="
+
+        # Create post
+        post = PartialFetchPost.new(
+          title: "Test Post",
+          content: "Original Content",
+          category: "original",
+          view_count: 50
+        )
+        assert post.save, "Post should save"
+        post_id = post.id
+
+        # Fetch with only :id
+        fetched_post = PartialFetchPost.first(keys: [:id])
+
+        # Verify initial state
+        assert fetched_post.partially_fetched?, "Post should be partially fetched"
+
+        # Assign to multiple unfetched fields
+        fetched_post.title = "New Title"
+        fetched_post.content = "New Content"
+        fetched_post.category = "new"
+
+        # All fields should be marked as changed
+        assert_includes fetched_post.changed, "title", "Title should be changed"
+        assert_includes fetched_post.changed, "content", "Content should be changed"
+        assert_includes fetched_post.changed, "category", "Category should be changed"
+
+        # All assigned fields should now be marked as fetched
+        assert fetched_post.field_was_fetched?(:title), "Title should be fetched"
+        assert fetched_post.field_was_fetched?(:content), "Content should be fetched"
+        assert fetched_post.field_was_fetched?(:category), "Category should be fetched"
+
+        # Unassigned fields should still not be fetched
+        refute fetched_post.field_was_fetched?(:view_count), "View count should not be fetched"
+
+        # Save and verify
+        assert fetched_post.save, "Save should succeed"
+
+        fresh_post = PartialFetchPost.find(post_id)
+        assert_equal "New Title", fresh_post.title
+        assert_equal "New Content", fresh_post.content
+        assert_equal "new", fresh_post.category
+        assert_equal 50, fresh_post.view_count, "View count should be unchanged"
+
+        puts "Multiple assignments to unfetched fields work correctly"
+      end
+    end
+  end
+
+  def test_assignment_with_same_value_does_not_mark_changed
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+
+    with_parse_server do
+      with_timeout(15, "same value assignment test") do
+        puts "\n=== Testing Assignment with Same Value Does Not Mark Changed ==="
+
+        # Create post
+        post = PartialFetchPost.new(
+          title: "Test Post",
+          content: "Content"
+        )
+        assert post.save, "Post should save"
+
+        # Fetch with :title
+        fetched_post = PartialFetchPost.first(keys: [:id, :title])
+
+        # Assign same value to title
+        fetched_post.title = "Test Post"
+
+        # Title should not be marked as changed (same value)
+        refute fetched_post.title_changed?, "Title should not be marked as changed"
+        assert_empty fetched_post.changed, "No fields should be changed"
+
+        puts "Assignment with same value does not mark changed"
+      end
+    end
+  end
+
+  def test_belongs_to_assignment_to_unfetched_field_tracks_changes
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+
+    with_parse_server do
+      with_timeout(20, "belongs_to assignment test") do
+        puts "\n=== Testing belongs_to Assignment to Unfetched Field Tracks Changes ==="
+
+        # Create users
+        user1 = PartialFetchUser.new(name: "User 1", email: "user1@example.com")
+        assert user1.save, "User 1 should save"
+
+        user2 = PartialFetchUser.new(name: "User 2", email: "user2@example.com")
+        assert user2.save, "User 2 should save"
+
+        # Create post with author
+        post = PartialFetchPost.new(
+          title: "Test Post",
+          content: "Content",
+          author: user1
+        )
+        assert post.save, "Post should save"
+        post_id = post.id
+
+        # Fetch with only :title (author is not fetched)
+        fetched_post = PartialFetchPost.first(keys: [:id, :title])
+
+        # Verify initial state
+        assert fetched_post.partially_fetched?, "Post should be partially fetched"
+        refute fetched_post.field_was_fetched?(:author), "Author should not be fetched initially"
+
+        # Assign to unfetched belongs_to field
+        fetched_post.author = user2
+
+        # Author should be marked as changed
+        assert fetched_post.author_changed?, "Author should be marked as changed"
+        assert_includes fetched_post.changed, "author", "Changed array should include author"
+
+        # Author should now be marked as fetched
+        assert fetched_post.field_was_fetched?(:author), "Author should be marked as fetched after assignment"
+
+        # Save and verify
+        assert fetched_post.save, "Save should succeed"
+
+        fresh_post = PartialFetchPost.first(includes: :author)
+        assert_equal user2.id, fresh_post.author.id, "Author should be updated to user2"
+
+        puts "belongs_to assignment to unfetched field tracks changes correctly"
+      end
+    end
+  end
 end

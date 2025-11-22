@@ -387,6 +387,14 @@ module Parse
           # this will grab the current value and keep a copy of it - but we only do this if
           # the new value being set is different from the current value stored.
           if track == true
+            # Before calling will_change!, mark this field as fetched to prevent autofetch.
+            # This is necessary because will_change! calls the getter to capture the old value,
+            # and we don't want assignment to trigger a network fetch. The old value should be
+            # whatever is currently in the instance variable (nil if not previously fetched).
+            if partially_fetched? && !field_was_fetched?(key)
+              @_fetched_keys ||= []
+              @_fetched_keys << key unless @_fetched_keys.include?(key)
+            end
             send will_change_method unless val == instance_variable_get(ivar)
           end
 
