@@ -86,7 +86,7 @@ class DockerIntegrationTest < Minitest::Test
     
     # Verify client configuration
     client = Parse::Client.client
-    assert client.server_url.start_with?('http://localhost:1337/parse'), "Server URL should point to localhost Parse server"
+    assert client.server_url.start_with?('http://localhost:2337/parse'), "Server URL should point to localhost Parse server"
     assert_equal 'myAppId', client.app_id
     assert_equal 'myMasterKey', client.master_key
   end

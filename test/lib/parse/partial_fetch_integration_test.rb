@@ -1040,4 +1040,105 @@ class PartialFetchIntegrationTest < Minitest::Test
       end
     end
   end
+
+  def test_fetch_preserves_local_changes
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+
+    with_parse_server do
+      with_timeout(20, "fetch preserves changes test") do
+        puts "\n=== Testing fetch! Preserves Local Changes ==="
+
+        # Create a post
+        post = PartialFetchPost.new(
+          title: "Original Title",
+          content: "Original Content",
+          category: "tech",
+          view_count: 100
+        )
+        assert post.save, "Post should save"
+        post_id = post.id
+
+        # Fetch the post
+        fetched_post = PartialFetchPost.find(post_id)
+        assert_equal "Original Title", fetched_post.title
+        assert_equal "Original Content", fetched_post.content
+        assert_equal "tech", fetched_post.category
+
+        # Make local changes without saving
+        fetched_post.title = "Modified Title"
+        fetched_post.category = "updated"
+
+        # Verify changes are tracked
+        assert fetched_post.title_changed?, "Title should be marked as changed"
+        assert fetched_post.category_changed?, "Category should be marked as changed"
+        assert_equal "Original Title", fetched_post.title_was, "Title was should be original"
+        assert_equal "tech", fetched_post.category_was, "Category was should be original"
+
+        # Fetch from server (server still has original values)
+        fetched_post.fetch
+
+        # Local changes should be preserved
+        assert_equal "Modified Title", fetched_post.title, "Local title change should be preserved"
+        assert_equal "updated", fetched_post.category, "Local category change should be preserved"
+
+        # Unchanged field should have server value
+        assert_equal "Original Content", fetched_post.content, "Unchanged field should have server value"
+        assert_equal 100, fetched_post.view_count, "Unchanged field should have server value"
+
+        # Changes should still be tracked
+        assert fetched_post.title_changed?, "Title should still be marked as changed"
+        assert fetched_post.category_changed?, "Category should still be marked as changed"
+
+        # And _was methods should still work correctly
+        assert_equal "Original Title", fetched_post.title_was, "Title was should still be original"
+        assert_equal "tech", fetched_post.category_was, "Category was should still be original"
+
+        puts "fetch! correctly preserves local changes"
+      end
+    end
+  end
+
+  def test_fetch_updates_unchanged_fields
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+
+    with_parse_server do
+      with_timeout(20, "fetch updates unchanged fields test") do
+        puts "\n=== Testing fetch! Updates Unchanged Fields ==="
+
+        # Create a post
+        post = PartialFetchPost.new(
+          title: "Original Title",
+          content: "Original Content"
+        )
+        assert post.save, "Post should save"
+        post_id = post.id
+
+        # Fetch the post
+        fetched_post = PartialFetchPost.find(post_id)
+
+        # Make a local change to one field
+        fetched_post.title = "Modified Title"
+
+        # Update the content on the server (simulating another client)
+        updated_post = PartialFetchPost.find(post_id)
+        updated_post.content = "Updated Content from Server"
+        assert updated_post.save, "Server update should save"
+
+        # Fetch should update the unchanged field but preserve the local change
+        fetched_post.fetch
+
+        # Local change preserved
+        assert_equal "Modified Title", fetched_post.title, "Local title change should be preserved"
+
+        # Server update applied to unchanged field
+        assert_equal "Updated Content from Server", fetched_post.content, "Server update should be applied"
+
+        # Only title should be marked as changed
+        assert fetched_post.title_changed?, "Title should be marked as changed"
+        refute fetched_post.content_changed?, "Content should not be marked as changed"
+
+        puts "fetch! correctly updates unchanged fields while preserving local changes"
+      end
+    end
+  end
 end

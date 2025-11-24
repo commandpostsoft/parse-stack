@@ -93,7 +93,7 @@ class TestCloudFunctionsIntegration < Minitest::Test
   
   def setup_parse_client_for_cloud_functions_tests
     Parse::Client.setup(
-      server_url: ENV['PARSE_TEST_SERVER_URL'] || 'http://localhost:1337/parse',
+      server_url: ENV['PARSE_TEST_SERVER_URL'] || 'http://localhost:2337/parse',
       app_id: ENV['PARSE_TEST_APP_ID'] || 'myAppId',
       api_key: ENV['PARSE_TEST_API_KEY'] || 'test-rest-key',
       master_key: ENV['PARSE_TEST_MASTER_KEY'] || 'myMasterKey',

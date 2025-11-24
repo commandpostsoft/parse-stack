@@ -15,7 +15,7 @@ class CacheSimpleTest < Minitest::Test
     
     # Setup Parse client directly
     Parse::Client.setup(
-      server_url: 'http://localhost:1337/parse',
+      server_url: 'http://localhost:2337/parse',
       app_id: 'myAppId',
       api_key: 'test-rest-key',
       master_key: 'myMasterKey'
@@ -31,7 +31,7 @@ class CacheSimpleTest < Minitest::Test
     
     # Check server availability
     begin
-      uri = URI('http://localhost:1337/parse/health')
+      uri = URI('http://localhost:2337/parse/health')
       response = Net::HTTP.get_response(uri)
       skip "Parse Server not available" unless response.code == '200'
     rescue StandardError => e

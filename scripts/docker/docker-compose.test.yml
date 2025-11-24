@@ -13,12 +13,12 @@ services:
       - mongo-data:/data/db
 
   parse:
-    build: 
+    build:
       context: ..
       dockerfile: docker/Dockerfile.parse
     container_name: parse-stack-test-server
     ports:
-      - "1337:1337"
+      - "2337:1337"
     depends_on:
       mongo:
         condition: service_started
@@ -42,11 +42,11 @@ services:
       PARSE_DASHBOARD_ALLOW_INSECURE_HTTP: "1"
       PARSE_SERVER_MASTER_KEY: myMasterKey
       PARSE_SERVER_APPLICATION_ID: myAppId
-      PARSE_SERVER_URL: http://localhost:1337/parse
+      PARSE_SERVER_URL: http://localhost:2337/parse
       PARSE_DASHBOARD_CONFIG: |
         {
           "apps": [{
-            "serverURL": "http://localhost:1337/parse",
+            "serverURL": "http://localhost:2337/parse",
             "appId": "myAppId",
             "masterKey": "myMasterKey",
             "appName": "ParseStackTest"

@@ -70,7 +70,7 @@ module Parse
         end
 
         def server_ready?
-          uri = URI('http://localhost:1337/parse/health')
+          uri = URI('http://localhost:2337/parse/health')
           response = Net::HTTP.get_response(uri)
           response.code == '200'
         rescue StandardError

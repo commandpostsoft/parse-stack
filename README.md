@@ -60,8 +60,8 @@ You can also used the bundled `parse-console` command line to connect and intera
 
 ```bash
 $ parse-console -h # see all options
-$ parse-console -v -a myAppId -m myMasterKey http://localhost:1337/parse
-Server : http://localhost:1337/parse
+$ parse-console -v -a myAppId -m myMasterKey http://localhost:2337/parse
+Server : http://localhost:2337/parse
 App Id : myAppId
 Master : true
 2.4.0 > Parse::User.first
@@ -73,7 +73,7 @@ Parse-Stack is a full stack framework that utilizes several ideas behind [DataMa
 ```ruby
 require 'parse/stack'
 
-Parse.setup server_url: 'http://localhost:1337/parse',
+Parse.setup server_url: 'http://localhost:2337/parse',
             app_id: APP_ID,
             api_key: REST_API_KEY,
             master_key: YOUR_MASTER_KEY # optional
@@ -454,7 +454,7 @@ To connect to a Parse server, you will need a minimum of an `application_id`, an
   Parse.setup app_id: "YOUR_APP_ID",
               api_key: "YOUR_API_KEY",
               master_key: "YOUR_MASTER_KEY", # optional
-              server_url: 'https://localhost:1337/parse' #default
+              server_url: 'https://localhost:2337/parse' #default
 ```
 
 If you wish to add additional connection middleware to the stack, you may do so by utilizing passing a block to the setup method.
@@ -479,7 +479,7 @@ Calling `setup` will create the default `Parse::Client` session object that will
 There are additional connection options that you may pass the setup method when creating a `Parse::Client`.
 
 #### `:server_url`
-The server url of your Parse Server if you are not using the hosted Parse service. By default it will use `PARSE_SERVER_URL` environment variable available or fall back to `https://localhost:1337/parse` if not specified.
+The server url of your Parse Server if you are not using the hosted Parse service. By default it will use `PARSE_SERVER_URL` environment variable available or fall back to `https://localhost:2337/parse` if not specified.
 
 #### `:app_id`
 The Parse application id. By default it will use `PARSE_SERVER_APPLICATION_ID` environment variable if not specified.
@@ -3057,7 +3057,7 @@ curl -X POST \
   -H "X-Parse-REST-API-Key: ${REST_API_KEY}" \
   -H "Content-Type: application/json" \
   -d '{}' \
-  https://localhost:1337/parse/functions/helloWorld
+  https://localhost:2337/parse/functions/helloWorld
 ```
 
 If you are creating `Parse::Object` subclasses, you may also register them there to keep common code and functionality centralized.
@@ -3412,7 +3412,7 @@ Configure the following environment variables for testing:
 export PARSE_TEST_USE_DOCKER=true
 
 # Optional: Custom Parse Server configuration
-export PARSE_SERVER_URL=http://localhost:1337/parse
+export PARSE_SERVER_URL=http://localhost:2337/parse
 export PARSE_APP_ID=testAppId
 export PARSE_MASTER_KEY=testMasterKey
 export PARSE_API_KEY=testRestKey
