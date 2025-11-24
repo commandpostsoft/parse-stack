@@ -925,4 +925,119 @@ class PartialFetchIntegrationTest < Minitest::Test
       end
     end
   end
+
+  def test_belongs_to_unfetched_field_triggers_autofetch
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+
+    with_parse_server do
+      with_timeout(20, "belongs_to autofetch test") do
+        puts "\n=== Testing belongs_to Unfetched Field Triggers Autofetch ==="
+
+        # Create user and post with author
+        user = PartialFetchUser.new(name: "Test Author", email: "author@example.com")
+        assert user.save, "User should save"
+
+        post = PartialFetchPost.new(
+          title: "Test Post",
+          content: "Content",
+          author: user
+        )
+        assert post.save, "Post should save"
+        post_id = post.id
+
+        # Fetch post with only [:id, :title] (author is NOT included)
+        fetched_post = PartialFetchPost.first(id: post_id, keys: [:id, :title])
+
+        # Verify it's partially fetched and author was not fetched
+        assert fetched_post.partially_fetched?, "Post should be partially fetched"
+        refute fetched_post.field_was_fetched?(:author), "Author should not be fetched initially"
+
+        # Access the author field - this should trigger autofetch
+        author_result = fetched_post.author
+
+        # Author should not be nil (this was the bug)
+        refute_nil author_result, "Author should not be nil after autofetch"
+        assert_instance_of PartialFetchUser, author_result, "Author should be a PartialFetchUser"
+        assert_equal user.id, author_result.id, "Author should have correct id"
+
+        puts "belongs_to unfetched field correctly triggers autofetch"
+      end
+    end
+  end
+
+  def test_belongs_to_unfetched_field_with_autofetch_disabled_raises_error
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+
+    with_parse_server do
+      with_timeout(20, "belongs_to error test") do
+        puts "\n=== Testing belongs_to Unfetched Field with Autofetch Disabled Raises Error ==="
+
+        # Create user and post with author
+        user = PartialFetchUser.new(name: "Test Author", email: "author@example.com")
+        assert user.save, "User should save"
+
+        post = PartialFetchPost.new(
+          title: "Test Post",
+          content: "Content",
+          author: user
+        )
+        assert post.save, "Post should save"
+        post_id = post.id
+
+        # Fetch post with only [:id, :title]
+        fetched_post = PartialFetchPost.first(id: post_id, keys: [:id, :title])
+
+        # Disable autofetch on the fetched object
+        fetched_post.disable_autofetch!
+
+        # Verify it's partially fetched and autofetch is disabled
+        assert fetched_post.partially_fetched?, "Post should be partially fetched"
+        assert fetched_post.autofetch_disabled?, "Autofetch should be disabled"
+
+        # Accessing unfetched author should raise error
+        error = assert_raises(Parse::UnfetchedFieldAccessError) do
+          fetched_post.author
+        end
+
+        assert_match(/author/, error.message, "Error should mention the field name")
+
+        puts "belongs_to unfetched field with autofetch disabled correctly raises error"
+      end
+    end
+  end
+
+  def test_has_many_unfetched_field_triggers_autofetch
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+
+    with_parse_server do
+      with_timeout(20, "has_many autofetch test") do
+        puts "\n=== Testing has_many Unfetched Field Triggers Autofetch ==="
+
+        # Create a post with a tags array
+        post = PartialFetchPost.new(
+          title: "Test Post",
+          content: "Content",
+          tags: ["ruby", "testing", "parse"]
+        )
+        assert post.save, "Post should save"
+        post_id = post.id
+
+        # Fetch post with only [:id, :title] (tags array is NOT included)
+        fetched_post = PartialFetchPost.first(id: post_id, keys: [:id, :title])
+
+        # Verify it's partially fetched and tags was not fetched
+        assert fetched_post.partially_fetched?, "Post should be partially fetched"
+        refute fetched_post.field_was_fetched?(:tags), "Tags should not be fetched initially"
+
+        # Access the tags field - this should trigger autofetch for array fields
+        tags_result = fetched_post.tags
+
+        # Tags should not be nil after autofetch (for array fields, they get autofetched)
+        refute_nil tags_result, "Tags should not be nil after autofetch"
+        assert_equal ["ruby", "testing", "parse"], tags_result, "Tags should have correct values"
+
+        puts "has_many/array unfetched field correctly triggers autofetch"
+      end
+    end
+  end
 end

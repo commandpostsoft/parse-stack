@@ -1934,6 +1934,62 @@ This also works for all associations types.
   song.fans.first.username # the fan's username
 ```
 
+### Partial Fetch and Autofetch Behavior
+
+Parse-Stack supports partial fetches, where you can query for objects with only specific fields included using the `:keys` parameter. This is useful for optimizing queries when you don't need all fields.
+
+```ruby
+# Fetch only specific fields
+post = Post.first(keys: [:id, :title, :author])
+post.partially_fetched? # true
+post.field_was_fetched?(:title) # true
+post.field_was_fetched?(:content) # false
+
+# Accessing an unfetched field triggers autofetch
+content = post.content # Automatically fetches the full object from Parse
+```
+
+#### Autofetch Behavior with `disable_autofetch!`
+
+You can disable automatic fetching on an object using `disable_autofetch!`. This is useful when you want strict control over network requests:
+
+```ruby
+post = Post.first(keys: [:id, :title])
+post.disable_autofetch!
+
+# Now accessing unfetched fields raises an error
+post.content # Raises Parse::UnfetchedFieldAccessError
+```
+
+**Important behavioral difference:**
+
+There is an intentional difference in how **pointer objects** vs **partially fetched objects** behave when autofetch is disabled:
+
+1. **Partially fetched objects** (objects fetched with `:keys` parameter):
+   - Accessing an unfetched field raises `Parse::UnfetchedFieldAccessError` when autofetch is disabled
+   - This is strict and explicit to prevent subtle bugs with missing data
+
+2. **Pointer objects** (objects with only `id` and no fetched data):
+   - Accessing any field returns `nil` when autofetch is disabled (no error raised)
+   - This maintains backward compatibility with existing code that relies on this behavior
+
+**Rationale:** Pointer objects have historically always returned `nil` for unfetched fields - this is well-understood behavior that existing applications depend on. Partially fetched objects, introduced in version 2.1.0, are a new feature where it's less obvious which fields are available, so raising explicit errors helps catch bugs early.
+
+```ruby
+# Pointer object behavior
+song = Song.new(id: "abc123") # Just a pointer, no data fetched
+song.disable_autofetch!
+song.title # Returns nil (backward compatible behavior)
+
+# Partially fetched object behavior
+song = Song.first(id: "abc123", keys: [:id, :artist])
+song.disable_autofetch!
+song.artist # Works - this field was fetched
+song.title # Raises Parse::UnfetchedFieldAccessError (strict behavior)
+```
+
+This distinction helps maintain backward compatibility while providing strict safety for the new partial fetch feature. If you want consistent error-raising behavior for both cases, avoid using `disable_autofetch!` and rely on the default autofetch mechanism instead.
+
 ## Advanced Querying
 The `Parse::Query` class provides the lower-level querying interface for your Parse tables using the default `Parse::Client` session created when `setup()` was called. This component can be used on its own without defining your models as all results are provided in hash form. By convention in Ruby (see [Style Guide](https://github.com/bbatsov/ruby-style-guide#snake-case-symbols-methods-vars)), symbols and variables are expressed in lower_snake_case form. Parse, however, prefers column names in **lower-first camel case** (ex. `objectId`, `createdAt` and `updatedAt`). To keep in line with the style guides between the languages, we do the automatic conversion of the field names when compiling the query. As an additional exception to this rule, the field key of `id` will automatically be converted to the `objectId` field when used. This feature can be overridden by changing the value of `Parse::Query.field_formatter`.
 

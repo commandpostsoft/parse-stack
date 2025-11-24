@@ -1,5 +1,17 @@
 ## Parse-Stack Changelog
 
+### 2.1.4
+
+- **FIXED**: `belongs_to` associations now correctly trigger autofetch when accessing unfetched fields on partially fetched objects
+- **FIXED**: `has_many` associations now correctly trigger autofetch when accessing unfetched fields on partially fetched objects
+- **FIXED**: Both association types now raise `UnfetchedFieldAccessError` when autofetch is disabled and an unfetched field is accessed
+- **IMPROVED**: Association getters now follow the same partial fetch behavior pattern as regular properties
+- **NEW**: 3 new integration tests for association autofetch behavior on partially fetched objects
+- **DOCUMENTED**: Clarified behavioral difference between pointer objects and partially fetched objects when autofetch is disabled
+  - Pointer objects (backward compatible): Return `nil` for unfetched fields, no error raised
+  - Partially fetched objects (strict): Raise `UnfetchedFieldAccessError` for unfetched fields
+  - This distinction maintains backward compatibility while providing safety for the new partial fetch feature
+
 ### 2.1.3
 
 - **FIXED**: Assignment to unfetched fields on partially fetched objects no longer triggers autofetch - writes don't need to know the previous value

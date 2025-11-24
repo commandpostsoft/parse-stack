@@ -458,8 +458,15 @@ module Parse
           # The first method to be defined is a getter.
           define_method(key) do
             val = instance_variable_get(ivar)
-            # if the value for this is nil and we are a pointer, then autofetch
-            if val.nil? && pointer?
+            # if the value for this is nil and we are a pointer, or if this is a
+            # partially fetched object and this field wasn't included, then autofetch
+            should_autofetch = val.nil? && (pointer? || (partially_fetched? && !field_was_fetched?(key)))
+            if should_autofetch
+              # If autofetch is disabled and we're accessing an unfetched field on a
+              # partially fetched object, raise an error to make the issue explicit
+              if autofetch_disabled? && partially_fetched? && !field_was_fetched?(key)
+                raise Parse::UnfetchedFieldAccessError.new(key, self.class.name)
+              end
               autofetch!(key)
               val = instance_variable_get ivar
             end
