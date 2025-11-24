@@ -39,7 +39,16 @@ module Parse
         
         # If we successfully fetched data, ensure the object is not marked as deleted
         @_deleted = false
-        
+
+        # Preserve locally changed fields - capture their current values before fetching
+        local_changes = {}
+        if respond_to?(:changes) && respond_to?(:changed)
+          changed.each do |attr|
+            # Store the current local value (the value the user set)
+            local_changes[attr] = send(attr)
+          end
+        end
+
         # take the result hash and apply it to the attributes.
         apply_attributes!(result, dirty_track: false)
 
@@ -55,6 +64,14 @@ module Parse
           @mutations_from_database = nil if instance_variable_defined?(:@mutations_from_database)
           @mutations_before_last_save = nil if instance_variable_defined?(:@mutations_before_last_save)
         end
+
+        # Re-apply the locally changed values and restore dirty tracking
+        # This ensures fetch doesn't overwrite unsaved local changes
+        local_changes.each do |attr, value|
+          setter = "#{attr}="
+          send(setter, value) if respond_to?(setter)
+        end
+
         self
       end
 

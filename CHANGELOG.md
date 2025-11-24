@@ -5,8 +5,14 @@
 - **FIXED**: `belongs_to` associations now correctly trigger autofetch when accessing unfetched fields on partially fetched objects
 - **FIXED**: `has_many` associations now correctly trigger autofetch when accessing unfetched fields on partially fetched objects
 - **FIXED**: Both association types now raise `UnfetchedFieldAccessError` when autofetch is disabled and an unfetched field is accessed
+- **FIXED**: `fetch!` and `fetch` methods now preserve locally changed fields instead of overwriting them with server values
+  - Unchanged fields are updated with server values (as expected)
+  - Locally changed fields retain their modified values after fetch
+  - Dirty tracking is correctly maintained with `*_was` methods returning the fetched server value
+  - This allows refreshing an object from the server without losing unsaved local changes
 - **IMPROVED**: Association getters now follow the same partial fetch behavior pattern as regular properties
-- **NEW**: 3 new integration tests for association autofetch behavior on partially fetched objects
+- **IMPROVED**: Default Parse test port changed from 1337 to 2337 to avoid conflicts
+- **NEW**: 5 new integration tests for association autofetch behavior and fetch preservation on partially fetched objects
 - **DOCUMENTED**: Clarified behavioral difference between pointer objects and partially fetched objects when autofetch is disabled
   - Pointer objects (backward compatible): Return `nil` for unfetched fields, no error raised
   - Partially fetched objects (strict): Raise `UnfetchedFieldAccessError` for unfetched fields
