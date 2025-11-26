@@ -18,6 +18,28 @@ module Parse
         @fetch_mutex ||= Mutex.new
       end
 
+      # Custom marshal serialization to exclude non-serializable instance variables.
+      # Mutex objects cannot be marshalled, so we exclude @fetch_mutex.
+      # @return [Hash] instance variables suitable for Marshal serialization
+      # @!visibility private
+      def marshal_dump
+        instance_variables.each_with_object({}) do |var, hash|
+          # Skip mutex and other non-serializable objects
+          next if var == :@fetch_mutex
+          hash[var] = instance_variable_get(var)
+        end
+      end
+
+      # Custom marshal deserialization to restore instance variables.
+      # @param data [Hash] the serialized instance variables
+      # @!visibility private
+      def marshal_load(data)
+        data.each do |var, value|
+          instance_variable_set(var, value)
+        end
+        # @fetch_mutex will be lazily initialized when needed
+      end
+
       # Force fetches and updates the current object with the data contained in the Parse collection.
       # The changes applied to the object are not dirty tracked.
       # @param keys [Array<Symbol, String>, nil] optional list of fields to fetch (partial fetch).
