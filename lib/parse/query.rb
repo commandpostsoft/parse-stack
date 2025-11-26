@@ -2687,9 +2687,13 @@ module Parse
 
     # Creates a deep copy of this query object, allowing independent modifications
     # @return [Parse::Query] a new query object with the same constraints
+    # @note The @client and @results instance variables are intentionally NOT cloned.
+    #   The cloned query will use the default client when executed.
     def clone
       cloned_query = Parse::Query.new(self.instance_variable_get(:@table))
-      [:count, :where, :order, :keys, :includes, :limit, :skip, :cache, :use_master_key, :client].each do |param|
+      # Note: :client is intentionally excluded - it contains non-serializable objects
+      # (Redis connections, Faraday connections) and should be obtained lazily
+      [:count, :where, :order, :keys, :includes, :limit, :skip, :cache, :use_master_key].each do |param|
         if instance_variable_defined?(:"@#{param}")
           value = instance_variable_get(:"@#{param}")
           if value.is_a?(Array) || value.is_a?(Hash)
