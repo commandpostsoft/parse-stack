@@ -517,6 +517,23 @@ Sets the default cache expiration time (in seconds) for successful non-empty `GE
 #### `:faraday`
 You may pass a hash of options that will be passed to the `Faraday` constructor.
 
+### Global Settings
+
+#### `Parse.warn_on_query_issues`
+Controls whether query validation warnings are displayed. When enabled (default: `true`), Parse-Stack will print helpful warnings about common query mistakes:
+
+- Warning when including non-pointer fields (e.g., including a string field that doesn't need `include`)
+- Warning when including a pointer AND specifying subfield keys (redundant - the full object makes the subfield keys unnecessary)
+
+```ruby
+# Disable query validation warnings globally
+Parse.warn_on_query_issues = false
+
+# Example warnings that may be shown when enabled:
+# [Parse::Query] Warning: 'filename' is a string field, not a pointer/relation - it does not need to be included
+# [Parse::Query] Warning: including 'project' returns the full object - keys ["project.name"] are unnecessary
+```
+
 ## Working With Existing Schemas
 If you already have a Parse application with defined schemas and collections, you can have Parse-Stack automatically generate the ruby Parse::Object subclasses instead of writing them on your own. Through this process, the framework will download all the defined schemas of all your collections, and infer the properties and associations defined. While this method is useful for getting started with the framework with an existing app, we highly recommend defining your own models. This would allow you to customize and utilize all the features available in Parse Stack.
 
@@ -1702,6 +1719,89 @@ refreshed_song = song.fetch_object  # Re-fetches and returns object
 - **Change tracking preservation**: Fetched objects maintain proper dirty tracking state
 - **Backwards compatible**: Existing `fetch` behavior preserved
 
+### Partial Fetch on Existing Objects
+
+You can partially fetch specific fields on existing objects or pointers using the `keys:` and `includes:` parameters. This is useful when you only need specific fields without fetching the entire object.
+
+```ruby
+# Partial fetch on a pointer - returns a new partially fetched object
+pointer = Post.pointer("abc123")
+post = pointer.fetch(keys: [:title, :content])
+post.partially_fetched?           # true
+post.field_was_fetched?(:title)   # true
+post.field_was_fetched?(:author)  # false
+
+# Partial fetch on an existing object - updates self
+post = Post.find("abc123")
+post.fetch(keys: [:view_count])   # Fetches only view_count, updates self
+
+# Incremental partial fetch - keys are merged
+post = Post.first(keys: [:title])
+post.field_was_fetched?(:title)   # true
+post.field_was_fetched?(:content) # false
+post.fetch(keys: [:content])      # Add content to fetched keys
+post.field_was_fetched?(:title)   # true - still tracked
+post.field_was_fetched?(:content) # true - now tracked
+```
+
+#### Nested Fields with Dot Notation
+
+Use dot notation in `keys:` to fetch specific fields from related objects. Parse Server automatically resolves the pointer.
+
+```ruby
+# Partial fetch with nested fields (pointer auto-resolved)
+post = Post.pointer("abc123").fetch(keys: ["author.name", "author.email"])
+post.author.pointer?                    # false - expanded to object
+post.author.partially_fetched?          # true
+post.author.field_was_fetched?(:name)   # true
+post.author.field_was_fetched?(:age)    # false
+
+# Access unfetched nested field triggers autofetch
+post.author.age  # Automatically fetches the full author object
+```
+
+#### fetch_json for Raw Data
+
+Use `fetch_json` to get raw JSON data without updating the object:
+
+```ruby
+post = Post.find("abc123")
+json = post.fetch_json(keys: [:title, :view_count])
+# json is a Hash: {"objectId" => "abc123", "title" => "...", "viewCount" => 100}
+# post is unchanged
+```
+
+#### Dirty Tracking During Fetch
+
+By default, `fetch` discards local changes to fetched fields and applies server values. Use `preserve_changes: true` to keep local changes.
+
+```ruby
+# Default behavior: server values are applied, local changes discarded
+post = Post.find("abc123")
+post.title = "Modified Title"
+post.fetch                    # Warning logged, local change discarded
+post.title                    # => "Original Title" (server value)
+post.title_changed?           # false
+
+# Preserve local changes with preserve_changes: true
+post = Post.find("abc123")
+post.title = "Modified Title"
+post.fetch(preserve_changes: true)  # Local changes preserved
+post.title                          # => "Modified Title"
+post.title_changed?                 # true
+
+# Unfetched dirty fields are ALWAYS preserved (regardless of preserve_changes)
+post = Post.find("abc123")
+post.title = "Modified Title"
+post.category = "tech"
+post.fetch(keys: [:title])    # Only fetch title, not category
+post.title_changed?           # false - title was fetched, server value applied
+post.category_changed?        # true - category NOT fetched, dirty preserved
+post.category                 # => "tech" (local value preserved)
+```
+
+**Important:** Base fields (`id`, `created_at`, `updated_at`) always accept server values regardless of `preserve_changes` setting.
+
 ### Modifying Associations
 Similar to `:array` types of properties, a `has_many` association is backed by a collection proxy class and requires the use of `#add` and `#remove` to modify the contents of the association in order for it to correctly manage changes and updates with Parse. Using `has_many` for associations has the additional functionality that we will only add items to the association if they are of a `Parse::Pointer` or `Parse::Object` type. By default, these associations are fetched with only pointer data. To fetch all the objects in the association, you can call `#fetch` or `#fetch!` on the collection. Note that because the framework supports chaining, it is better to only request the objects you need by utilizing their accessors.
 
@@ -1989,6 +2089,40 @@ song.title # Raises Parse::UnfetchedFieldAccessError (strict behavior)
 ```
 
 This distinction helps maintain backward compatibility while providing strict safety for the new partial fetch feature. If you want consistent error-raising behavior for both cases, avoid using `disable_autofetch!` and rely on the default autofetch mechanism instead.
+
+#### Debugging Autofetch with `autofetch_raise_on_missing_keys`
+
+During development, you can enable `Parse.autofetch_raise_on_missing_keys` to identify all places in your code where autofetch is being triggered. This helps you add the necessary keys to your queries to avoid unnecessary network requests:
+
+```ruby
+# Enable globally for debugging
+Parse.autofetch_raise_on_missing_keys = true
+
+# Now accessing unfetched fields raises an error with helpful info
+post = Post.first(keys: [:title])
+post.content # Raises Parse::AutofetchTriggeredError
+# => "Autofetch triggered on Post#abc123 - field :content was not included in partial fetch. Add :content to your query keys."
+
+# For pointers, the message suggests using includes
+song = Song.pointer("xyz789")
+song.title # Raises Parse::AutofetchTriggeredError
+# => "Autofetch triggered on Song#xyz789 - pointer accessed field :title. Add this field to your includes or fetch the object first."
+```
+
+This is particularly useful when optimizing your application's network usage. Enable it in development/test environments to catch all autofetch triggers, then add the appropriate keys or includes to your queries.
+
+```ruby
+# Example workflow:
+# 1. Enable in development
+Parse.autofetch_raise_on_missing_keys = true
+
+# 2. Run your code - errors will tell you exactly which fields are missing
+# 3. Add the fields to your queries:
+Post.first(keys: [:title, :content, :author])  # Add missing fields
+
+# 4. Disable when done debugging
+Parse.autofetch_raise_on_missing_keys = false
+```
 
 ## Advanced Querying
 The `Parse::Query` class provides the lower-level querying interface for your Parse tables using the default `Parse::Client` session created when `setup()` was called. This component can be used on its own without defining your models as all results are provided in hash form. By convention in Ruby (see [Style Guide](https://github.com/bbatsov/ruby-style-guide#snake-case-symbols-methods-vars)), symbols and variables are expressed in lower_snake_case form. Parse, however, prefers column names in **lower-first camel case** (ex. `objectId`, `createdAt` and `updatedAt`). To keep in line with the style guides between the languages, we do the automatic conversion of the field names when compiling the query. As an additional exception to this rule, the field key of `id` will automatically be converted to the `objectId` field when used. This feature can be overridden by changing the value of `Parse::Query.field_formatter`.

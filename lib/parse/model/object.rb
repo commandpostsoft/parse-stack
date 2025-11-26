@@ -355,11 +355,11 @@ module Parse
 
     # force reload from the database and replace any local fields with data from
     # the persistent store
-    # @param opts [Hash] a set of options to send to fetch!
+    # @param opts [Hash] a set of options to send to fetch! (e.g., cache: false)
     # @see Fetching#fetch!
-    def reload!(opts = {})
+    def reload!(**opts)
       # get the values from the persistence layer
-      fetch!(opts)
+      fetch!(**opts)
       clear_changes!
     end
 

@@ -211,6 +211,39 @@ module Parse
         res
       end
 
+      # Parses keys patterns to build a map of nested fetched keys.
+      # Handles arbitrary nesting depth (e.g., "a.b.c.d" creates entries for a, b, c).
+      # For example, ["project.name", "project.status", "author.email"] becomes:
+      # { project: [:name, :status], author: [:email] }
+      # @param keys [Array<Symbol, String>] the keys patterns (may include dot notation for nested fields)
+      # @return [Hash] a map of nested field names to their fetched keys
+      def parse_keys_to_nested_keys(keys)
+        return {} if keys.nil? || keys.empty?
+
+        nested_map = {}
+
+        keys.each do |key_path|
+          parts = key_path.to_s.split('.')
+          # Skip keys without dots - they're top-level fields, not nested
+          next if parts.length < 2
+
+          # Process each level of nesting
+          # For path "a.b.c.d": a gets b, b gets c, c gets d
+          parts.each_with_index do |part, index|
+            field_name = part.to_sym
+            nested_map[field_name] ||= []
+
+            # If there's a next part, add it to this field's nested keys
+            if index < parts.length - 1
+              next_field = parts[index + 1].to_sym
+              nested_map[field_name] << next_field unless nested_map[field_name].include?(next_field)
+            end
+          end
+        end
+
+        nested_map
+      end
+
       # Helper method to create a query with constraints for a specific Parse collection.
       # Also sets the default limit count to `:max`.
       # @param table [String] the name of the Parse collection to query. (ex. "_User")
@@ -1378,43 +1411,56 @@ module Parse
       # Pass fetched keys for partial fetch tracking (only if keys were specified)
       fetch_keys = @keys.present? && @keys.any? ? @keys : nil
 
-      # Parse includes to build nested fetched keys map
-      nested_keys = parse_includes_to_nested_keys(@includes) if @includes.present?
+      # Parse keys (not includes) to build nested fetched keys map
+      # Keys like ["project.name", "project.status"] define which subfields to fetch on nested objects
+      nested_keys = Parse::Query.parse_keys_to_nested_keys(@keys) if @keys.present?
 
       list.map { |m| Parse::Object.build(m, @table, fetched_keys: fetch_keys, nested_fetched_keys: nested_keys) }.compact
     end
 
-    # Parses include patterns to build a map of nested fetched keys.
-    # Handles arbitrary nesting depth (e.g., "a.b.c.d" creates entries for a, b, c).
-    # For example, ["team.time_zone", "team.name", "author", "team.manager.email"] becomes:
-    # { team: [:time_zone, :name, :manager], author: [], manager: [:email] }
-    # @param includes [Array<Symbol>] the include patterns
-    # @return [Hash] a map of nested field names to their fetched keys
-    def parse_includes_to_nested_keys(includes)
-      return {} if includes.nil? || includes.empty?
+    # Validates includes against keys and field types, printing debug warnings for:
+    # 1. Non-pointer fields that are included (unnecessary include)
+    # 2. Pointer fields that are included but also have subfield keys (redundant keys)
+    # Skips validation for includes with dot notation (internal references).
+    # Can be disabled by setting Parse.warn_on_query_issues = false
+    # @!visibility private
+    def validate_includes_vs_keys
+      return unless Parse.warn_on_query_issues
+      return if @includes.empty?
 
-      nested_map = {}
+      # Get the model class to check field types
+      klass = Parse::Model.find_class(@table)
+      return unless klass.respond_to?(:fields)
 
-      includes.each do |include_path|
-        parts = include_path.to_s.split('.')
-        next if parts.empty?
+      fields = klass.fields
 
-        # Process each level of nesting
-        # For path "a.b.c.d": a gets b, b gets c, c gets d
-        parts.each_with_index do |part, index|
-          field_name = part.to_sym
-          nested_map[field_name] ||= []
+      @includes.each do |inc|
+        inc_str = inc.to_s
 
-          # If there's a next part, add it to this field's nested keys
-          if index < parts.length - 1
-            next_field = parts[index + 1].to_sym
-            nested_map[field_name] << next_field unless nested_map[field_name].include?(next_field)
+        # Skip includes with dots - these are internal references (e.g., "project.owner")
+        next if inc_str.include?('.')
+
+        inc_sym = inc_str.to_sym
+        field_type = fields[inc_sym]
+
+        # Check if the field is a pointer or relation type
+        is_object_field = [:pointer, :relation].include?(field_type)
+
+        if !is_object_field && field_type.present?
+          # Warn: non-object field doesn't need to be included
+          puts "[Parse::Query] Warning: '#{inc_str}' is a #{field_type} field, not a pointer/relation - it does not need to be included (silence with Parse.warn_on_query_issues = false)"
+        elsif is_object_field
+          # Check if there are keys with dot notation for this field
+          subfield_keys = @keys.select { |k| k.to_s.start_with?("#{inc_str}.") }
+
+          if subfield_keys.any?
+            # Warn: including the full object makes subfield keys unnecessary
+            puts "[Parse::Query] Warning: including '#{inc_str}' returns the full object - keys #{subfield_keys.map(&:to_s).inspect} are unnecessary (silence with Parse.warn_on_query_issues = false)"
           end
         end
       end
-
-      nested_map
     end
+    private :validate_includes_vs_keys
 
     # Builds Parse::Pointer objects based on the set of Parse JSON hashes in an array.
     # @param list [Array<Hash>] a list of Parse JSON hashes
@@ -1477,6 +1523,9 @@ module Parse
     # @see #before_prepare
     # @see #after_prepare
     def compile(encode: true, includeClassName: false)
+      # Validate includes vs keys before compiling
+      validate_includes_vs_keys
+
       run_callbacks :prepare do
         q = {} #query
         q[:limit] = @limit if @limit.is_a?(Numeric) && @limit > 0

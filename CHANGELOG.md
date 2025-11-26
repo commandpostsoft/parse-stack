@@ -1,5 +1,105 @@
 ## Parse-Stack Changelog
 
+### 2.1.5
+
+#### New: Partial Fetch on Existing Objects
+- **NEW**: `fetch(keys:, includes:, preserve_changes:)` method to partially fetch specific fields on an existing object
+- **NEW**: `fetch!(keys:, includes:, preserve_changes:)` method with same functionality (updates self)
+- **NEW**: `Pointer#fetch(keys:, includes:)` returns a properly typed, partially fetched object
+- **NEW**: `fetch_json(keys:, includes:)` method to fetch raw JSON without updating the object
+- **NEW**: Incremental partial fetch - calling `fetch(keys: [...])` on already partially fetched objects merges the new keys
+- **NEW**: `preserve_changes:` parameter (default: `false`) controls whether local dirty values are preserved during fetch:
+  - `preserve_changes: false` (default): Fetched fields accept server values, local changes are discarded with a debug warning
+  - `preserve_changes: true`: Local dirty values are re-applied to fetched fields, maintaining dirty state
+  - Unfetched fields always preserve their dirty state regardless of this setting
+- **IMPROVED**: Thread-safe autofetch using Mutex instead of simple boolean lock
+- **IMPROVED**: Autofetch now always preserves dirty changes (uses `preserve_changes: true` internally)
+  - Manual `.fetch()` calls still default to `preserve_changes: false` for explicit control
+  - Autofetch is an implicit background operation that shouldn't discard user modifications
+- **NEW**: `Parse.autofetch_raise_on_missing_keys` configuration option for debugging
+  - When `true`, raises `Parse::AutofetchTriggeredError` instead of auto-fetching
+  - Helps identify where additional keys are needed in queries to avoid network requests
+  - Error message includes the class, object ID, and missing field name
+- **IMPROVED**: Better error logging in `clear_changes!` rescue block
+- **IMPROVED**: Performance optimizations - reduced repeated `Array()` and `format_field` calls
+- **IMPROVED**: `fetch_object` API method now accepts optional `query:` parameter for keys/include
+
+#### Usage Examples: Partial Fetch on Objects
+```ruby
+# Partial fetch specific fields on a pointer
+pointer = Post.pointer("abc123")
+post = pointer.fetch(keys: [:title, :content])  # Returns new partially fetched object
+
+# Partial fetch on an existing object (updates self)
+post = Post.find("abc123")
+post.fetch(keys: [:view_count])  # Updates self, merges with existing fetched keys
+
+# Partial fetch with nested fields (pointer auto-resolved)
+post.fetch(keys: ["author.name", "author.email"])
+# post.author is now a partially fetched user with just name and email
+
+# Fetch raw JSON without updating object
+json = post.fetch_json(keys: [:title])  # Returns Hash, doesn't update post
+
+# Default behavior: local changes are discarded for fetched fields
+post = Post.find("abc123")
+post.title = "Modified"
+post.fetch                        # Local title change is discarded (warning logged)
+post.title                        # => "Original Title" (server value)
+
+# Preserve local changes with preserve_changes: true
+post = Post.find("abc123")
+post.title = "Modified"
+post.fetch(preserve_changes: true)  # Local changes preserved
+post.title                          # => "Modified"
+post.title_changed?                 # => true
+
+# Unfetched fields always preserve dirty state
+post = Post.find("abc123")
+post.title = "Modified"           # Mark title as dirty
+post.fetch(keys: [:view_count])   # Fetch only view_count (title not fetched)
+post.title_changed?               # => true (dirty state preserved for unfetched field)
+```
+
+#### Breaking Change: Nested Partial Fetch Tracking
+- **FIXED**: Nested partial fetch tracking now correctly uses `keys` parameter with dot notation instead of `includes` parameter
+  - **Before (incorrect)**: `Model.first(keys: [:author], include: ["author.name"])` - tracking parsed from includes
+  - **After (correct)**: `Model.first(keys: ["author.name"])` - tracking parsed from keys, pointer auto-resolved
+- **RENAMED**: `parse_includes_to_nested_keys` method renamed to `parse_keys_to_nested_keys` to reflect correct behavior
+- **CLARIFIED**: Proper Parse Server parameter usage:
+  - `keys:` with dot notation (e.g., `"project.name"`) - Fetches specific nested fields, pointer auto-resolved by Parse
+  - `includes:` - Only needed to resolve pointers as FULL objects (without field restrictions)
+- **IMPROVED**: `parse_keys_to_nested_keys` now skips top-level keys (those without dots) as they don't define nested relationships
+- **UPDATED**: All integration and unit tests updated to reflect correct `keys`/`includes` usage
+
+#### Usage Examples: Query Partial Fetch
+```ruby
+# Partial nested object (only name field, pointer auto-resolved)
+Asset.first(keys: ["project.name"])
+
+# Full nested object (includes required)
+Asset.first(keys: [:project], includes: [:project])
+
+# Multiple nested fields
+Asset.first(keys: ["project.name", "project.status", "project.owner.email"])
+```
+
+#### Query Validation Warnings
+- **NEW**: `Parse.warn_on_query_issues` configuration option (default: `true`)
+- **NEW**: Debug warnings for common query mistakes:
+  - Warning when including non-pointer fields (e.g., including a string field that doesn't need `include`)
+  - Warning when including a pointer AND specifying subfield keys (redundant - the full object makes keys unnecessary)
+- **NEW**: Warnings include instructions for silencing
+
+```ruby
+# Disable query validation warnings globally
+Parse.warn_on_query_issues = false
+
+# Example warnings that may be shown:
+# [Parse::Query] Warning: 'filename' is a string field, not a pointer/relation - it does not need to be included (silence with Parse.warn_on_query_issues = false)
+# [Parse::Query] Warning: including 'project' returns the full object - keys ["project.name"] are unnecessary (silence with Parse.warn_on_query_issues = false)
+```
+
 ### 2.1.4
 
 - **FIXED**: `belongs_to` associations now correctly trigger autofetch when accessing unfetched fields on partially fetched objects
@@ -45,9 +145,9 @@
 - **NEW**: `fetched_keys` / `fetched_keys=` methods to get/set the array of fetched field names
 - **NEW**: `field_was_fetched?(key)` method to check if a specific field was included in the fetch
 - **NEW**: Autofetch triggers automatically when accessing unfetched fields on partially fetched objects
-- **NEW**: Nested partial fetch tracking for included objects via `include:` parameter
+- **NEW**: Nested partial fetch tracking for included objects via `keys:` parameter with dot notation
 - **NEW**: `nested_fetched_keys` / `nested_keys_for(field)` methods for tracking nested object fields
-- **NEW**: `parse_includes_to_nested_keys` helper parses include patterns like `["team.time_zone", "team.name"]`
+- **NEW**: `parse_keys_to_nested_keys` helper parses keys patterns like `["team.time_zone", "team.name"]`
 - **FIXED**: Objects fetched with `keys:` parameter no longer have dirty tracking for fields with default values
 - **FIXED**: `clear_changes!` now called after `apply_defaults!` to prevent false dirty tracking
 - **IMPROVED**: Before-save hooks can now reliably access unfetched fields (triggers autofetch)
@@ -60,7 +160,7 @@
 - **NEW**: `clear_partial_fetch_state!` public method for clearing partial fetch tracking
 - **NEW**: `Parse::UnfetchedFieldAccessError` raised when accessing unfetched fields with autofetch disabled
 - **FIXED**: Inconsistent state in `build` - both `nested_fetched_keys` and `fetched_keys` now set before `initialize`
-- **FIXED**: Deep nesting support - `parse_includes_to_nested_keys` now handles arbitrary depth (e.g., `a.b.c.d`)
+- **FIXED**: Deep nesting support - `parse_keys_to_nested_keys` now handles arbitrary depth (e.g., `a.b.c.d`)
 - **FIXED**: String/symbol mismatch in `field_was_fetched?` - remote_key now converted to symbol
 - **IMPROVED**: `fetched_keys` getter returns frozen duplicate to prevent external mutation
 - **IMPROVED**: Autofetch prevented during `apply_defaults!` when object is partially fetched

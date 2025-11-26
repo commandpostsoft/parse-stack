@@ -176,19 +176,25 @@ class PartialFetchTest < Minitest::Test
     refute obj.autofetch_disabled?, "Autofetch should be re-enabled"
   end
 
-  def test_parse_includes_to_nested_keys_simple
-    query = PartialFetchTestModel.query
-
-    result = query.send(:parse_includes_to_nested_keys, [:author, :"author.name"])
+  def test_parse_keys_to_nested_keys_simple
+    # Keys with dot notation define nested fields (e.g., "author.name" means "name" field on "author")
+    result = Parse::Query.parse_keys_to_nested_keys(["author.name"])
 
     assert result[:author].include?(:name), "author should include name"
   end
 
-  def test_parse_includes_to_nested_keys_deep_nesting
-    query = PartialFetchTestModel.query
+  def test_parse_keys_to_nested_keys_skips_top_level_keys
+    # Keys without dots are top-level fields, not nested - they should be skipped
+    result = Parse::Query.parse_keys_to_nested_keys([:title, :content, "author.name"])
 
+    refute result.key?(:title), "top-level keys should not create entries"
+    refute result.key?(:content), "top-level keys should not create entries"
+    assert result[:author].include?(:name), "nested keys should work"
+  end
+
+  def test_parse_keys_to_nested_keys_deep_nesting
     # For "a.b.c.d", each level should get the next level as its key
-    result = query.send(:parse_includes_to_nested_keys, [:"a.b.c.d"])
+    result = Parse::Query.parse_keys_to_nested_keys([:"a.b.c.d"])
 
     assert result[:a].include?(:b), "a should include b"
     assert result[:b].include?(:c), "b should include c"
@@ -196,10 +202,8 @@ class PartialFetchTest < Minitest::Test
     assert result[:d] == [], "d should have empty array (leaf node)"
   end
 
-  def test_parse_includes_to_nested_keys_multiple_paths
-    query = PartialFetchTestModel.query
-
-    result = query.send(:parse_includes_to_nested_keys, [
+  def test_parse_keys_to_nested_keys_multiple_paths
+    result = Parse::Query.parse_keys_to_nested_keys([
       :"team.manager.name",
       :"team.manager.email",
       :"team.address"
@@ -211,11 +215,9 @@ class PartialFetchTest < Minitest::Test
     assert result[:manager].include?(:email), "manager should include email"
   end
 
-  def test_parse_includes_to_nested_keys_empty_input
-    query = PartialFetchTestModel.query
-
-    assert_equal({}, query.send(:parse_includes_to_nested_keys, nil), "nil should return empty hash")
-    assert_equal({}, query.send(:parse_includes_to_nested_keys, []), "empty array should return empty hash")
+  def test_parse_keys_to_nested_keys_empty_input
+    assert_equal({}, Parse::Query.parse_keys_to_nested_keys(nil), "nil should return empty hash")
+    assert_equal({}, Parse::Query.parse_keys_to_nested_keys([]), "empty array should return empty hash")
   end
 
   def test_build_sets_fetched_keys_before_initialize
