@@ -2,6 +2,14 @@
 
 ### 2.1.5
 
+#### Bug Fixes
+- **FIXED**: `Parse::Object#as_json` now correctly returns serialized pointer hash when object is in pointer state
+  - Previously returned the `Parse::Pointer` object instead of its JSON representation
+  - This caused `__type` and `className` to be stripped when serializing pointers in `Parse.call_function` parameters
+- **FIXED**: Added `marshal_dump` and `marshal_load` methods to properly serialize Parse objects with `@fetch_mutex`
+  - Fixes `Marshal failed: no _dump_data is defined for class Thread::Mutex` error in `Query.clone`
+  - The mutex is excluded from serialization and lazily re-initialized when needed
+
 #### New: Partial Fetch on Existing Objects
 - **NEW**: `fetch(keys:, includes:, preserve_changes:)` method to partially fetch specific fields on an existing object
 - **NEW**: `fetch!(keys:, includes:, preserve_changes:)` method with same functionality (updates self)
