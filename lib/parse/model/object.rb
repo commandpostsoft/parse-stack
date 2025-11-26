@@ -271,9 +271,12 @@ module Parse
 
     # @return [Hash] a json-hash representing this object.
     def as_json(opts = nil)
-      return pointer if pointer?
+      opts ||= {}
+      # When in pointer state, return the serialized pointer hash (with __type, className, objectId)
+      # instead of the Pointer object to ensure proper JSON serialization
+      return pointer.as_json(opts) if pointer?
       changed_fields = changed_attributes
-      super(opts || {}).delete_if { |k, v| v.nil? && !changed_fields.has_key?(k) }
+      super(opts).delete_if { |k, v| v.nil? && !changed_fields.has_key?(k) }
     end
 
     # The main constructor for subclasses. It can take different parameter types
