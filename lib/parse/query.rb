@@ -941,7 +941,8 @@ module Parse
       if limit_or_constraints.is_a?(Hash)
         conditions(limit_or_constraints)
         # Check if limit was set in constraints, otherwise use 1
-        fetch_count = @limit || 1
+        # Handle :max case - if @limit is :max, default to 1 for first()
+        fetch_count = (@limit.is_a?(Numeric) ? @limit : nil) || 1
       else
         fetch_count = limit_or_constraints.to_i
         @results = nil if @limit != fetch_count
