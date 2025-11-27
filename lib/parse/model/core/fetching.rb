@@ -119,8 +119,8 @@ module Parse
           new_keys << :objectId unless new_keys.include?(:objectId)
           new_keys.uniq!
 
-          # If already partially fetched, merge with existing keys
-          if partially_fetched?
+          # If already selectively fetched, merge with existing keys
+          if has_selective_keys?
             @_fetched_keys = (@_fetched_keys + new_keys).uniq
           else
             @_fetched_keys = new_keys
@@ -308,7 +308,7 @@ module Parse
 
       # Autofetches the object based on a key that is not part {Parse::Properties::BASE_KEYS}.
       # If the key is not a Parse standard key, and the current object is in a
-      # Pointer state or was partially fetched, then fetch the data related to
+      # Pointer state or was selectively fetched, then fetch the data related to
       # this record from the Parse data store.
       # Uses a mutex for thread safety to prevent race conditions in multi-threaded contexts.
       # @param key [String] the name of the attribute being accessed.
@@ -316,9 +316,9 @@ module Parse
       def autofetch!(key)
         key = key.to_sym
 
-        # Autofetch if object is a pointer OR was partially fetched
+        # Autofetch if object is a pointer OR was selectively fetched
         # Skip if autofetch is disabled for this instance
-        needs_fetch = pointer? || partially_fetched?
+        needs_fetch = pointer? || has_selective_keys?
         return unless needs_fetch &&
                       !autofetch_disabled? &&
                       key != :acl &&
@@ -332,7 +332,7 @@ module Parse
         # Use mutex for thread-safe check-and-fetch pattern
         fetch_mutex.synchronize do
           # Double-check inside mutex (another thread may have fetched)
-          return if !pointer? && !partially_fetched?
+          return if !pointer? && !has_selective_keys?
 
           is_pointer_fetch = pointer?
 

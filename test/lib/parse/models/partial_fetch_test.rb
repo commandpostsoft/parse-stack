@@ -221,13 +221,15 @@ class PartialFetchTest < Minitest::Test
   end
 
   def test_build_sets_fetched_keys_before_initialize
-    json = { "objectId" => "abc123", "title" => "Test" }
+    now = Time.now.utc.iso8601
+    json = { "objectId" => "abc123", "title" => "Test", "createdAt" => now, "updatedAt" => now }
 
-    # Build with fetched_keys
+    # Build with fetched_keys (include timestamps to make it not a pointer)
     obj = PartialFetchTestModel.build(json, "PartialFetchTestModel", fetched_keys: [:title])
 
-    # Object should be partially fetched
-    assert obj.partially_fetched?, "Built object should be partially fetched"
+    # Object should have selective keys set
+    assert obj.has_selective_keys?, "Built object should have selective keys"
+    # field_was_fetched? returns false for pointers, so we need timestamps
     assert obj.field_was_fetched?(:title), "title should be fetched"
   end
 
@@ -309,16 +311,28 @@ class PartialFetchTest < Minitest::Test
     assert_nil obj.content
   end
 
-  def test_accessing_base_keys_with_autofetch_disabled_does_not_raise
+  def test_accessing_base_keys_with_autofetch_disabled_on_fully_fetched_object
+    obj = PartialFetchTestModel.new
+    obj.instance_variable_set(:@id, "abc123")
+    obj.instance_variable_set(:@created_at, Time.now)
+    obj.instance_variable_set(:@updated_at, Time.now)
+    obj.fetched_keys = [:title]
+    obj.disable_autofetch!
+
+    # Base keys should always be accessible on a non-pointer object
+    assert_equal "abc123", obj.id
+    assert obj.created_at  # Should be accessible
+    assert obj.updated_at  # Should be accessible
+  end
+
+  def test_id_always_accessible_with_autofetch_disabled
     obj = PartialFetchTestModel.new
     obj.id = "abc123"
     obj.fetched_keys = [:title]
     obj.disable_autofetch!
 
-    # Base keys should always be accessible
+    # id is always accessible because it's set directly
     assert_equal "abc123", obj.id
-    assert_nil obj.created_at
-    assert_nil obj.updated_at
   end
 
   def test_re_enabling_autofetch_allows_access_without_error
@@ -407,9 +421,12 @@ class PartialFetchTest < Minitest::Test
   end
 
   def test_fetched_field_with_default_uses_default_when_server_returns_nil
+    now = Time.now.utc.iso8601
     json = {
       "objectId" => "abc123",
-      "title" => "Test"
+      "title" => "Test",
+      "createdAt" => now,
+      "updatedAt" => now
       # viewCount and isPublished not included in JSON (nil from server)
     }
 
@@ -418,6 +435,7 @@ class PartialFetchTest < Minitest::Test
     obj.disable_autofetch!
 
     # Should return defaults since the field was fetched but nil from server
+    # (object must have timestamps to not be a pointer)
     assert_equal 0, obj.view_count
     assert_equal false, obj.is_published
   end
@@ -455,5 +473,156 @@ class PartialFetchTest < Minitest::Test
 
     # The instance variable should be set for fetched fields
     assert_equal 100, obj.instance_variable_get(:@view_count)
+  end
+
+  # =========================================
+  # Tests for as_json with partial fetch
+  # =========================================
+
+  def test_as_json_serializes_only_fetched_fields_by_default
+    original_setting = Parse.serialize_only_fetched_fields
+    Parse.serialize_only_fetched_fields = true
+
+    json = { "objectId" => "abc123", "title" => "Test Title" }
+    obj = PartialFetchTestModel.build(json, "PartialFetchTestModel",
+                                       fetched_keys: [:title])
+
+    result = obj.as_json
+
+    assert result.key?("title"), "Should include fetched field title"
+    refute result.key?("content"), "Should NOT include unfetched field content"
+    refute result.key?("view_count") || result.key?("viewCount"), "Should NOT include unfetched field view_count"
+  ensure
+    Parse.serialize_only_fetched_fields = original_setting
+  end
+
+  def test_as_json_includes_metadata_fields_always
+    original_setting = Parse.serialize_only_fetched_fields
+    Parse.serialize_only_fetched_fields = true
+
+    json = { "objectId" => "abc123", "title" => "Test" }
+    obj = PartialFetchTestModel.build(json, "PartialFetchTestModel",
+                                       fetched_keys: [:title])
+
+    result = obj.as_json
+
+    # Metadata fields should always be included (objectId, className, __type)
+    assert result.key?("objectId"), "Should include objectId"
+    assert result.key?("__type"), "Should include __type"
+    assert result.key?("className"), "Should include className"
+  ensure
+    Parse.serialize_only_fetched_fields = original_setting
+  end
+
+  def test_as_json_setting_disabled_requires_explicit_opt_in
+    original_setting = Parse.serialize_only_fetched_fields
+    Parse.serialize_only_fetched_fields = false
+
+    json = { "objectId" => "abc123", "title" => "Test" }
+    obj = PartialFetchTestModel.build(json, "PartialFetchTestModel",
+                                       fetched_keys: [:title])
+
+    # When the global setting is false, as_json will NOT filter by fetched keys
+    # This means it will try to serialize ALL fields, triggering autofetch.
+    # To still get filtered output, use explicit only_fetched: true option
+    result = obj.as_json(only_fetched: true)
+
+    # With explicit opt-in, the fetched field should be included and unfetched excluded
+    assert result.key?("title"), "Should include title"
+    refute result.key?("content"), "Should NOT include unfetched content"
+  ensure
+    Parse.serialize_only_fetched_fields = original_setting
+  end
+
+  def test_as_json_only_fetched_option_is_respected
+    original_setting = Parse.serialize_only_fetched_fields
+    Parse.serialize_only_fetched_fields = true
+
+    json = { "objectId" => "abc123", "title" => "Test" }
+    obj = PartialFetchTestModel.build(json, "PartialFetchTestModel",
+                                       fetched_keys: [:title])
+
+    # With only_fetched: true (default when setting enabled), only fetched fields are serialized
+    result = obj.as_json
+
+    assert result.key?("title"), "Should include fetched field title"
+    assert result.key?("objectId"), "Should include objectId"
+    assert result.key?("__type"), "Should include __type"
+    refute result.key?("content"), "Should NOT include unfetched field content"
+  ensure
+    Parse.serialize_only_fetched_fields = original_setting
+  end
+
+  def test_as_json_respects_explicit_only_option
+    original_setting = Parse.serialize_only_fetched_fields
+    Parse.serialize_only_fetched_fields = true
+
+    json = { "objectId" => "abc123", "title" => "Test", "content" => "Content" }
+    obj = PartialFetchTestModel.build(json, "PartialFetchTestModel",
+                                       fetched_keys: [:title, :content])
+
+    # Explicit :only should take precedence over fetched_keys
+    result = obj.as_json(only: ["content"])
+
+    refute result.key?("title"), "Should NOT include title when explicit :only excludes it"
+    assert result.key?("content"), "Should include content specified in :only"
+  ensure
+    Parse.serialize_only_fetched_fields = original_setting
+  end
+
+  def test_as_json_non_partial_object_serializes_all_fields
+    original_setting = Parse.serialize_only_fetched_fields
+    Parse.serialize_only_fetched_fields = true
+
+    # Create a fully fetched object (not via build with keys)
+    # Setting timestamps makes it not a pointer
+    obj = PartialFetchTestModel.new
+    obj.instance_variable_set(:@id, "abc123")
+    obj.instance_variable_set(:@created_at, Time.now)
+    obj.instance_variable_set(:@updated_at, Time.now)
+    obj.instance_variable_set(:@title, "Test")
+    obj.instance_variable_set(:@content, "Content")
+
+    result = obj.as_json
+
+    # Non-partial objects should serialize all fields regardless of setting
+    assert result.key?("title"), "Should include title"
+    assert result.key?("content"), "Should include content"
+  ensure
+    Parse.serialize_only_fetched_fields = original_setting
+  end
+
+  def test_as_json_pointer_returns_pointer_hash
+    original_setting = Parse.serialize_only_fetched_fields
+    Parse.serialize_only_fetched_fields = true
+
+    # Create a pointer (has id but no data and no selective keys)
+    obj = PartialFetchTestModel.new("abc123")
+
+    result = obj.as_json
+
+    # Pointer should return pointer hash format
+    assert result.key?("__type"), "Pointer should have __type"
+    assert result.key?("objectId"), "Pointer should have objectId"
+    assert result.key?("className"), "Pointer should have className"
+  ensure
+    Parse.serialize_only_fetched_fields = original_setting
+  end
+
+  def test_to_json_respects_serialize_only_fetched_fields
+    original_setting = Parse.serialize_only_fetched_fields
+    Parse.serialize_only_fetched_fields = true
+
+    json = { "objectId" => "abc123", "title" => "Test" }
+    obj = PartialFetchTestModel.build(json, "PartialFetchTestModel",
+                                       fetched_keys: [:title])
+
+    result_json = obj.to_json
+    result = JSON.parse(result_json)
+
+    assert result.key?("title"), "JSON should include fetched field title"
+    refute result.key?("content"), "JSON should NOT include unfetched field content"
+  ensure
+    Parse.serialize_only_fetched_fields = original_setting
   end
 end

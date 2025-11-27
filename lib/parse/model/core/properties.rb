@@ -274,12 +274,12 @@ module Parse
           # If the value is nil and this current Parse::Object instance is a pointer?
           # then someone is calling the getter for this, which means they probably want
           # its value - so let's go turn this pointer into a full object record.
-          # Also autofetch if object was partially fetched and this field wasn't included.
-          should_autofetch = value.nil? && (pointer? || (partially_fetched? && !field_was_fetched?(key)))
+          # Also autofetch if object was selectively fetched and this field wasn't included.
+          should_autofetch = value.nil? && (pointer? || (has_selective_keys? && !field_was_fetched?(key)))
           if should_autofetch
             # If autofetch is disabled and we're accessing an unfetched field on a
-            # partially fetched object, raise an error to make the issue explicit
-            if autofetch_disabled? && partially_fetched? && !field_was_fetched?(key)
+            # selectively fetched object, raise an error to make the issue explicit
+            if autofetch_disabled? && has_selective_keys? && !field_was_fetched?(key)
               raise Parse::UnfetchedFieldAccessError.new(key, self.class.name)
             end
             # call autofetch to fetch the entire record
@@ -391,7 +391,7 @@ module Parse
             # This is necessary because will_change! calls the getter to capture the old value,
             # and we don't want assignment to trigger a network fetch. The old value should be
             # whatever is currently in the instance variable (nil if not previously fetched).
-            if partially_fetched? && !field_was_fetched?(key)
+            if has_selective_keys? && !field_was_fetched?(key)
               @_fetched_keys ||= []
               @_fetched_keys << key unless @_fetched_keys.include?(key)
             end

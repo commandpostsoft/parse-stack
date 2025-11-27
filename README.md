@@ -12,6 +12,7 @@ A full featured Active Model ORM and Ruby REST API for Parse-Server. [Parse Stac
 - Enhanced change tracking and webhooks
 - Request idempotency system
 - Timezone support for date operations
+- Partial fetch with smart autofetch and serialization control
 - And many more improvements (see [CHANGELOG.md](./CHANGELOG.md))
 
 Below is a [quick start guide](#overview), but you can also check out the full *[API Reference](https://www.modernistik.com/gems/parse-stack/index.html)* for more detailed information about our Parse Server SDK.
@@ -621,6 +622,34 @@ comment.author # <Parse::Pointer @parse_class="Author", @id="hZLbW6ofKC">
 
 comment.post.fetch # fetch the relation
 comment.post.pointer? # false, it is now a full object.
+```
+
+#### Auto-fetch on Property Access
+
+When you have a `Parse::Pointer` for a registered model class, you can access properties directly and the object will be automatically fetched:
+
+```ruby
+# Create a pointer (not yet fetched)
+pointer = Post.pointer("abc123")
+pointer.pointer? # true - no data yet
+
+# Accessing a property auto-fetches and returns the value
+pointer.title # Fetches the object, returns "My Post Title"
+
+# Subsequent accesses use the cached fetched object (no additional network request)
+pointer.content # Returns content without another fetch
+pointer.author  # Returns author without another fetch
+
+# The pointer remembers the fetched object
+pointer.pointer? # false - now has data
+```
+
+This auto-fetch behavior respects the `Parse.autofetch_raise_on_missing_keys` setting:
+
+```ruby
+Parse.autofetch_raise_on_missing_keys = true
+pointer = Post.pointer("abc123")
+pointer.title # Raises Parse::AutofetchTriggeredError instead of fetching
 ```
 
 The effect is that for any unknown classes that the framework encounters, it will generate Parse::Pointer instances until you define those classes with valid properties and associations. While this might be ok for some classes you do not use, we still recommend defining all your Parse classes locally in the framework.
@@ -2049,6 +2078,64 @@ post.field_was_fetched?(:content) # false
 content = post.content # Automatically fetches the full object from Parse
 ```
 
+#### Fetch Status Methods
+
+Parse objects can be in one of three states, and you can check the status using these methods:
+
+| Method | Pointer | Partially Fetched | Fully Fetched |
+|--------|---------|-------------------|---------------|
+| `pointer?` | `true` | `false` | `false` |
+| `partially_fetched?` | `false` | `true` | `false` |
+| `fully_fetched?` | `false` | `false` | `true` |
+| `fetched?` | `false` | `false` | `true` |
+
+```ruby
+# Pointer state (only id, no data fetched)
+pointer = Post.pointer("abc123")
+pointer.pointer?           # => true
+pointer.partially_fetched? # => false
+pointer.fully_fetched?     # => false
+pointer.fetched?           # => false
+
+# Partially/selectively fetched (specific keys only)
+partial = Post.first(keys: [:title, :author])
+partial.pointer?           # => false
+partial.partially_fetched? # => true
+partial.fully_fetched?     # => false
+partial.fetched?           # => false
+
+# Fully fetched (all fields available)
+full = Post.first
+full.pointer?           # => false
+full.partially_fetched? # => false
+full.fully_fetched?     # => true
+full.fetched?           # => true
+```
+
+The `fetched?` method returns `true` only for fully fetched objects. If you need to check whether an object has *any* data (not just a pointer), use `!pointer?` or check `partially_fetched? || fully_fetched?`.
+
+#### Serialization of Partially Fetched Objects
+
+By default, calling `as_json` or `to_json` on a partially fetched object will only serialize the fields that were fetched. This prevents autofetch from being triggered during serialization and is particularly useful for webhook responses.
+
+```ruby
+# Default behavior (Parse.serialize_only_fetched_fields = true)
+user = User.first(keys: [:id, :first_name, :email])
+user.to_json  # Only includes id, first_name, email (plus metadata)
+
+# Useful for webhook responses - returns only requested fields
+Parse::Webhooks.route :function, :getTeamMembers do
+  users = User.all(:id.in => user_ids, keys: [:id, :first_name, :icon_image])
+  users  # Returns only the requested fields, no autofetch triggered
+end
+
+# Disable globally if needed
+Parse.serialize_only_fetched_fields = false
+
+# Or override per-call
+user.as_json(only_fetched: false)  # Serialize all fields (may trigger autofetch)
+```
+
 #### Autofetch Behavior with `disable_autofetch!`
 
 You can disable automatic fetching on an object using `disable_autofetch!`. This is useful when you want strict control over network requests:
@@ -2061,22 +2148,28 @@ post.disable_autofetch!
 post.content # Raises Parse::UnfetchedFieldAccessError
 ```
 
-**Important behavioral difference:**
+**Autofetch behavior by object type:**
 
-There is an intentional difference in how **pointer objects** vs **partially fetched objects** behave when autofetch is disabled:
+1. **`Parse::Pointer` objects** (created via `Model.pointer("id")`):
+   - Accessing any property automatically fetches the full object and returns the value
+   - The fetched object is cached, so subsequent property accesses don't trigger additional fetches
+   - With `autofetch_raise_on_missing_keys` enabled, raises `Parse::AutofetchTriggeredError` instead
 
-1. **Partially fetched objects** (objects fetched with `:keys` parameter):
-   - Accessing an unfetched field raises `Parse::UnfetchedFieldAccessError` when autofetch is disabled
-   - This is strict and explicit to prevent subtle bugs with missing data
+2. **`Parse::Object` in pointer state** (objects with only `id`, no fetched data):
+   - Accessing an unfetched field triggers autofetch by default
+   - With `disable_autofetch!`, accessing any field returns `nil` (backward compatible behavior)
 
-2. **Pointer objects** (objects with only `id` and no fetched data):
-   - Accessing any field returns `nil` when autofetch is disabled (no error raised)
-   - This maintains backward compatibility with existing code that relies on this behavior
-
-**Rationale:** Pointer objects have historically always returned `nil` for unfetched fields - this is well-understood behavior that existing applications depend on. Partially fetched objects, introduced in version 2.1.0, are a new feature where it's less obvious which fields are available, so raising explicit errors helps catch bugs early.
+3. **Partially fetched objects** (objects fetched with `:keys` parameter):
+   - Accessing an unfetched field triggers autofetch by default
+   - With `disable_autofetch!`, raises `Parse::UnfetchedFieldAccessError` (strict behavior)
+   - Autofetch preserves any nested embedded data on pointer fields (e.g., `author.name` won't be lost)
 
 ```ruby
-# Pointer object behavior
+# Parse::Pointer auto-fetch (new in 2.1.6)
+pointer = Song.pointer("abc123")
+pointer.title # Auto-fetches and returns title
+
+# Parse::Object in pointer state
 song = Song.new(id: "abc123") # Just a pointer, no data fetched
 song.disable_autofetch!
 song.title # Returns nil (backward compatible behavior)
@@ -2088,7 +2181,7 @@ song.artist # Works - this field was fetched
 song.title # Raises Parse::UnfetchedFieldAccessError (strict behavior)
 ```
 
-This distinction helps maintain backward compatibility while providing strict safety for the new partial fetch feature. If you want consistent error-raising behavior for both cases, avoid using `disable_autofetch!` and rely on the default autofetch mechanism instead.
+**Rationale:** Pointer objects have historically always returned `nil` for unfetched fields - this is well-understood behavior that existing applications depend on. Partially fetched objects are a newer feature where it's less obvious which fields are available, so raising explicit errors helps catch bugs early. `Parse::Pointer` objects now support auto-fetch on property access for convenience.
 
 #### Debugging Autofetch with `autofetch_raise_on_missing_keys`
 

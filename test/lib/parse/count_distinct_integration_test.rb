@@ -10,8 +10,7 @@ class Product < Parse::Object
   property :manufacturer, :string
   property :rating, :float
   property :release_date, :date
-  property :created_at, :date
-  property :updated_at, :date
+  # Note: created_at and updated_at are already defined as BASE_KEYS in Parse::Object
 end
 
 class Order < Parse::Object
@@ -89,12 +88,15 @@ class CountDistinctIntegrationTest < Minitest::Test
       
       assert_equal 3, distinct_payment_methods, "Should have 3 distinct payment methods for completed orders"
       
-      # Count distinct statuses for high-value orders
+      # Count distinct statuses for high-value orders (> $150)
+      # Orders matching: ORD002 (200, completed), ORD004 (300, completed),
+      #                  ORD005 (250, shipped), ORD006 (180, completed)
+      # Distinct statuses: "completed", "shipped" = 2
       distinct_statuses = Order.query
         .where(:total_amount.gt => 150)
         .count_distinct(:status)
-      
-      assert_equal 3, distinct_statuses, "Should have 3 distinct statuses for high-value orders"
+
+      assert_equal 2, distinct_statuses, "Should have 2 distinct statuses for high-value orders"
     end
   end
   
@@ -276,22 +278,24 @@ class CountDistinctIntegrationTest < Minitest::Test
   # Test count_distinct with complex aggregation scenarios
   def test_count_distinct_complex_scenarios
     skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
-    
+
     with_parse_server do
       reset_database!
-      
+
       # Create products with various attributes
+      # Note: Time arithmetic uses seconds, so multiply days by 86400
       now = Time.now
-      
+      day = 86400 # seconds in a day
+
       products = []
-      products << Product.new(name: "iPhone", category: "Electronics", price: 999.99, in_stock: true, manufacturer: "Apple", rating: 4.5, release_date: now - 30).tap { |p| p.save }
-      products << Product.new(name: "iPad", category: "Electronics", price: 599.99, in_stock: true, manufacturer: "Apple", rating: 4.3, release_date: now - 60).tap { |p| p.save }
-      products << Product.new(name: "MacBook", category: "Electronics", price: 1299.99, in_stock: false, manufacturer: "Apple", rating: 4.7, release_date: now - 90).tap { |p| p.save }
-      products << Product.new(name: "Surface", category: "Electronics", price: 899.99, in_stock: true, manufacturer: "Microsoft", rating: 4.2, release_date: now - 45).tap { |p| p.save }
-      products << Product.new(name: "Xbox", category: "Gaming", price: 499.99, in_stock: true, manufacturer: "Microsoft", rating: 4.6, release_date: now - 120).tap { |p| p.save }
-      products << Product.new(name: "PlayStation", category: "Gaming", price: 499.99, in_stock: false, manufacturer: "Sony", rating: 4.8, release_date: now - 150).tap { |p| p.save }
-      products << Product.new(name: "Switch", category: "Gaming", price: 299.99, in_stock: true, manufacturer: "Nintendo", rating: 4.5, release_date: now - 180).tap { |p| p.save }
-      
+      products << Product.new(name: "iPhone", category: "Electronics", price: 999.99, in_stock: true, manufacturer: "Apple", rating: 4.5, release_date: now - (30 * day)).tap { |p| p.save }
+      products << Product.new(name: "iPad", category: "Electronics", price: 599.99, in_stock: true, manufacturer: "Apple", rating: 4.3, release_date: now - (60 * day)).tap { |p| p.save }
+      products << Product.new(name: "MacBook", category: "Electronics", price: 1299.99, in_stock: false, manufacturer: "Apple", rating: 4.7, release_date: now - (90 * day)).tap { |p| p.save }
+      products << Product.new(name: "Surface", category: "Electronics", price: 899.99, in_stock: true, manufacturer: "Microsoft", rating: 4.2, release_date: now - (45 * day)).tap { |p| p.save }
+      products << Product.new(name: "Xbox", category: "Gaming", price: 499.99, in_stock: true, manufacturer: "Microsoft", rating: 4.6, release_date: now - (30 * day)).tap { |p| p.save }
+      products << Product.new(name: "PlayStation", category: "Gaming", price: 499.99, in_stock: false, manufacturer: "Sony", rating: 4.8, release_date: now - (60 * day)).tap { |p| p.save }
+      products << Product.new(name: "Switch", category: "Gaming", price: 299.99, in_stock: true, manufacturer: "Nintendo", rating: 4.5, release_date: now - (45 * day)).tap { |p| p.save }
+
       # Count distinct manufacturers for in-stock electronics with good ratings
       distinct_manufacturers = Product.query
         .where(
@@ -300,22 +304,32 @@ class CountDistinctIntegrationTest < Minitest::Test
           :rating.gte => 4.0
         )
         .count_distinct(:manufacturer)
-      
+
       assert_equal 2, distinct_manufacturers, "Should have 2 distinct manufacturers for in-stock electronics with good ratings"
-      
-      # Count distinct categories for recent releases under $1000
-      recent_release = now - 100
-      
+
+      # Count distinct categories for recent releases (last 100 days) under $1000
+      # Products within 100 days with price < 1000:
+      #   iPhone (30 days, $999.99, Electronics)
+      #   iPad (60 days, $599.99, Electronics)
+      #   MacBook (90 days, $1299.99 - excluded, price >= 1000)
+      #   Surface (45 days, $899.99, Electronics)
+      #   Xbox (30 days, $499.99, Gaming)
+      #   PlayStation (60 days, $499.99, Gaming)
+      #   Switch (45 days, $299.99, Gaming)
+      # Distinct categories: Electronics, Gaming = 2
+      recent_release = now - (100 * day)
+
       distinct_categories = Product.query
         .where(
           :release_date.gte => recent_release,
           :price.lt => 1000
         )
         .count_distinct(:category)
-      
-      assert distinct_categories >= 2, "Should have at least 2 distinct categories for recent releases under $1000"
-      
-      # Count distinct price ranges (using manufacturer as proxy) for gaming products
+
+      assert_equal 2, distinct_categories, "Should have 2 distinct categories for recent releases under $1000"
+
+      # Count distinct manufacturers for gaming products in price range $299.99 - $499.99
+      # Gaming products: Xbox (Microsoft), PlayStation (Sony), Switch (Nintendo) = 3
       gaming_manufacturers = Product.query
         .where(
           category: "Gaming",
@@ -323,7 +337,7 @@ class CountDistinctIntegrationTest < Minitest::Test
           :price.lte => 499.99
         )
         .count_distinct(:manufacturer)
-      
+
       assert_equal 3, gaming_manufacturers, "Should have 3 distinct gaming manufacturers in price range"
     end
   end

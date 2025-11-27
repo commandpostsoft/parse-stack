@@ -270,14 +270,58 @@ module Parse
     end
 
     # @return [Hash] a json-hash representing this object.
+    # @param opts [Hash] options for serialization
+    # @option opts [Boolean] :only_fetched when true (or when Parse.serialize_only_fetched_fields
+    #   is true and this option is not explicitly set to false), only serialize fields that
+    #   were fetched for partially fetched objects. This prevents autofetch during serialization.
+    # @option opts [Array<Symbol,String>] :only limit serialization to these fields
+    # @option opts [Array<Symbol,String>] :except exclude these fields from serialization
     def as_json(opts = nil)
       opts ||= {}
-      # When in pointer state, return the serialized pointer hash (with __type, className, objectId)
-      # instead of the Pointer object to ensure proper JSON serialization
+
+      # For selectively fetched objects (partial fetch), serialize only the fetched fields.
+      # This takes priority over pointer detection because a partial fetch has actual data
+      # even if it lacks timestamps (which would otherwise make it look like a pointer).
+      # This behavior is controlled by:
+      # 1. Per-call: opts[:only_fetched] (explicit true/false)
+      # 2. Global: Parse.serialize_only_fetched_fields (default true)
+      if has_selective_keys?
+        # Determine if we should serialize only fetched fields
+        only_fetched = opts.fetch(:only_fetched) { Parse.serialize_only_fetched_fields }
+
+        if only_fetched && !opts.key?(:only)
+          # Build the :only list from fetched keys
+          # Use the local field names which match the attribute methods
+          only_keys = fetched_keys.map(&:to_s)
+          # Always include Parse metadata fields for proper object identification
+          only_keys |= %w[id objectId __type className created_at updated_at]
+          opts = opts.merge(only: only_keys)
+        end
+
+        changed_fields = changed_attributes
+        return super(opts).delete_if { |k, v| v.nil? && !changed_fields.has_key?(k) }
+      end
+
+      # When in pointer state (no data fetched, just an objectId), return the serialized
+      # pointer hash (with __type, className, objectId) for proper JSON serialization
       return pointer.as_json(opts) if pointer?
+
       changed_fields = changed_attributes
       super(opts).delete_if { |k, v| v.nil? && !changed_fields.has_key?(k) }
     end
+
+    private
+
+    # Override to return string keys for compatibility with ActiveModel's serialization.
+    # ActiveModel::Serialization#serializable_hash uses string comparison for :only/:except
+    # options, but our attributes method returns symbol keys.
+    # @return [Array<String>] attribute names as strings
+    # @!visibility private
+    def attribute_names_for_serialization
+      attributes.keys.map(&:to_s)
+    end
+
+    public
 
     # The main constructor for subclasses. It can take different parameter types
     # including a String and a JSON hash. Assume a `Post` class that inherits
@@ -316,9 +360,9 @@ module Parse
 
       # do not apply defaults on a pointer because it will stop it from being
       # a pointer and will cause its field to be autofetched (for sync)
-      # Use fetch_lock to prevent autofetch during default application when partially fetched
+      # Use fetch_lock to prevent autofetch during default application when selectively fetched
       if !pointer?
-        @fetch_lock = true if partially_fetched?
+        @fetch_lock = true if has_selective_keys?
         apply_defaults!
         @fetch_lock = false
       end
@@ -333,9 +377,9 @@ module Parse
     # @return [Array] list of default fields
     def apply_defaults!
       self.class.defaults_list.each do |key|
-        # Skip applying defaults to unfetched fields on partially fetched objects.
+        # Skip applying defaults to unfetched fields on selectively fetched objects.
         # This preserves the ability to autofetch when the field is accessed.
-        next if partially_fetched? && !field_was_fetched?(key)
+        next if has_selective_keys? && !field_was_fetched?(key)
 
         send(key) # should call set default proc/values if nil
       end
@@ -396,11 +440,35 @@ module Parse
       created_at != updated_at
     end
 
-    # Returns whether this object was fetched with specific keys (partial fetch).
-    # When partially fetched, accessing unfetched fields will trigger an autofetch.
+    # Returns whether this object was fetched with specific keys (selective fetch).
+    # When selectively fetched, accessing unfetched fields will trigger an autofetch.
+    # This is an internal method used for autofetch logic.
+    # @return [Boolean] true if the object was fetched with specific keys.
+    # @api private
+    def has_selective_keys?
+      @_fetched_keys&.any? || false
+    end
+
+    # Returns whether this object was fetched with specific keys (partial/selective fetch).
+    # When partially fetched, only the specified keys are available and accessing other
+    # fields will trigger an autofetch. Returns false for pointers and fully fetched objects.
     # @return [Boolean] true if the object was fetched with specific keys.
     def partially_fetched?
-      @_fetched_keys&.any? || false
+      !pointer? && has_selective_keys?
+    end
+
+    # Returns whether this object is fully fetched with all fields available.
+    # Returns false if the object is a pointer or was fetched with specific keys.
+    # @return [Boolean] true if the object is fully fetched.
+    def fully_fetched?
+      !pointer? && !has_selective_keys?
+    end
+
+    # Returns whether this object has been fully fetched from the server.
+    # Overrides Pointer#fetched? to account for selective key fetching.
+    # @return [Boolean] true if the object is fully fetched.
+    def fetched?
+      fully_fetched?
     end
 
     # Returns the array of keys that were fetched for this object.
@@ -452,8 +520,12 @@ module Parse
     # @param key [Symbol, String] the field name to check
     # @return [Boolean] true if the field was fetched or if object is fully fetched.
     def field_was_fetched?(key)
-      # If not partially fetched, all fields are considered fetched
-      return true unless partially_fetched?
+      # If not partially fetched (i.e., still a pointer), all fields are NOT fetched
+      return false if pointer?
+
+      # If no selective keys were specified, this is a fully fetched object
+      # All fields are considered fetched
+      return true unless has_selective_keys?
 
       key = key.to_sym
       # Base keys are always considered fetched

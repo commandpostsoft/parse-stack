@@ -1,5 +1,103 @@
 ## Parse-Stack Changelog
 
+### 2.1.6
+
+#### Bug Fixes
+- **FIXED**: Autofetch no longer wipes out nested embedded data on pointer fields
+  - When accessing an unfetched field triggered autofetch (full fetch), embedded data on pointer fields (e.g., `user.first_name`) was being replaced with bare pointers
+  - The `belongs_to` setter now preserves existing embedded objects when the server returns a bare pointer with the same ID
+- **FIXED**: `field_was_fetched?` now properly handles nil `@_fetched_keys`
+  - Previously crashed with `NoMethodError: undefined method 'include?' for nil:NilClass` when called on fully fetched objects
+- **FIXED**: `partially_fetched?` now correctly returns `false` for fully fetched objects
+  - Previously returned `true` for any non-pointer object, even after a full fetch
+  - Now returns `true` only for objects fetched with specific keys (selective/partial fetch)
+- **FIXED**: `as_json` with `:only` option now works correctly with Parse::Object
+  - ActiveModel's `:only` option uses string comparison, but Parse::Object returned symbol keys
+  - Added `attribute_names_for_serialization` override to return string keys for compatibility
+
+#### New Features
+- **NEW**: `Parse::Pointer` now supports auto-fetch when accessing model properties
+  - Accessing a property on a pointer will automatically fetch the object and return the property value
+  - If `Parse.autofetch_raise_on_missing_keys` is enabled, raises `AutofetchTriggeredError` instead
+  - Fetched object is cached for subsequent property accesses on the same pointer
+- **NEW**: `Parse.serialize_only_fetched_fields` configuration option (default: `true`)
+  - When enabled, `as_json`/`to_json` on partially fetched objects only serializes fetched fields
+  - Prevents autofetch from being triggered during JSON serialization
+  - Particularly useful for webhook responses where you want to return partial data efficiently
+  - Override per-call with `object.as_json(only_fetched: false)` to serialize all fields
+- **NEW**: `has_selective_keys?` method to check if object was fetched with specific keys
+  - Internal method for autofetch logic, separate from `partially_fetched?`
+- **NEW**: `fully_fetched?` method to check if object is fully fetched with all fields available
+  - Returns `true` when object has all fields (not a pointer, not selectively fetched)
+- **NEW**: `fetched?` now returns `fully_fetched?` on `Parse::Object`
+  - Previously returned `true` for any non-pointer (even selectively fetched objects)
+  - Now correctly returns `false` for objects fetched with specific keys
+
+#### Usage Examples: Serialization Control
+```ruby
+# Default behavior (Parse.serialize_only_fetched_fields = true)
+# Only fetched fields are serialized, preventing autofetch during serialization
+user = User.first(id: user_id, keys: [:id, :first_name, :last_name, :email])
+user.to_json  # Only includes id, first_name, last_name, email (plus metadata)
+
+# Useful for webhook responses returning partial data
+Parse::Webhooks.route :function, :getTeamMembers do
+  users = User.all(:id.in => user_ids, keys: [:id, :first_name, :last_name, :icon_image])
+  users  # Returns only the requested fields, no autofetch triggered
+end
+
+# Disable globally if needed
+Parse.serialize_only_fetched_fields = false
+
+# Or override per-call
+user.as_json(only_fetched: false)  # Will serialize all fields (may trigger autofetch)
+
+# Explicit opt-in when global setting is disabled
+Parse.serialize_only_fetched_fields = false
+user.as_json(only_fetched: true)  # Only serializes fetched fields
+```
+
+#### Usage Examples: Pointer Auto-fetch
+```ruby
+# Create a pointer (not yet fetched)
+pointer = Post.pointer("abc123")
+
+# Accessing a property auto-fetches and returns the value
+pointer.title  # => "My Post Title" (fetches object, returns title)
+
+# Subsequent accesses use the cached object
+pointer.content  # => "Post content..." (no additional fetch)
+
+# With autofetch_raise_on_missing_keys enabled
+Parse.autofetch_raise_on_missing_keys = true
+pointer = Post.pointer("abc123")
+pointer.title  # => raises Parse::AutofetchTriggeredError
+```
+
+#### Usage Examples: Fetch Status Methods
+```ruby
+# Pointer state (only id, no data fetched)
+pointer = Post.pointer("abc123")
+pointer.pointer?           # => true
+pointer.partially_fetched? # => false
+pointer.fully_fetched?     # => false
+pointer.fetched?           # => false
+
+# Selectively fetched (specific keys only)
+partial = Post.first(keys: [:title, :author])
+partial.pointer?           # => false
+partial.partially_fetched? # => true
+partial.fully_fetched?     # => false
+partial.fetched?           # => false
+
+# Fully fetched (all fields)
+full = Post.first
+full.pointer?           # => false
+full.partially_fetched? # => false
+full.fully_fetched?     # => true
+full.fetched?           # => true
+```
+
 ### 2.1.5
 
 #### Bug Fixes

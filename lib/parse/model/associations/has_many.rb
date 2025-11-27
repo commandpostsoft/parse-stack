@@ -459,12 +459,12 @@ module Parse
           define_method(key) do
             val = instance_variable_get(ivar)
             # if the value for this is nil and we are a pointer, or if this is a
-            # partially fetched object and this field wasn't included, then autofetch
-            should_autofetch = val.nil? && (pointer? || (partially_fetched? && !field_was_fetched?(key)))
+            # selectively fetched object and this field wasn't included, then autofetch
+            should_autofetch = val.nil? && (pointer? || (has_selective_keys? && !field_was_fetched?(key)))
             if should_autofetch
               # If autofetch is disabled and we're accessing an unfetched field on a
-              # partially fetched object, raise an error to make the issue explicit
-              if autofetch_disabled? && partially_fetched? && !field_was_fetched?(key)
+              # selectively fetched object, raise an error to make the issue explicit
+              if autofetch_disabled? && has_selective_keys? && !field_was_fetched?(key)
                 raise Parse::UnfetchedFieldAccessError.new(key, self.class.name)
               end
               autofetch!(key)
@@ -520,7 +520,7 @@ module Parse
               # Before calling will_change!, mark this field as fetched to prevent autofetch.
               # This is necessary because will_change! calls the getter to capture the old value,
               # and we don't want assignment to trigger a network fetch.
-              if partially_fetched? && !field_was_fetched?(key)
+              if has_selective_keys? && !field_was_fetched?(key)
                 @_fetched_keys ||= []
                 @_fetched_keys << key unless @_fetched_keys.include?(key)
               end

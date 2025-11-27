@@ -155,13 +155,13 @@ module Parse
           define_method(key) do
             val = instance_variable_get ivar
             # We provide autofetch functionality. If the value is nil and the
-            # current Parse::Object is a pointer, or if this is a partially fetched
+            # current Parse::Object is a pointer, or if this is a selectively fetched
             # object and this field wasn't included in the fetch, then auto fetch it.
-            should_autofetch = val.nil? && (pointer? || (partially_fetched? && !field_was_fetched?(key)))
+            should_autofetch = val.nil? && (pointer? || (has_selective_keys? && !field_was_fetched?(key)))
             if should_autofetch
               # If autofetch is disabled and we're accessing an unfetched field on a
-              # partially fetched object, raise an error to make the issue explicit
-              if autofetch_disabled? && partially_fetched? && !field_was_fetched?(key)
+              # selectively fetched object, raise an error to make the issue explicit
+              if autofetch_disabled? && has_selective_keys? && !field_was_fetched?(key)
                 raise Parse::UnfetchedFieldAccessError.new(key, self.class.name)
               end
               autofetch!(key)
@@ -207,11 +207,22 @@ module Parse
               # Before calling will_change!, mark this field as fetched to prevent autofetch.
               # This is necessary because will_change! calls the getter to capture the old value,
               # and we don't want assignment to trigger a network fetch.
-              if partially_fetched? && !field_was_fetched?(key)
+              if has_selective_keys? && !field_was_fetched?(key)
                 @_fetched_keys ||= []
                 @_fetched_keys << key unless @_fetched_keys.include?(key)
               end
               send will_change_method unless val == instance_variable_get(ivar)
+            else
+              # During fetch (track=false), preserve existing embedded objects if the server
+              # only returned a pointer. This prevents autofetch from wiping out nested
+              # fetched data (e.g., user.first_name) when fetching unfetched fields.
+              existing = instance_variable_get(ivar)
+              if existing.is_a?(Parse::Pointer) && val.is_a?(Parse::Pointer) &&
+                 existing.id == val.id && !existing.pointer? && val.pointer?
+                # Existing object has embedded data, new value is just a pointer with same ID
+                # Preserve the existing richer object
+                val = existing
+              end
             end
 
             # Never set an object that is not a Parse::Pointer

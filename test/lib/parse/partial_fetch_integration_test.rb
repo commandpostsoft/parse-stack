@@ -2127,6 +2127,65 @@ class PartialFetchIntegrationTest < Minitest::Test
     end
   end
 
+  def test_autofetch_preserves_nested_embedded_data
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+
+    with_parse_server do
+      with_timeout(20, "autofetch preserves nested embedded data test") do
+        puts "\n=== Testing Autofetch Preserves Nested Embedded Data ==="
+
+        # Create test user with all fields
+        user = PartialFetchUser.new(
+          name: "Test Author",
+          email: "author@test.com",
+          age: 30
+        )
+        assert user.save, "User should save"
+
+        # Create test post with author
+        post = PartialFetchPost.new(
+          title: "Test Title",
+          content: "Test Content",
+          category: "tech",
+          author: user
+        )
+        assert post.save, "Post should save"
+
+        # Partial fetch with nested field (author.name only)
+        fetched_post = PartialFetchPost.first(keys: ["author.name"])
+        assert fetched_post.present?, "Post should be found"
+        assert fetched_post.partially_fetched?, "Post should be partially fetched"
+
+        # Author should have the embedded name
+        author = fetched_post.author
+        assert author.present?, "Author should be present"
+        assert_equal "Test Author", author.name, "Author name should be embedded"
+
+        # Now access an unfetched field on the post (e.g., content)
+        # This should trigger autofetch but NOT wipe out author.name
+        puts "Accessing unfetched field 'content' to trigger autofetch..."
+        content = fetched_post.content
+
+        assert_equal "Test Content", content, "Content should be autofetched"
+        refute fetched_post.partially_fetched?, "Post should be fully fetched after autofetch"
+
+        # The key assertion: author.name should STILL be available
+        # (not wiped out by autofetch returning the author as a bare pointer)
+        author_after = fetched_post.author
+        assert author_after.present?, "Author should still be present after autofetch"
+
+        # The author should be the same object with embedded data preserved
+        assert_equal user.id, author_after.id, "Author ID should match"
+
+        # This is the critical assertion - the nested fetched data should NOT be wiped
+        # Previously, autofetch would replace the embedded author with a bare pointer
+        assert_equal "Test Author", author_after.name, "Author name should be preserved after autofetch"
+
+        puts "Autofetch correctly preserves nested embedded data"
+      end
+    end
+  end
+
   def test_autofetch_raise_disabled_by_default
     skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
 
@@ -2149,10 +2208,8 @@ class PartialFetchIntegrationTest < Minitest::Test
         assert fetched_post.partially_fetched?, "Post should be partially fetched"
 
         # Accessing unfetched field should NOT raise, should autofetch
-        content = nil
-        assert_nothing_raised do
-          content = fetched_post.content
-        end
+        # (if it raises, the test will fail)
+        content = fetched_post.content
 
         # Should have autofetched successfully
         assert_equal "Test Content", content, "Should have autofetched content"

@@ -29,8 +29,19 @@ module Parse
   #   # Parse::AutofetchTriggeredError: Autofetch triggered on Post#abc123 - field :content was not fetched
   @autofetch_raise_on_missing_keys = false
 
+  # Configuration for serialization of partially fetched objects.
+  # When set to true (default), calling as_json or to_json on a partially fetched
+  # object will only serialize the fields that were fetched, preventing autofetch
+  # from being triggered during serialization. This is particularly useful for
+  # webhook responses where you intentionally want to return partial data.
+  # @example Disable (serialize all fields, triggering autofetch)
+  #   Parse.serialize_only_fetched_fields = false
+  # @example Override per-call
+  #   user.as_json(only_fetched: false)  # Force full serialization
+  @serialize_only_fetched_fields = true
+
   class << self
-    attr_accessor :warn_on_query_issues, :autofetch_raise_on_missing_keys
+    attr_accessor :warn_on_query_issues, :autofetch_raise_on_missing_keys, :serialize_only_fetched_fields
   end
 
   # Error raised when autofetch would be triggered but Parse.autofetch_raise_on_missing_keys is true.

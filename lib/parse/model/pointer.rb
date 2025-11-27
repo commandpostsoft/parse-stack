@@ -270,6 +270,66 @@ module Parse
       send(key)
     end
 
+    # Handles method calls for properties that exist on the target model class.
+    # When a property is accessed on a Pointer, this will auto-fetch the object
+    # and delegate the method call to the fetched object.
+    #
+    # If Parse.autofetch_raise_on_missing_keys is enabled, this will raise
+    # Parse::AutofetchTriggeredError instead of fetching.
+    #
+    # @example
+    #   pointer = Post.pointer("abc123")
+    #   pointer.title  # auto-fetches and returns title
+    #
+    # @param method_name [Symbol] the method being called
+    # @param args [Array] arguments to the method
+    # @param block [Proc] optional block
+    # @return [Object] the result of calling the method on the fetched object
+    # @raise [Parse::AutofetchTriggeredError] if autofetch_raise_on_missing_keys is enabled
+    def method_missing(method_name, *args, &block)
+      # Try to find the model class for this pointer
+      klass = Parse::Model.find_class(parse_class)
+
+      # If no class is registered or the class doesn't have this field, use default behavior
+      unless klass && klass.respond_to?(:fields) && klass.fields[method_name.to_s.chomp('=').to_sym]
+        return super
+      end
+
+      # We have a registered class with this field - handle autofetch
+      field_name = method_name.to_s.chomp('=').to_sym
+
+      # If autofetch_raise_on_missing_keys is enabled, raise an error
+      if Parse.autofetch_raise_on_missing_keys
+        raise Parse::AutofetchTriggeredError.new(klass, id, field_name, is_pointer: true)
+      end
+
+      # Log info about autofetch being triggered
+      if Parse.warn_on_query_issues
+        puts "[Parse::Autofetch] Fetching #{parse_class}##{id} - pointer accessed field :#{field_name} (silence with Parse.warn_on_query_issues = false)"
+      end
+
+      # Fetch the object and delegate the method call
+      @_fetched_object ||= fetch
+      return nil unless @_fetched_object
+
+      @_fetched_object.send(method_name, *args, &block)
+    end
+
+    # Indicates whether this object responds to methods that would trigger autofetch.
+    # Returns true for properties defined on the target model class.
+    #
+    # @param method_name [Symbol] the method name to check
+    # @param include_private [Boolean] whether to include private methods
+    # @return [Boolean] true if the method can be handled
+    def respond_to_missing?(method_name, include_private = false)
+      klass = Parse::Model.find_class(parse_class)
+      if klass && klass.respond_to?(:fields)
+        field_name = method_name.to_s.chomp('=').to_sym
+        return true if klass.fields[field_name]
+      end
+      super
+    end
+
     # Set the pointer properties through hash accessor. This is done for
     # compatibility with the hash access of a Parse::Object. This method
     # does nothing if the key is not one of: :id, :objectId, or :className.
