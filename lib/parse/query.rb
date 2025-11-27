@@ -1444,13 +1444,14 @@ module Parse
         inc_sym = inc_str.to_sym
         field_type = fields[inc_sym]
 
-        # Check if the field is a pointer or relation type
-        is_object_field = [:pointer, :relation].include?(field_type)
+        # Check if the field is a pointer, relation, or array type
+        # Arrays can contain pointers (has_many :through => :array) and need include to resolve them
+        is_includable_field = [:pointer, :relation, :array].include?(field_type)
 
-        if !is_object_field && field_type.present?
+        if !is_includable_field && field_type.present?
           # Warn: non-object field doesn't need to be included
-          puts "[Parse::Query] Warning: '#{inc_str}' is a #{field_type} field, not a pointer/relation - it does not need to be included (silence with Parse.warn_on_query_issues = false)"
-        elsif is_object_field
+          puts "[Parse::Query] Warning: '#{inc_str}' is a #{field_type} field, not a pointer/relation/array - it does not need to be included (silence with Parse.warn_on_query_issues = false)"
+        elsif is_includable_field
           # Check if there are keys with dot notation for this field
           subfield_keys = @keys.select { |k| k.to_s.start_with?("#{inc_str}.") }
 
