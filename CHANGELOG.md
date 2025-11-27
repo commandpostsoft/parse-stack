@@ -29,9 +29,10 @@
   - Internal method for autofetch logic, separate from `partially_fetched?`
 - **NEW**: `fully_fetched?` method to check if object is fully fetched with all fields available
   - Returns `true` when object has all fields (not a pointer, not selectively fetched)
-- **NEW**: `fetched?` now returns `fully_fetched?` on `Parse::Object`
-  - Previously returned `true` for any non-pointer (even selectively fetched objects)
-  - Now correctly returns `false` for objects fetched with specific keys
+- **NEW**: `fetched?` now returns `true` for both fully and partially fetched objects
+  - Returns `true` for any object with data (not just a pointer)
+  - Use `fully_fetched?` to check if all fields are available
+  - Use `partially_fetched?` to check if only specific keys were fetched
 
 #### Usage Examples: Serialization Control
 ```ruby
@@ -88,7 +89,7 @@ partial = Post.first(keys: [:title, :author])
 partial.pointer?           # => false
 partial.partially_fetched? # => true
 partial.fully_fetched?     # => false
-partial.fetched?           # => false
+partial.fetched?           # => true  # has data!
 
 # Fully fetched (all fields)
 full = Post.first

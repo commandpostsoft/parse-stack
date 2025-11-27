@@ -205,11 +205,15 @@ class QueryOrAndIntegrationTest < Minitest::Test
 
   def test_and_query_integration
     skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
-    
+
     with_parse_server do
       with_timeout(15, "AND query integration test") do
         puts "\n=== Testing AND Query Integration ==="
-        
+
+        # Clean up any existing data from previous tests (test isolation)
+        existing = OrAndIntegrationProduct.all(limit: 1000)
+        existing.each(&:destroy) if existing.any?
+
         # Create test data
         products = [
           { name: "Match All", category: "electronics", price: 50.0, active: true, featured: true },

@@ -414,22 +414,12 @@ class TestACL < Minitest::Test
   end
 
   def test_readable_by_with_user_object_and_role_expansion
-    # Create mock user object
-    user = Minitest::Mock.new
-    user.expect(:is_a?, true, [Parse::User])
-    user.expect(:respond_to?, true, [:is_a?])
-    user.expect(:respond_to?, true, [:id])
-    user.expect(:id, "user123")
-    user.expect(:id, "user123")
+    # Create a simple user-like object with parse_class and id (acts like a Parse pointer)
+    user = OpenStruct.new(id: "user123", parse_class: "_User")
 
-    # Create mock roles
-    admin_role = Minitest::Mock.new
-    admin_role.expect(:respond_to?, true, [:name])
-    admin_role.expect(:name, "Admin")
-
-    editor_role = Minitest::Mock.new
-    editor_role.expect(:respond_to?, true, [:name])
-    editor_role.expect(:name, "Editor")
+    # Create simple role objects
+    admin_role = OpenStruct.new(name: "Admin")
+    editor_role = OpenStruct.new(name: "Editor")
 
     # Mock Parse::Role.all to return the user's roles
     Parse::Role.stub :all, [admin_role, editor_role] do
@@ -446,25 +436,14 @@ class TestACL < Minitest::Test
       # 2. Admin role (which user belongs to) has read access
       assert acl.readable_by?(user), "User should be readable (direct access + Admin role)"
     end
-
-    user.verify
-    admin_role.verify
-    editor_role.verify
   end
 
   def test_readable_by_with_user_object_role_only_access
-    # Create mock user without direct ACL permission, but role has permission
-    user = Minitest::Mock.new
-    user.expect(:is_a?, true, [Parse::User])
-    user.expect(:respond_to?, true, [:is_a?])
-    user.expect(:respond_to?, true, [:id])
-    user.expect(:id, "user456")
-    user.expect(:id, "user456")
+    # Create a simple user-like object
+    user = OpenStruct.new(id: "user456", parse_class: "_User")
 
-    # Create mock role
-    moderator_role = Minitest::Mock.new
-    moderator_role.expect(:respond_to?, true, [:name])
-    moderator_role.expect(:name, "Moderator")
+    # Create simple role object
+    moderator_role = OpenStruct.new(name: "Moderator")
 
     Parse::Role.stub :all, [moderator_role] do
       # Setup ACL - user has NO direct access, but Moderator role has read access
@@ -475,26 +454,14 @@ class TestACL < Minitest::Test
       # Should return true because Moderator role has read access
       assert acl.readable_by?(user), "User should be readable via Moderator role"
     end
-
-    user.verify
-    moderator_role.verify
   end
 
   def test_readable_by_with_user_pointer_and_role_expansion
-    # Create mock user pointer
-    user_pointer = Minitest::Mock.new
-    user_pointer.expect(:is_a?, true, [Parse::Pointer])
-    user_pointer.expect(:respond_to?, true, [:parse_class])
-    user_pointer.expect(:respond_to?, true, [:id])
-    user_pointer.expect(:parse_class, "User")
-    user_pointer.expect(:respond_to?, true, [:id])
-    user_pointer.expect(:id, "user789")
-    user_pointer.expect(:id, "user789")
+    # Create a simple user pointer-like object
+    user_pointer = OpenStruct.new(id: "user789", parse_class: "User")
 
-    # Create mock role
-    admin_role = Minitest::Mock.new
-    admin_role.expect(:respond_to?, true, [:name])
-    admin_role.expect(:name, "Admin")
+    # Create simple role object
+    admin_role = OpenStruct.new(name: "Admin")
 
     Parse::Role.stub :all, [admin_role] do
       # Setup ACL - only Admin role has read access (not the user directly)
@@ -505,24 +472,14 @@ class TestACL < Minitest::Test
       # Should return true because Admin role (which user belongs to) has read access
       assert acl.readable_by?(user_pointer), "User pointer should be readable via Admin role"
     end
-
-    user_pointer.verify
-    admin_role.verify
   end
 
   def test_writeable_by_with_user_object_and_role_expansion
-    # Create mock user object
-    user = Minitest::Mock.new
-    user.expect(:is_a?, true, [Parse::User])
-    user.expect(:respond_to?, true, [:is_a?])
-    user.expect(:respond_to?, true, [:id])
-    user.expect(:id, "user123")
-    user.expect(:id, "user123")
+    # Create a simple user-like object
+    user = OpenStruct.new(id: "user123", parse_class: "_User")
 
-    # Create mock role
-    admin_role = Minitest::Mock.new
-    admin_role.expect(:respond_to?, true, [:name])
-    admin_role.expect(:name, "Admin")
+    # Create simple role object
+    admin_role = OpenStruct.new(name: "Admin")
 
     Parse::Role.stub :all, [admin_role] do
       # Setup ACL - user has NO direct write, but Admin role has write access
@@ -533,24 +490,14 @@ class TestACL < Minitest::Test
       # Should return true because Admin role has write access
       assert acl.writeable_by?(user), "User should be writeable via Admin role"
     end
-
-    user.verify
-    admin_role.verify
   end
 
   def test_owner_with_user_object_and_role_expansion
-    # Create mock user object
-    user = Minitest::Mock.new
-    user.expect(:is_a?, true, [Parse::User])
-    user.expect(:respond_to?, true, [:is_a?])
-    user.expect(:respond_to?, true, [:id])
-    user.expect(:id, "user123")
-    user.expect(:id, "user123")
+    # Create a simple user-like object
+    user = OpenStruct.new(id: "user123", parse_class: "_User")
 
-    # Create mock role
-    owner_role = Minitest::Mock.new
-    owner_role.expect(:respond_to?, true, [:name])
-    owner_role.expect(:name, "Owner")
+    # Create simple role object
+    owner_role = OpenStruct.new(name: "Owner")
 
     Parse::Role.stub :all, [owner_role] do
       # Setup ACL - user has read but not write, Owner role has both
@@ -561,19 +508,11 @@ class TestACL < Minitest::Test
       # Should return true because Owner role has both read and write
       assert acl.owner?(user), "User should be owner via Owner role"
     end
-
-    user.verify
-    owner_role.verify
   end
 
   def test_user_object_without_roles
-    # Create mock user with no roles
-    user = Minitest::Mock.new
-    user.expect(:is_a?, true, [Parse::User])
-    user.expect(:respond_to?, true, [:is_a?])
-    user.expect(:respond_to?, true, [:id])
-    user.expect(:id, "user999")
-    user.expect(:id, "user999")
+    # Create a simple user-like object
+    user = OpenStruct.new(id: "user999", parse_class: "_User")
 
     Parse::Role.stub :all, [] do
       # Setup ACL - only this user has direct access
@@ -585,18 +524,11 @@ class TestACL < Minitest::Test
       assert acl.writeable_by?(user), "User should be writeable via direct access"
       assert acl.owner?(user), "User should be owner via direct access"
     end
-
-    user.verify
   end
 
   def test_user_object_with_role_fetch_failure
-    # Create mock user
-    user = Minitest::Mock.new
-    user.expect(:is_a?, true, [Parse::User])
-    user.expect(:respond_to?, true, [:is_a?])
-    user.expect(:respond_to?, true, [:id])
-    user.expect(:id, "user888")
-    user.expect(:id, "user888")
+    # Create a simple user-like object
+    user = OpenStruct.new(id: "user888", parse_class: "_User")
 
     # Simulate role fetch failure
     Parse::Role.stub :all, -> (_) { raise StandardError, "Network error" } do
@@ -607,17 +539,11 @@ class TestACL < Minitest::Test
       # Should still work with just the user ID (graceful degradation)
       assert acl.readable_by?(user), "Should work with user ID even if role fetch fails"
     end
-
-    user.verify
   end
 
   def test_user_pointer_to_non_user_class
-    # Create mock pointer to a different class (not User)
-    pointer = Minitest::Mock.new
-    pointer.expect(:is_a?, true, [Parse::Pointer])
-    pointer.expect(:respond_to?, true, [:parse_class])
-    pointer.expect(:respond_to?, true, [:id])
-    pointer.expect(:parse_class, "Team")
+    # Create a simple pointer-like object to a different class (not User)
+    pointer = OpenStruct.new(id: "team123", parse_class: "Team")
 
     # Setup ACL
     acl = Parse::ACL.new
@@ -625,7 +551,5 @@ class TestACL < Minitest::Test
 
     # Should NOT expand roles for non-User pointers, should check the key directly
     refute acl.readable_by?(pointer), "Non-User pointer should not trigger role expansion"
-
-    pointer.verify
   end
 end

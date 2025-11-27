@@ -8,8 +8,7 @@ class GameScore < Parse::Object
   property :player_name, :string
   property :cheat_mode, :boolean
   property :location, :geopoint
-  property :created_at, :date
-  property :updated_at, :date
+  # Note: created_at and updated_at are already defined as BASE_KEYS in Parse::Object
 end
 
 class Player < Parse::Object

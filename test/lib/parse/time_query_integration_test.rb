@@ -20,8 +20,7 @@ class TimeQueryIntegrationTest < Minitest::Test
     property :description, :string
     property :start_time, :date
     property :end_time, :date
-    property :created_at, :date
-    property :updated_at, :date
+    # Note: created_at and updated_at are already defined as BASE_KEYS in Parse::Object
     property :priority, :integer
     property :is_active, :boolean
   end

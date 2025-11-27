@@ -464,11 +464,11 @@ module Parse
       !pointer? && !has_selective_keys?
     end
 
-    # Returns whether this object has been fully fetched from the server.
-    # Overrides Pointer#fetched? to account for selective key fetching.
-    # @return [Boolean] true if the object is fully fetched.
+    # Returns whether this object has been fetched from the server (fully or partially).
+    # Overrides Pointer#fetched? to return true for any object with data.
+    # @return [Boolean] true if the object has data (not just a pointer).
     def fetched?
-      fully_fetched?
+      !pointer?
     end
 
     # Returns the array of keys that were fetched for this object.

@@ -27,7 +27,7 @@ class AggregateTestComment < Parse::Object
   property :text, :string
   property :post, :object  # pointer to AggregateTestPost
   property :commenter, :object  # pointer to AggregateTestUser
-  property :created_at, :date
+  # Note: created_at is already defined as a BASE_KEY in Parse::Object
   property :rating, :integer
 end
 

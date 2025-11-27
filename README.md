@@ -2087,7 +2087,7 @@ Parse objects can be in one of three states, and you can check the status using 
 | `pointer?` | `true` | `false` | `false` |
 | `partially_fetched?` | `false` | `true` | `false` |
 | `fully_fetched?` | `false` | `false` | `true` |
-| `fetched?` | `false` | `false` | `true` |
+| `fetched?` | `false` | `true` | `true` |
 
 ```ruby
 # Pointer state (only id, no data fetched)
@@ -2102,7 +2102,7 @@ partial = Post.first(keys: [:title, :author])
 partial.pointer?           # => false
 partial.partially_fetched? # => true
 partial.fully_fetched?     # => false
-partial.fetched?           # => false
+partial.fetched?           # => true
 
 # Fully fetched (all fields available)
 full = Post.first
@@ -2112,7 +2112,7 @@ full.fully_fetched?     # => true
 full.fetched?           # => true
 ```
 
-The `fetched?` method returns `true` only for fully fetched objects. If you need to check whether an object has *any* data (not just a pointer), use `!pointer?` or check `partially_fetched? || fully_fetched?`.
+The `fetched?` method returns `true` for any object with data (either partially or fully fetched). Use `fully_fetched?` if you need to check that all fields are available, or `partially_fetched?` to check if only specific keys were fetched.
 
 #### Serialization of Partially Fetched Objects
 

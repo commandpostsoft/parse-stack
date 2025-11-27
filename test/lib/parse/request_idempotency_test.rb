@@ -24,7 +24,7 @@ class RequestIdempotencyTest < Minitest::Test
     # Test that requests DO get request IDs by default
     request = Parse::Request.new(:post, '/classes/TestObject', body: { name: 'test' })
     assert request.idempotent?, "Request should be idempotent by default"
-    assert_not_nil request.request_id, "Request should have request ID by default"
+    refute_nil request.request_id, "Request should have request ID by default"
     assert request.headers.key?('X-Parse-Request-Id'), "Headers should contain request ID by default"
     
     puts "✅ Default configuration verified"
@@ -88,10 +88,13 @@ class RequestIdempotencyTest < Minitest::Test
   
   def test_per_request_idempotency_control
     puts "\n=== Testing Per-Request Idempotency Control ==="
-    
+
+    # Disable idempotency globally to test per-request enabling
+    Parse::Request.disable_idempotency!
+
     # Test forcing idempotency on individual request
     request = Parse::Request.new(:post, '/classes/TestObject', body: { name: 'test' })
-    refute request.idempotent?, "Should not be idempotent initially"
+    refute request.idempotent?, "Should not be idempotent initially (global disabled)"
     
     request.with_idempotency
     assert request.idempotent?, "Should be idempotent after with_idempotency"

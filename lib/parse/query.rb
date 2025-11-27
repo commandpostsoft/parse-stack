@@ -943,6 +943,9 @@ module Parse
         # Check if limit was set in constraints, otherwise use 1
         # Handle :max case - if @limit is :max, default to 1 for first()
         fetch_count = (@limit.is_a?(Numeric) ? @limit : nil) || 1
+        # Set @limit to ensure query only fetches the needed records
+        @results = nil if @limit != fetch_count
+        @limit = fetch_count
       else
         fetch_count = limit_or_constraints.to_i
         @results = nil if @limit != fetch_count
@@ -2674,11 +2677,14 @@ module Parse
       queries = queries.filter { |q| q.where.present? && !q.where.empty? }
       
       # Add each query's complete constraint set with AND logic
+      # Multiple constraints in a query are implicitly ANDed together by Parse
       queries.each do |query|
         # Compile the where constraints to check if they result in empty conditions
         compiled_where = Parse::Query.compile_where(query.where)
         unless compiled_where.empty?
-          result.where(query.where)
+          # Directly append constraints to result's where array
+          # (where method only accepts Hash, but query.where returns Array<Constraint>)
+          result.instance_variable_get(:@where).concat(query.where)
         end
       end
       
