@@ -1831,6 +1831,60 @@ post.category                 # => "tech" (local value preserved)
 
 **Important:** Base fields (`id`, `created_at`, `updated_at`) always accept server values regardless of `preserve_changes` setting.
 
+#### Dirty Tracking on Embedded/Pointer Objects
+
+When you have an embedded object (e.g., from a `belongs_to` association) that's in pointer state (has `id` but not yet fully fetched), setting fields on it will correctly mark those fields as dirty. The object will be auto-fetched before the change is tracked.
+
+```ruby
+# report has an embedded scheduled_report that's in pointer state
+report = Report.first(id: "abc123")
+scheduled = report.scheduled_report  # Pointer state (only has id)
+
+# Setting a field auto-fetches and correctly tracks the change
+scheduled.status = :completed
+scheduled.dirty?          # => true
+scheduled.status_changed? # => true
+scheduled.save            # Saves the change to Parse
+```
+
+#### Array Dirty Tracking
+
+For `has_many` associations (arrays of pointers), only structural changes to the array mark the parent as dirty:
+
+```ruby
+artist = Artist.first
+artist.songs.clear_changes!
+
+# Modifying a nested object does NOT mark parent dirty
+artist.songs.first.plays = 100
+artist.dirty?        # => false (array structure unchanged)
+artist.songs.first.dirty?  # => true (the song itself is dirty)
+
+# Adding/removing items DOES mark parent dirty
+artist.songs.add(new_song)
+artist.dirty?        # => true (array structure changed)
+
+artist.songs.remove(old_song)
+artist.dirty?        # => true
+```
+
+#### Object Identity and Equality
+
+Parse objects are compared by identity (`parse_class` and `id`), not by their field values or dirty state:
+
+```ruby
+# Pointer, partial object, and full object with same id are equal
+pointer = Song.pointer("abc123")
+partial = Song.first(id: "abc123", keys: [:title])
+full = Song.find("abc123")
+
+pointer == partial  # => true (same id)
+partial == full     # => true (same id)
+
+# Works correctly with array operations
+[pointer, partial, full].uniq.size  # => 1 (all same identity)
+```
+
 ### Modifying Associations
 Similar to `:array` types of properties, a `has_many` association is backed by a collection proxy class and requires the use of `#add` and `#remove` to modify the contents of the association in order for it to correctly manage changes and updates with Parse. Using `has_many` for associations has the additional functionality that we will only add items to the association if they are of a `Parse::Pointer` or `Parse::Object` type. By default, these associations are fetched with only pointer data. To fetch all the objects in the association, you can call `#fetch` or `#fetch!` on the collection. Note that because the framework supports chaining, it is better to only request the objects you need by utilizing their accessors.
 

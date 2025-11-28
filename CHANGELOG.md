@@ -1,5 +1,22 @@
 ## Parse-Stack Changelog
 
+### 2.1.7
+
+#### Bug Fixes
+- **FIXED**: Setting fields on pointer/embedded objects now correctly marks them as dirty
+  - When setting a field on an object in pointer state (has `id` but not yet fetched), the autofetch that triggered during dirty tracking setup would call `clear_changes!`, wiping out the dirty state before it could be established
+  - The setter now fetches the object BEFORE calling `will_change!` if it's a pointer, ensuring dirty tracking works correctly
+  - Affects property setters, `belongs_to` setters, and `has_many` setters
+- **FIXED**: `hash` method now consistent with `==` for Parse objects
+  - Previously, `hash` included `changes.to_s` which meant two objects with the same `id` but different dirty states would have different hashes
+  - This violated Ruby's contract that `a == b` implies `a.hash == b.hash`
+  - Now `hash` is based only on `parse_class` and `id`, consistent with `==`
+  - This fixes issues with `Array#uniq`, `Set`, and `Hash` operations on Parse objects
+
+#### Behavior Clarification
+- **Array dirty tracking**: Modifying a nested object's properties (e.g., `obj.items[0].active = false`) does NOT mark the parent as dirty - only structural changes to the array (add/remove items) mark the parent dirty
+- **Object identity**: Pointers, partially fetched objects, and fully fetched objects with the same `id` are all considered equal for comparison and array operations
+
 ### 2.1.6
 
 #### Bug Fixes
