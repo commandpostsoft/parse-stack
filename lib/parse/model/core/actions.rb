@@ -197,6 +197,38 @@ module Parse
             
             # Check for success
             if responses.all?(&:success?)
+              # Update tracked objects with data from successful responses
+              # Match responses to objects using the request tag (Ruby object_id)
+              requests = batch.requests
+              requests.zip(responses).each do |request, response|
+                next unless request && response && response.success?
+                result = response.result
+                next unless result.is_a?(Hash)
+
+                # Find the object matching this request's tag
+                obj = tracked_objects.find { |o| o.object_id == request.tag }
+                next unless obj
+
+                # Update object with response data (objectId, createdAt, updatedAt)
+                if result["objectId"]
+                  obj.instance_variable_set(:@id, result["objectId"])
+                end
+                if result["createdAt"]
+                  obj.instance_variable_set(:@created_at, Parse::Date.parse(result["createdAt"]))
+                end
+                if result["updatedAt"]
+                  obj.instance_variable_set(:@updated_at, Parse::Date.parse(result["updatedAt"]))
+                elsif result["createdAt"]
+                  obj.instance_variable_set(:@updated_at, Parse::Date.parse(result["createdAt"]))
+                end
+
+                # Apply any additional attributes returned by beforeSave hooks
+                obj.set_attributes!(result) if obj.respond_to?(:set_attributes!)
+
+                # Clear change tracking since save was successful
+                obj.send(:clear_changes!) if obj.respond_to?(:clear_changes!, true)
+              end
+
               return responses
             else
               # Find first error

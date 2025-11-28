@@ -2021,6 +2021,7 @@ end
 - **Automatic retries**: Conflicts (error 251) are automatically retried with configurable limits
 - **Mixed operations**: Support create, update, and delete operations in single transaction
 - **Error handling**: Comprehensive error handling with meaningful exception messages
+- **Object ID assignment**: New objects automatically receive their `objectId`, `createdAt`, and `updatedAt` from the server response after successful transaction
 
 ```ruby
 # Transaction with custom retry limit and error handling
@@ -2030,12 +2031,33 @@ begin
     order = Order.create!(items: cart_items, customer: customer)
     inventory.update!(quantity: inventory.quantity - order.total_items)
     customer.update!(last_order: order)
-    
+
     [order, inventory, customer]
   end
 rescue Parse::Error => e
   puts "Transaction failed: #{e.message}"
   # Handle failure (all changes rolled back)
+end
+```
+
+### Transaction Object Updates
+
+When you create new objects within a transaction, their `objectId`, `createdAt`, and `updatedAt` fields are automatically populated after the transaction succeeds:
+
+```ruby
+products = []
+
+Parse::Object.transaction do |batch|
+  3.times do |i|
+    product = Product.new(name: "Product #{i}", price: i * 10)
+    products << product
+    batch.add(product)
+  end
+end
+
+# After successful transaction, all objects have their IDs
+products.each do |p|
+  puts "#{p.name}: #{p.id}"  # IDs are now populated
 end
 ```
 

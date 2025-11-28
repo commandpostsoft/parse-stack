@@ -1,5 +1,18 @@
 ## Parse-Stack Changelog
 
+### 2.1.8
+
+#### Bug Fixes
+- **FIXED**: `fetch!` now handles array responses gracefully
+  - When `client.fetch_object` returns an array instead of a single hash (e.g., in certain batch/transaction scenarios), `fetch!` now finds the matching object by `objectId`
+  - Previously threw `NoMethodError: undefined method 'key?' for Array`
+- **FIXED**: Transaction objects now receive their IDs after successful create
+  - After a successful transaction with new objects, each object's `objectId`, `createdAt`, and `updatedAt` are now properly set from the server response
+  - Uses request tags to match responses back to original objects
+- **FIXED**: ActiveModel 8.x compatibility in `fetch!` error handling
+  - Added error handling for `changed` method calls that can fail when object state is corrupted (e.g., after transaction rollback)
+  - Prevents crashes when ActiveModel's mutation tracker encounters unexpected attribute types
+
 ### 2.1.7
 
 #### Bug Fixes

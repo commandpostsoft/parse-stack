@@ -97,14 +97,33 @@ module Parse
           return self
         end
 
+        # Handle case where result is an Array (e.g., batch operations or certain API responses)
+        # Find the matching object by objectId
+        if result.is_a?(Array)
+          result = result.find { |r| r.is_a?(Hash) && (r["objectId"] == id || r["id"] == id) }
+          if result.nil?
+            # Object not found in results - treat as deleted
+            @_deleted = true
+            @id = nil
+            clear_changes!
+            return self
+          end
+        end
+
         # If we successfully fetched data, ensure the object is not marked as deleted
         @_deleted = false
 
         # Capture dirty fields and their local values BEFORE applying server data
         dirty_fields = {}
         if respond_to?(:changed)
-          changed.each do |attr|
-            dirty_fields[attr.to_sym] = send(attr)
+          begin
+            changed.each do |attr|
+              dirty_fields[attr.to_sym] = send(attr)
+            end
+          rescue NoMethodError => e
+            # Handle ActiveModel 8.x compatibility issues where changed tracking
+            # may be in an unexpected state (e.g., after transaction rollback)
+            puts "[Parse::Fetch] Warning: could not capture dirty fields: #{e.message}"
           end
         end
 
