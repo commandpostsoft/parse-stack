@@ -458,8 +458,15 @@ module Parse
           # The first method to be defined is a getter.
           define_method(key) do
             val = instance_variable_get(ivar)
-            # if the value for this is nil and we are a pointer, then autofetch
-            if val.nil? && pointer?
+            # if the value for this is nil and we are a pointer, or if this is a
+            # selectively fetched object and this field wasn't included, then autofetch
+            should_autofetch = val.nil? && (pointer? || (has_selective_keys? && !field_was_fetched?(key)))
+            if should_autofetch
+              # If autofetch is disabled and we're accessing an unfetched field on a
+              # selectively fetched object, raise an error to make the issue explicit
+              if autofetch_disabled? && has_selective_keys? && !field_was_fetched?(key)
+                raise Parse::UnfetchedFieldAccessError.new(key, self.class.name)
+              end
               autofetch!(key)
               val = instance_variable_get ivar
             end
@@ -510,6 +517,23 @@ module Parse
 
             # send dirty tracking if set
             if track == true
+              # If we're a pointer and autofetch is enabled, fetch BEFORE calling will_change!.
+              # This is critical because will_change! internally calls the getter to capture
+              # the old value. If autofetch triggers during that getter call, it calls
+              # clear_changes! which wipes the dirty tracking state that will_change! is
+              # trying to set up. By fetching first, the object is no longer a pointer,
+              # so will_change! can proceed without triggering another fetch.
+              if pointer? && !autofetch_disabled?
+                autofetch!(key)
+              end
+
+              # For selective fetch objects, mark this field as fetched to prevent autofetch.
+              # This is necessary because will_change! calls the getter to capture the old value,
+              # and we don't want assignment to trigger a network fetch.
+              if has_selective_keys? && !field_was_fetched?(key)
+                @_fetched_keys ||= []
+                @_fetched_keys << key unless @_fetched_keys.include?(key)
+              end
               send will_change_method unless val == instance_variable_get(ivar)
             end
             # TODO: Only allow empty proxy collection class as a value or nil.
