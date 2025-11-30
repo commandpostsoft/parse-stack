@@ -423,28 +423,47 @@ class TestQueryAggregationFeatures < Minitest::Test
     assert_equal operator_constraint["$or"], result["$or"]
   end
 
-  # Test that pipeline output shows correct MongoDB pointer format
+  # Test that pipeline output correctly includes pointer constraints in $match stage
+  # Uses eq_array for explicit array equality matching with aggregation pipeline
   def test_pipeline_output_uses_mongodb_pointer_format
     # Create a mock team pointer
     team = Parse::Pointer.new("Team", "OlnmSD0woC")
-    
-    # Create query with pointer constraint 
+
+    # Create query with array equality constraint (uses aggregation pipeline)
+    # Note: Use :eq_array for explicit array equality; :eq is for simple scalar equality
     query = Parse::Query.new("Capture")
-    query.where(:author_team.eq => team)
-    
+    query.where(:author_team.eq_array => team)
+
     # Get the pipeline and check the $match stage
     pipeline = query.group_by(:last_action).pipeline
     match_stage = pipeline.find { |stage| stage.key?("$match") }
-    
+
     assert match_stage, "Pipeline should contain $match stage"
-    
-    # Check that the pointer is in MongoDB string format, not Parse object format
-    author_team_constraint = match_stage["$match"]["authorTeam"] || match_stage["$match"]["_p_authorTeam"]
-    
-    # Should be a string like "Team$OlnmSD0woC", not a Parse pointer hash
-    assert_kind_of String, author_team_constraint
-    assert_match(/^Team\$/, author_team_constraint)
-    assert_includes author_team_constraint, "OlnmSD0woC"
+
+    # The pointer constraint generates a $expr/$map format for array-based matching
+    # This format correctly handles Parse pointer arrays in MongoDB aggregation
+    match_content = match_stage["$match"]
+
+    # Should have $expr with $eq operator for pointer matching
+    assert match_content.key?("$expr"), "Match stage should use $expr for pointer constraint"
+
+    expr_content = match_content["$expr"]
+    assert expr_content.key?("$eq"), "Expression should use $eq operator"
+
+    # The $eq should compare the mapped objectIds with the target ID
+    eq_content = expr_content["$eq"]
+    assert_kind_of Array, eq_content
+    assert_equal 2, eq_content.size
+
+    # First element should be the $map expression
+    map_expr = eq_content[0]
+    assert map_expr.key?("$map"), "First $eq operand should be $map expression"
+    assert_equal "$authorTeam", map_expr["$map"]["input"]
+
+    # Second element should be array containing the object ID
+    id_array = eq_content[1]
+    assert_kind_of Array, id_array
+    assert_includes id_array, "OlnmSD0woC"
   end
 
   # Test date conversion for aggregation

@@ -1,5 +1,217 @@
 ## Parse-Stack Changelog
 
+### 2.3.0
+
+#### New Features: HTTP Connection Pooling (Default)
+
+Parse Stack now uses HTTP persistent connections by default for significantly improved performance.
+
+##### Connection Pooling Benefits
+- **30-70% latency reduction** for typical Parse Server deployments
+- **Eliminates per-request overhead**: TCP handshake, SSL/TLS handshake, DNS lookups
+- **~95% reduction** in Parse Server connection overhead
+- **Memory efficient**: Reuses connections instead of creating new ones
+
+##### Configuration
+```ruby
+# Default: connection pooling enabled (net_http_persistent adapter)
+Parse.setup(
+  server_url: "https://your-parse-server.com/parse",
+  application_id: "your-app-id",
+  api_key: "your-api-key"
+)
+
+# Custom pool configuration
+Parse.setup(
+  server_url: "https://your-parse-server.com/parse",
+  application_id: "your-app-id",
+  api_key: "your-api-key",
+  connection_pooling: {
+    pool_size: 5,      # Connections per thread (default: 1)
+    idle_timeout: 60,  # Close idle connections after 60s (default: 5)
+    keep_alive: 60     # HTTP Keep-Alive timeout in seconds
+  }
+)
+
+# Disable connection pooling if needed
+Parse.setup(
+  server_url: "https://your-parse-server.com/parse",
+  application_id: "your-app-id",
+  api_key: "your-api-key",
+  connection_pooling: false  # Uses standard Net::HTTP (one connection per request)
+)
+
+# Explicit adapter still takes priority
+Parse.setup(
+  adapter: :test,  # Your explicit adapter choice wins
+  connection_pooling: true  # Ignored when adapter is specified
+)
+```
+
+##### Configuration Options
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `pool_size` | 1 | Connections per thread. Increase for parallel requests within a thread. |
+| `idle_timeout` | 5 | Seconds before closing idle connections. Use 30-60s for frequently-used servers. |
+| `keep_alive` | - | HTTP Keep-Alive timeout. Should be ≤ Parse Server's `keepAliveTimeout`. |
+
+##### Implementation Details
+- Uses `faraday-net_http_persistent` adapter via Faraday
+- Thread-safe per-thread connection pools
+- Configurable pool size, idle timeout, and keep-alive settings
+- Backward compatible: set `connection_pooling: false` for previous behavior
+- Explicit `:adapter` option always takes priority over `:connection_pooling`
+- **Graceful fallback**: If `faraday-net_http_persistent` is unavailable, automatically falls back to the standard adapter with a warning
+
+#### New Features: Cursor-Based Pagination
+
+New `Parse::Cursor` class for efficiently traversing large datasets without the performance penalty of skip/offset pagination.
+
+##### Benefits
+- **Consistent performance**: Unlike skip/offset which slows down as you go deeper, cursor pagination maintains consistent speed
+- **No skipped records**: Handles records added/deleted during pagination without missing or duplicating
+- **Memory efficient**: Fetches one page at a time
+
+##### Usage
+```ruby
+# Basic usage with each_page
+cursor = Song.cursor(limit: 100, order: :created_at.desc)
+cursor.each_page do |page|
+  process(page)
+end
+
+# Iterate over individual items
+Song.cursor(limit: 50).each do |song|
+  puts song.title
+end
+
+# With query constraints
+cursor = Song.query(artist: "Artist Name").cursor(limit: 25)
+cursor.each_page { |page| process(page) }
+
+# Manual pagination control
+cursor = User.cursor(limit: 100)
+first_page = cursor.next_page
+second_page = cursor.next_page
+cursor.reset!  # Start over from the beginning
+
+# Get all results at once (use with caution on large datasets)
+all_songs = Song.cursor(limit: 100).all
+
+# Check cursor statistics
+cursor.stats  # => { pages_fetched: 5, items_fetched: 500, ... }
+```
+
+##### API
+- `cursor(limit:, order:)` - Create a cursor from a query or model class
+- `next_page` - Fetch the next page of results
+- `each_page { |page| }` - Iterate over pages
+- `each { |item| }` - Iterate over individual items (Enumerable)
+- `all` - Fetch all results at once
+- `reset!` - Reset cursor to beginning
+- `more_pages?` / `exhausted?` - Check pagination status
+- `stats` - Get pagination statistics
+- `serialize` / `to_json` - Save cursor state for later
+- `Parse::Cursor.deserialize(json)` / `from_json` - Resume from saved state
+
+##### Resumable Cursors
+Cursors can be serialized and resumed later - perfect for background jobs that may be interrupted:
+
+```ruby
+# Save cursor state before job ends
+cursor = Song.cursor(limit: 100)
+cursor.next_page  # Process first page
+state = cursor.serialize
+Redis.set("job:#{job_id}:cursor", state)
+
+# Resume in another job/process
+state = Redis.get("job:#{job_id}:cursor")
+cursor = Parse::Cursor.deserialize(state)
+cursor.each_page { |page| process(page) }  # Continues from where it left off
+```
+
+#### New Features: N+1 Query Detection
+
+New `Parse::NPlusOneDetector` to detect and warn about N+1 query patterns that can cause performance issues.
+
+##### What is N+1?
+N+1 queries occur when you load a collection and then access an association on each item, triggering a separate query for each. This is inefficient and can be avoided by eager-loading.
+
+##### Enable Detection
+```ruby
+# Enable N+1 detection with warning mode (default when enabled)
+Parse.warn_on_n_plus_one = true
+# Or use the new mode API for more control:
+Parse.n_plus_one_mode = :warn
+```
+
+##### Strict Mode for CI/Tests
+```ruby
+# Raise exceptions instead of warnings - ideal for CI pipelines
+Parse.n_plus_one_mode = :raise
+
+songs = Song.all(limit: 100)
+songs.each do |song|
+  song.artist.name  # Raises Parse::NPlusOneQueryError!
+end
+```
+
+##### Available Modes
+| Mode | Behavior |
+|------|----------|
+| `:ignore` | Detection disabled (default) |
+| `:warn` | Log warnings when N+1 detected |
+| `:raise` | Raise `Parse::NPlusOneQueryError` (for CI/tests) |
+
+##### Example Warning
+```ruby
+songs = Song.all(limit: 100)
+songs.each do |song|
+  song.artist.name  # Warning: N+1 query detected on Song.artist
+end
+
+# Output:
+# [Parse::N+1] Warning: N+1 query detected on Song.artist (3 separate fetches for Artist)
+#   Location: app/controllers/songs_controller.rb:42 in `index`
+#   Suggestion: Use `.includes(:artist)` to eager-load this association
+```
+
+##### Fix N+1 with Includes
+```ruby
+# Use includes to eager-load associations
+songs = Song.all(limit: 100, includes: [:artist])
+songs.each do |song|
+  song.artist.name  # No warning - artist was eager-loaded
+end
+```
+
+##### Custom Callbacks
+```ruby
+# Register callback for metrics/logging
+Parse.on_n_plus_one do |source_class, association, target_class, count, location|
+  MyMetrics.increment("n_plus_one.#{source_class}.#{association}")
+end
+
+# Get summary of detected patterns
+Parse.n_plus_one_summary
+# => { patterns_detected: 2, associations: [...] }
+
+# Reset tracking
+Parse.reset_n_plus_one_tracking!
+```
+
+##### Configuration
+- Detection window: 2 seconds (fetches within this window are grouped)
+- Threshold: 3 fetches before warning
+- Thread-safe: Each thread has independent tracking
+- Memory-safe: Automatic cleanup of stale entries in long-running processes
+
+#### Bug Fixes & Improvements
+
+- **IMPROVED**: Aggregation pipeline now correctly handles `__aggregation_pipeline` stages when combining with regular constraints
+- **IMPROVED**: Better whitespace formatting in SortableGroupBy pipeline generation
+
 ### 2.2.0
 
 #### New Features: Validations DSL
@@ -240,6 +452,8 @@ plan = query.explain
 
 Parse Server doesn't natively support `$size` or exact array equality queries. This release adds comprehensive array query constraints using MongoDB aggregation pipelines under the hood.
 
+**Requirements:** MongoDB 3.6+ is required for these array constraint features (uses `$expr`, `$map`, `$setEquals`).
+
 ##### Array Size Constraints
 - **NEW**: `:field.size => n` - Match arrays with exact size
   ```ruby
@@ -275,24 +489,24 @@ Parse Server doesn't natively support `$size` or exact array equality queries. T
   ```
 
 ##### Array Set Equality Constraints (Order-Independent)
-- **NEW**: `:field.like => [values]` / `:field.set_equals => [values]`
+- **NEW**: `:field.set_equals => [values]`
   - Matches arrays with same elements regardless of order
   - `["rock", "pop"]` matches both `["rock", "pop"]` AND `["pop", "rock"]`
   ```ruby
-  TaggedItem.query(:tags.like => ["rock", "pop"])
+  TaggedItem.query(:tags.set_equals => ["rock", "pop"])
   ```
 
-- **NEW**: `:field.nlike => [values]` / `:field.not_set_equals => [values]`
+- **NEW**: `:field.not_set_equals => [values]`
   - Matches arrays that do NOT have the same set of elements
   ```ruby
-  TaggedItem.query(:tags.nlike => ["rock", "pop"])  # Excludes set-equal arrays
+  TaggedItem.query(:tags.not_set_equals => ["rock", "pop"])  # Excludes set-equal arrays
   ```
 
 ##### Pointer Array Support
 All array constraints work with `has_many :through => :array` pointer arrays:
 ```ruby
 # Find products with exactly these 2 categories (any order)
-Product.query(:categories.like => [cat1, cat2])
+Product.query(:categories.set_equals => [cat1, cat2])
 
 # Find products with more than 3 categories
 Product.query(:categories.size => { gt: 3 })
@@ -306,10 +520,10 @@ Product.query(:categories.size => { gt: 3 })
 | `:field.size => { gt: n }` | Array length comparisons | N/A |
 | `:field.arr_empty => true` | Empty arrays only | N/A |
 | `:field.arr_nempty => true` | Non-empty arrays only | N/A |
-| `:field.eq => [...]` | Exact match (order matters) | Yes |
-| `:field.neq => [...]` | Not exact match | Yes |
-| `:field.like => [...]` | Set equality (any order) | No |
-| `:field.nlike => [...]` | Not set equal | No |
+| `:field.eq_array => [...]` | Exact match (order matters) | Yes |
+| `:field.neq_array => [...]` | Not exact match | Yes |
+| `:field.set_equals => [...]` | Set equality (any order) | No |
+| `:field.not_set_equals => [...]` | Not set equal | No |
 
 ### 2.1.8
 
@@ -331,6 +545,7 @@ Product.query(:categories.size => { gt: 3 })
   - When setting a field on an object in pointer state (has `id` but not yet fetched), the autofetch that triggered during dirty tracking setup would call `clear_changes!`, wiping out the dirty state before it could be established
   - The setter now fetches the object BEFORE calling `will_change!` if it's a pointer, ensuring dirty tracking works correctly
   - Affects property setters, `belongs_to` setters, and `has_many` setters
+  - **Behavioral change**: When assigning to a field on a pointer object, `changes` now shows the server value as the old value instead of `nil`. For example, if you assign `obj.title = "New Title"` on a pointer, `obj.changes["title"]` will return `["Server Value", "New Title"]` instead of `[nil, "New Title"]`. This is because the object is now fetched before dirty tracking begins.
 - **FIXED**: `hash` method now consistent with `==` for Parse objects
   - Previously, `hash` included `changes.to_s` which meant two objects with the same `id` but different dirty states would have different hashes
   - This violated Ruby's contract that `a == b` implies `a.hash == b.hash`

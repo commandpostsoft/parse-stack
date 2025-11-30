@@ -199,6 +199,8 @@ module Parse
             if responses.all?(&:success?)
               # Update tracked objects with data from successful responses
               # Match responses to objects using the request tag (Ruby object_id)
+              # Build hash lookup once for O(n) instead of O(n²) linear search
+              objects_by_id = tracked_objects.each_with_object({}) { |o, h| h[o.object_id] = o }
               requests = batch.requests
               requests.zip(responses).each do |request, response|
                 next unless request && response && response.success?
@@ -206,7 +208,7 @@ module Parse
                 next unless result.is_a?(Hash)
 
                 # Find the object matching this request's tag
-                obj = tracked_objects.find { |o| o.object_id == request.tag }
+                obj = objects_by_id[request.tag]
                 next unless obj
 
                 # Update object with response data (objectId, createdAt, updatedAt)

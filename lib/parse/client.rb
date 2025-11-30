@@ -1,4 +1,17 @@
 require "faraday"
+
+# Attempt to load the persistent connection adapter for better performance.
+# Falls back gracefully to the default adapter if not available.
+NET_HTTP_PERSISTENT_AVAILABLE = begin
+  require "faraday/net_http_persistent"
+  true
+rescue LoadError
+  warn "[parse-stack] faraday-net_http_persistent gem not available. " \
+       "Using standard Net::HTTP adapter. For better performance, add " \
+       "'faraday-net_http_persistent' to your Gemfile."
+  false
+end
+
 require "active_support"
 require "moneta"
 require "active_model/serialization"
@@ -230,7 +243,21 @@ module Parse
     # @option opts [Logger] :logger A custom logger instance for request/response logging.
     #    Defaults to Logger.new(STDOUT) if not specified.
     # @option opts [Object] :adapter The connection adapter. By default it uses
-    #    the `Faraday.default_adapter` which is Net/HTTP.
+    #    `:net_http_persistent` for connection pooling. Set `connection_pooling: false`
+    #    to use the standard `Faraday.default_adapter` (Net/HTTP) instead.
+    # @option opts [Boolean, Hash] :connection_pooling Controls HTTP connection pooling.
+    #    Defaults to `true`, using the `:net_http_persistent` adapter for improved
+    #    performance through connection reuse. Set to `false` to disable pooling
+    #    and create a new connection for each request. This option is ignored if
+    #    `:adapter` is explicitly specified.
+    #    Pass a Hash to enable pooling with custom configuration:
+    #    - `:pool_size` [Integer] - Number of connections per thread (default: 1)
+    #    - `:idle_timeout` [Integer] - Seconds before closing idle connections (default: 5)
+    #    - `:keep_alive` [Integer] - HTTP Keep-Alive timeout in seconds
+    #    @example Custom connection pooling
+    #      Parse.setup(
+    #        connection_pooling: { pool_size: 5, idle_timeout: 60, keep_alive: 60 }
+    #      )
     # @option opts [Moneta::Transformer,Moneta::Expires] :cache A caching adapter of type
     #    {https://github.com/minad/moneta Moneta::Transformer} or
     #    {https://github.com/minad/moneta Moneta::Expires} that will be used
@@ -259,7 +286,38 @@ module Parse
       @application_id = opts[:application_id] || opts[:app_id] || ENV["PARSE_SERVER_APPLICATION_ID"] || ENV["PARSE_APP_ID"]
       @api_key = opts[:api_key] || opts[:rest_api_key] || ENV["PARSE_SERVER_REST_API_KEY"] || ENV["PARSE_API_KEY"]
       @master_key = opts[:master_key] || ENV["PARSE_SERVER_MASTER_KEY"] || ENV["PARSE_MASTER_KEY"]
-      opts[:adapter] ||= Faraday.default_adapter
+
+      # Determine the HTTP adapter to use
+      # Priority: explicit :adapter > :connection_pooling setting > default (pooling enabled)
+      # Falls back to default adapter if net_http_persistent is not available
+      if opts[:adapter]
+        # User explicitly specified an adapter, use it directly
+        adapter = opts[:adapter]
+        adapter_options = {}
+      elsif opts[:connection_pooling] == false
+        # User explicitly disabled connection pooling
+        adapter = Faraday.default_adapter
+        adapter_options = {}
+      elsif opts[:connection_pooling].is_a?(Hash)
+        # User provided connection pooling with custom options
+        if NET_HTTP_PERSISTENT_AVAILABLE
+          adapter = :net_http_persistent
+          adapter_options = opts[:connection_pooling]
+        else
+          adapter = Faraday.default_adapter
+          adapter_options = {}
+        end
+      else
+        # Default: use persistent connections for better performance (if available)
+        if NET_HTTP_PERSISTENT_AVAILABLE
+          adapter = :net_http_persistent
+          adapter_options = {}
+        else
+          adapter = Faraday.default_adapter
+          adapter_options = {}
+        end
+      end
+
       opts[:expires] ||= 3
       if @server_url.nil? || @application_id.nil? || (@api_key.nil? && @master_key.nil?)
         raise Parse::Error::ConnectionError, "Please call Parse.setup(server_url:, application_id:, api_key:) to setup a client"
@@ -329,7 +387,18 @@ module Parse
 
         yield(conn) if block_given?
 
-        conn.adapter opts[:adapter]
+        # Configure the adapter with optional settings
+        # For net_http_persistent, options like pool_size and idle_timeout
+        # are passed via a block to configure the underlying Net::HTTP::Persistent
+        if adapter_options.any?
+          conn.adapter adapter do |http|
+            http.idle_timeout = adapter_options[:idle_timeout] if adapter_options[:idle_timeout]
+            http.pool_size = adapter_options[:pool_size] if adapter_options[:pool_size]
+            http.keep_alive = adapter_options[:keep_alive] if adapter_options[:keep_alive]
+          end
+        else
+          conn.adapter adapter
+        end
       end
       Parse::Client.clients[:default] ||= self
     end

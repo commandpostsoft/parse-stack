@@ -98,11 +98,12 @@ module Parse
         end
 
         # Handle case where result is an Array (e.g., batch operations or certain API responses)
-        # Find the matching object by objectId
+        # This is unexpected for single-object fetch but handled defensively
         if result.is_a?(Array)
+          warn "[Parse::Fetch] Unexpected array response for fetch_object (id: #{id}). This may indicate an API issue."
           result = result.find { |r| r.is_a?(Hash) && (r["objectId"] == id || r["id"] == id) }
           if result.nil?
-            # Object not found in results - treat as deleted
+            warn "[Parse::Fetch] Object #{id} not found in array response - marking as deleted"
             @_deleted = true
             @id = nil
             clear_changes!
@@ -117,13 +118,24 @@ module Parse
         dirty_fields = {}
         if respond_to?(:changed)
           begin
-            changed.each do |attr|
-              dirty_fields[attr.to_sym] = send(attr)
+            changed_attrs = changed
+            if changed_attrs.respond_to?(:each)
+              changed_attrs.each do |attr|
+                # Only capture if object responds to the attribute getter
+                if respond_to?(attr)
+                  begin
+                    dirty_fields[attr.to_sym] = send(attr)
+                  rescue NoMethodError => e
+                    # Skip this attribute if its getter raises NoMethodError
+                    warn "[Parse::Fetch] Skipping dirty field :#{attr}: #{e.message}"
+                  end
+                end
+              end
             end
           rescue NoMethodError => e
-            # Handle ActiveModel 8.x compatibility issues where changed tracking
-            # may be in an unexpected state (e.g., after transaction rollback)
-            puts "[Parse::Fetch] Warning: could not capture dirty fields: #{e.message}"
+            # Handle ActiveModel 8.x compatibility issues where `changed` method itself fails
+            # due to unexpected state (e.g., after transaction rollback)
+            warn "[Parse::Fetch] Warning: changed tracking unavailable: #{e.message}"
           end
         end
 
@@ -171,7 +183,7 @@ module Parse
           clear_changes!
         rescue => e
           # Log the error for debugging purposes
-          puts "[Parse::Fetch] Warning: clear_changes! failed: #{e.class}: #{e.message}"
+          warn "[Parse::Fetch] Warning: clear_changes! failed: #{e.class}: #{e.message}"
           # If clear_changes! fails, manually reset change tracking
           @changed_attributes = {} if instance_variable_defined?(:@changed_attributes)
           @mutations_from_database = nil if instance_variable_defined?(:@mutations_from_database)
@@ -331,8 +343,10 @@ module Parse
       # this record from the Parse data store.
       # Uses a mutex for thread safety to prevent race conditions in multi-threaded contexts.
       # @param key [String] the name of the attribute being accessed.
+      # @param source_info [Hash] optional info about where this autofetch was triggered from
+      #   (used for N+1 detection with belongs_to associations)
       # @return [Boolean]
-      def autofetch!(key)
+      def autofetch!(key, source_info: nil)
         key = key.to_sym
 
         # Autofetch if object is a pointer OR was selectively fetched
@@ -355,6 +369,20 @@ module Parse
 
           is_pointer_fetch = pointer?
 
+          # Track for N+1 detection if enabled
+          if is_pointer_fetch && Parse.warn_on_n_plus_one
+            # Check for source info in the registry (set by belongs_to getter)
+            n_plus_one_source = Parse::NPlusOneDetector.lookup_source(self)
+            source_class = source_info&.dig(:source_class) || n_plus_one_source&.dig(:source_class) || self.class.name
+            association = source_info&.dig(:association) || n_plus_one_source&.dig(:association) || key
+            Parse::NPlusOneDetector.track_autofetch(
+              source_class: source_class,
+              association: association,
+              target_class: self.class.name,
+              object_id: id
+            )
+          end
+
           # If autofetch_raise_on_missing_keys is enabled, raise an error instead of fetching
           # This helps developers identify where they need to add keys to their queries
           if Parse.autofetch_raise_on_missing_keys
@@ -375,6 +403,34 @@ module Parse
           # Autofetch always preserves changes - it's an implicit background operation
           # that shouldn't discard user modifications
           send :fetch, keys: nil, includes: nil, preserve_changes: true
+        end
+      end
+
+      # Prepares object for dirty tracking by fetching if needed.
+      # Must be called BEFORE will_change! to prevent autofetch from wiping dirty state.
+      #
+      # When will_change! captures the old value by calling the getter, it may trigger
+      # autofetch if the object is a pointer. That autofetch calls clear_changes! which
+      # wipes the dirty tracking state will_change! is trying to set up.
+      #
+      # By fetching first, the object is no longer a pointer, so will_change! can
+      # proceed without triggering another fetch.
+      #
+      # For selective fetch objects, this also marks the field as fetched to prevent
+      # autofetch during will_change!'s getter call.
+      #
+      # @param key [Symbol] the name of the attribute being set
+      # @return [void]
+      def prepare_for_dirty_tracking!(key)
+        # Fetch before will_change! to prevent clear_changes! interference
+        if pointer? && !autofetch_disabled?
+          autofetch!(key)
+        end
+
+        # Mark selective fetch fields as fetched to prevent autofetch during will_change!
+        if has_selective_keys? && !field_was_fetched?(key)
+          @_fetched_keys ||= []
+          @_fetched_keys << key unless @_fetched_keys.include?(key)
         end
       end
     end

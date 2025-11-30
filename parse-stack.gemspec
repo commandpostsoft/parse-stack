@@ -31,6 +31,7 @@ Gem::Specification.new do |spec|
   spec.add_runtime_dependency "activesupport", [">= 5", "< 9"]
   spec.add_runtime_dependency "parallel", [">= 1.6", "< 2"]
   spec.add_runtime_dependency "faraday", "~> 2.0"
+  spec.add_runtime_dependency "faraday-net_http_persistent", "~> 2.0"
   spec.add_runtime_dependency "moneta", "< 2"
   spec.add_runtime_dependency "rack", ">= 2.0.6", "< 4"
 

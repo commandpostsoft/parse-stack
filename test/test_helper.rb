@@ -32,7 +32,8 @@ module ConstraintTests
       assert_respond_to(:field, o)
       op = :field.send(o)
       assert_instance_of(Parse::Operation, op)
-      assert_instance_of(@klass, op.constraint)
+      # Use kind_of to allow subclasses (e.g., ArrayEqConstraint for :eq)
+      assert_kind_of(@klass, op.constraint)
       if @key.nil?
         assert_nil op.constraint.key
       else

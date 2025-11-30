@@ -361,6 +361,7 @@ For complete details, see [CHANGELOG.md](./CHANGELOG.md) and [Releases](https://
     - [:includes](#includes)
     - [:limit](#limit)
     - [:skip](#skip)
+  - [Cursor-Based Pagination](#cursor-based-pagination)
     - [:cache](#cache)
     - [:use_master_key](#use_master_key)
     - [:session](#session)
@@ -520,7 +521,56 @@ Parse.log_max_body_length = 1000 # Truncate body after N chars (default: 500)
 ```
 
 #### `:adapter`
-The connection adapter. By default it uses the `Faraday.default_adapter` which is Net/HTTP.
+The HTTP connection adapter. By default, Parse Stack uses `:net_http_persistent` for connection pooling, which significantly improves performance by reusing HTTP connections. Set `connection_pooling: false` to use the standard `Net::HTTP` adapter instead.
+
+```ruby
+# Use a custom adapter (overrides connection_pooling setting)
+Parse.setup(adapter: :excon, ...)
+```
+
+#### `:connection_pooling`
+Controls HTTP connection pooling for improved performance. Enabled by default using the `net_http_persistent` adapter.
+
+**Benefits:**
+- 30-70% latency reduction by eliminating TCP/SSL handshakes per request
+- Reduced server load through connection reuse
+- Better performance for high-throughput applications
+
+```ruby
+# Default: connection pooling enabled
+Parse.setup(server_url: "...", app_id: "...", api_key: "...")
+
+# Disable connection pooling
+Parse.setup(connection_pooling: false, ...)
+
+# Custom pool configuration
+Parse.setup(
+  connection_pooling: {
+    pool_size: 5,      # Connections per thread (default: 1)
+    idle_timeout: 60,  # Seconds before closing idle connections (default: 5)
+    keep_alive: 60     # HTTP Keep-Alive timeout in seconds
+  },
+  ...
+)
+```
+
+**Configuration Options:**
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `pool_size` | 1 | Number of connections per thread. Increase if making parallel requests within a thread. |
+| `idle_timeout` | 5 | Seconds before closing idle connections. Set higher (30-60s) for frequently-used servers. |
+| `keep_alive` | - | HTTP Keep-Alive timeout. Should be less than your Parse Server's `keepAliveTimeout`. |
+
+**Recommended settings for Heroku:**
+```ruby
+Parse.setup(
+  connection_pooling: { pool_size: 2, idle_timeout: 60, keep_alive: 60 },
+  ...
+)
+```
+
+If `faraday-net_http_persistent` is not available, Parse Stack automatically falls back to the standard adapter with a warning.
 
 #### `:cache`
 A caching adapter of type `Moneta::Transformer`. Caching queries and object fetches can help improve the performance of your application, even if it is for a few seconds. Only successful `GET` object fetches and queries (non-empty) will be cached. You may set the default expiration time with the `expires` option. See related: [Moneta](https://github.com/minad/moneta). At any point in time you may clear the cache by calling the `clear_cache!` method on the client connection.
@@ -558,6 +608,75 @@ Parse.warn_on_query_issues = false
 # Example warnings that may be shown when enabled:
 # [Parse::Query] Warning: 'filename' is a string field, not a pointer/relation - it does not need to be included
 # [Parse::Query] Warning: including 'project' returns the full object - keys ["project.name"] are unnecessary
+```
+
+#### N+1 Query Detection
+
+Parse Stack can detect N+1 query patterns - a common performance issue where accessing associations in a loop triggers separate queries for each item.
+
+**Enable Detection:**
+```ruby
+# Warning mode (logs warnings)
+Parse.n_plus_one_mode = :warn
+
+# Or use the legacy API
+Parse.warn_on_n_plus_one = true
+```
+
+**Example:**
+```ruby
+Parse.n_plus_one_mode = :warn
+
+songs = Song.all(limit: 100)
+songs.each do |song|
+  song.artist.name  # Warning: N+1 query detected!
+end
+
+# Output:
+# [Parse::N+1] Warning: N+1 query detected on Song.artist (3 separate fetches for Artist)
+#   Location: app/controllers/songs_controller.rb:42 in `index`
+#   Suggestion: Use `.includes(:artist)` to eager-load this association
+```
+
+**Fix with Includes:**
+```ruby
+# Eager-load associations to avoid N+1
+songs = Song.all(limit: 100, includes: [:artist])
+songs.each do |song|
+  song.artist.name  # No warning - already loaded
+end
+```
+
+**Available Modes:**
+
+| Mode | Behavior |
+|------|----------|
+| `:ignore` | Detection disabled (default) |
+| `:warn` | Log warnings when N+1 detected |
+| `:raise` | Raise `Parse::NPlusOneQueryError` - ideal for CI/tests |
+
+**Strict Mode for CI/Tests:**
+```ruby
+# In test_helper.rb or rails_helper.rb
+Parse.n_plus_one_mode = :raise
+
+# Now N+1 queries will fail your tests!
+```
+
+**Custom Callbacks:**
+```ruby
+# Track N+1 patterns in your metrics
+Parse.on_n_plus_one do |source_class, association, target_class, count, location|
+  StatsD.increment("n_plus_one.#{source_class}.#{association}")
+end
+```
+
+**Configuration:**
+```ruby
+Parse.configure_n_plus_one do |config|
+  config.detection_window = 5.0   # Seconds to track related fetches (default: 2.0)
+  config.fetch_threshold = 5      # Fetches to trigger warning (default: 3)
+end
 ```
 
 ## Working With Existing Schemas
@@ -2575,6 +2694,69 @@ Use with limit to paginate through results. Default is 0.
  Song.all :limit => 3, :skip => 10
 ```
 
+> **Note:** For large datasets, skip-based pagination becomes increasingly slow. Consider using [Cursor-Based Pagination](#cursor-based-pagination) instead.
+
+### Cursor-Based Pagination
+
+For efficiently traversing large datasets, Parse Stack provides cursor-based pagination which maintains consistent performance regardless of how deep you paginate.
+
+**Why use cursors instead of skip/offset?**
+- **Consistent performance**: Skip-based pagination slows down as offset increases; cursors don't
+- **No skipped/duplicate records**: Handles records added/deleted during pagination
+- **Memory efficient**: Fetches one page at a time
+
+```ruby
+# Basic usage - iterate over pages
+cursor = Song.cursor(limit: 100)
+cursor.each_page do |page|
+  process(page)
+end
+
+# Iterate over individual items
+Song.cursor(limit: 50).each do |song|
+  puts song.title
+end
+
+# With query constraints
+cursor = Song.query(:artist => "Artist Name").cursor(limit: 100)
+cursor.each_page { |page| process(page) }
+
+# With custom ordering
+cursor = Song.cursor(limit: 100, order: :created_at.desc)
+
+# Manual pagination control
+cursor = User.cursor(limit: 100)
+first_page = cursor.next_page
+second_page = cursor.next_page
+cursor.reset!  # Start over
+```
+
+**Cursor Statistics:**
+```ruby
+cursor.stats
+# => { pages_fetched: 5, items_fetched: 500, page_size: 100, exhausted: true, ... }
+
+cursor.more_pages?  # true/false
+cursor.exhausted?   # true/false
+```
+
+**Resumable Cursors (for background jobs):**
+
+Cursors can be serialized and resumed later - perfect for jobs that may be interrupted:
+
+```ruby
+# Save cursor state
+cursor = Song.cursor(limit: 100)
+cursor.next_page  # Process first page
+state = cursor.serialize
+Redis.set("job:#{job_id}:cursor", state)
+
+# Resume later (even in a different process)
+state = Redis.get("job:#{job_id}:cursor")
+cursor = Parse::Cursor.deserialize(state)
+cursor.each_page { |page| process(page) }  # Continues where it left off
+```
+
 #### :cache
 A `true`, `false` or integer value. If you are using the built-in caching middleware, `Parse::Middleware::Caching`, setting this to `false` will prevent it from using a previously cached result if available. You may pass an integer value, which will allow this request to be cached for the specified number of seconds. The default value is `true`, which uses the [`:expires`](#expires) value that was passed when [configuring the client](#connection-setup).
 
@@ -2783,12 +2965,10 @@ Match arrays with same elements regardless of order:
 
 ```ruby
 # Matches both ["rock", "pop"] AND ["pop", "rock"]
-q.where :tags.like => ["rock", "pop"]
-q.where :tags.set_equals => ["rock", "pop"]  # alias
+q.where :tags.set_equals => ["rock", "pop"]
 
-# NOT set equal
-q.where :tags.nlike => ["rock", "pop"]        # excludes both orderings
-q.where :tags.not_set_equals => ["rock", "pop"]  # alias
+# NOT set equal - excludes both orderings
+q.where :tags.not_set_equals => ["rock", "pop"]
 ```
 
 ##### Pointer Arrays
@@ -2796,11 +2976,13 @@ All array constraints work with `has_many :through => :array` relations:
 
 ```ruby
 # Find products with exactly these categories (any order)
-Product.query(:categories.like => [cat1, cat2])
+Product.query(:categories.set_equals => [cat1, cat2])
 
 # Find products with more than 3 categories
 Product.query(:categories.size => { gt: 3 })
 ```
+
+**Note:** Array constraints using aggregation pipelines require MongoDB 3.6+.
 
 ##### Readable Array Aliases
 More readable aliases for common array operations:

@@ -387,24 +387,7 @@ module Parse
           # this will grab the current value and keep a copy of it - but we only do this if
           # the new value being set is different from the current value stored.
           if track == true
-            # If we're a pointer and autofetch is enabled, fetch BEFORE calling will_change!.
-            # This is critical because will_change! internally calls the getter to capture
-            # the old value. If autofetch triggers during that getter call, it calls
-            # clear_changes! which wipes the dirty tracking state that will_change! is
-            # trying to set up. By fetching first, the object is no longer a pointer,
-            # so will_change! can proceed without triggering another fetch.
-            if pointer? && !autofetch_disabled?
-              autofetch!(key)
-            end
-
-            # For selective fetch objects, mark this field as fetched to prevent autofetch.
-            # This is necessary because will_change! calls the getter to capture the old value,
-            # and we don't want assignment to trigger a network fetch. The old value should be
-            # whatever is currently in the instance variable (nil if not previously fetched).
-            if has_selective_keys? && !field_was_fetched?(key)
-              @_fetched_keys ||= []
-              @_fetched_keys << key unless @_fetched_keys.include?(key)
-            end
+            prepare_for_dirty_tracking!(key)
             send will_change_method unless val == instance_variable_get(ivar)
           end
 

@@ -345,7 +345,29 @@ module Parse
         _q
       end
 
-      # Find objects for a given objectId in this collection.The result is a list
+      # Create a cursor-based paginator for efficiently traversing large datasets.
+      # This is more efficient than skip/offset pagination for large result sets.
+      #
+      # @example Basic usage
+      #   cursor = Song.cursor(limit: 100, order: :created_at.desc)
+      #   cursor.each_page do |page|
+      #     process(page)
+      #   end
+      #
+      # @example With constraints
+      #   cursor = Song.cursor(artist: "Artist Name", limit: 50)
+      #   cursor.each { |song| puts song.title }
+      #
+      # @param constraints [Hash] query constraints to apply
+      # @param limit [Integer] number of items per page (default: 100)
+      # @param order [Symbol, Parse::Order] the ordering for pagination
+      # @return [Parse::Cursor] a cursor for paginating results
+      # @see Parse::Cursor
+      def cursor(constraints = {}, limit: 100, order: nil)
+        query(constraints).cursor(limit: limit, order: order)
+      end
+
+      # Find objects for a given objectId in this collection. The result is a list
       # (or single item) of the objects that were successfully found.
       # @example
       #  Object.find "<objectId>"

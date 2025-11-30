@@ -502,4 +502,51 @@ class TransactionIntegrationTest < Minitest::Test
       end
     end
   end
+
+  def test_transaction_assigns_object_ids_to_new_objects
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+
+    with_parse_server do
+      with_timeout(15, "transaction object ID assignment test") do
+        puts "\n=== Testing Transaction Assigns Object IDs to New Objects ==="
+
+        # Create NEW objects (not yet saved) within a transaction
+        products = []
+
+        responses = Parse::Object.transaction do |batch|
+          3.times do |i|
+            product = Product.new(name: "New Product #{i}", price: (i + 1) * 10.0, sku: "NEW-#{i}")
+            products << product
+            batch.add(product)
+          end
+        end
+
+        # Verify transaction succeeded
+        assert responses.all?(&:success?), "All operations should succeed"
+        assert_equal 3, responses.size, "Should have 3 responses"
+
+        # Verify each product received its objectId from the server
+        products.each_with_index do |product, i|
+          refute_nil product.id, "Product #{i} should have objectId assigned"
+          assert product.id.is_a?(String), "Product #{i} objectId should be a string"
+          assert product.id.length > 0, "Product #{i} objectId should not be empty"
+
+          # Verify timestamps were assigned
+          refute_nil product.created_at, "Product #{i} should have created_at assigned"
+          refute_nil product.updated_at, "Product #{i} should have updated_at assigned"
+          assert product.created_at.is_a?(DateTime) || product.created_at.is_a?(Parse::Date),
+                 "Product #{i} created_at should be a DateTime"
+        end
+
+        # Verify objects can be fetched from server using assigned IDs
+        products.each_with_index do |product, i|
+          fetched = Product.find(product.id)
+          refute_nil fetched, "Should be able to fetch Product #{i} by ID"
+          assert_equal "New Product #{i}", fetched.name, "Fetched product should have correct name"
+        end
+
+        puts "✅ Transaction correctly assigned objectId, createdAt, updatedAt to new objects"
+      end
+    end
+  end
 end

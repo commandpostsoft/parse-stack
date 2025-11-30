@@ -255,7 +255,7 @@ module Parse
     #
     # @return [Integer] hash code based on class name and object id
     def hash
-      "#{parse_class}#{id}".hash
+      [parse_class, id].hash
     end
 
     # @return [Boolean] true if instance has a Parse class and an id.

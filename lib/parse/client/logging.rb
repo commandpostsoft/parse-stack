@@ -170,7 +170,16 @@ module Parse
         logger = self.class.current_logger
         max_length = self.class.current_max_body_length
 
-        content = body.is_a?(String) ? body : body.to_json rescue body.to_s
+        content = if body.is_a?(String)
+          body
+        else
+          begin
+            body.to_json
+          rescue JSON::GeneratorError, Encoding::UndefinedConversionError
+            body.to_s
+          end
+        end
+
         if content.length > max_length
           logger.debug "  [#{prefix} Body] #{content[0...max_length]}... (truncated, #{content.length} total)"
         elsif content.length > 0
@@ -181,7 +190,11 @@ module Parse
       def response_body_content(response_env)
         body = response_env[:body]
         if body.is_a?(Parse::Response)
-          body.result.to_json rescue body.to_s
+          begin
+            body.result.to_json
+          rescue JSON::GeneratorError, Encoding::UndefinedConversionError
+            body.to_s
+          end
         else
           body
         end

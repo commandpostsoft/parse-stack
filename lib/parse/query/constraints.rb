@@ -347,24 +347,14 @@ module Parse
       def build
         val = formatted_value
         val = [val].compact unless val.is_a?(Array)
-        
-        # Special handling for array pointer fields
-        # Convert Parse objects and objectId strings to pointers for array contains queries
+
+        # Convert Parse objects to pointers for array contains queries
         if val.is_a?(Array)
           val = val.map do |item|
-            if item.respond_to?(:pointer)
-              # Convert Parse objects to pointers
-              item.pointer
-            elsif item.is_a?(String) && item.match?(/^[a-zA-Z0-9]{10}$/)
-              # Convert objectId strings to pointers - need to infer class name from field context
-              # For now, pass through as string - Parse Server should handle this
-              item
-            else
-              item
-            end
+            item.respond_to?(:pointer) ? item.pointer : item
           end
         end
-        
+
         { @operation.operand => { key => val } }
       end
     end
@@ -409,20 +399,10 @@ module Parse
         val = formatted_value
         val = [val].compact unless val.is_a?(Array)
 
-        # Special handling for array pointer fields
-        # Convert Parse objects and objectId strings to pointers for array contains queries
+        # Convert Parse objects to pointers for array contains queries
         if val.is_a?(Array)
           val = val.map do |item|
-            if item.respond_to?(:pointer)
-              # Convert Parse objects to pointers
-              item.pointer
-            elsif item.is_a?(String) && item.match?(/^[a-zA-Z0-9]{10}$/)
-              # Convert objectId strings to pointers - need to infer class name from field context
-              # For now, pass through as string - Parse Server should handle this
-              item
-            else
-              item
-            end
+            item.respond_to?(:pointer) ? item.pointer : item
           end
         end
 
@@ -488,6 +468,10 @@ module Parse
     #
     # @note This constraint uses aggregation pipeline because Parse Server
     #   does not support the $size query operator natively.
+    #
+    # @note This constraint uses MongoDB aggregation pipeline. While $expr expressions
+    #   cannot utilize field indexes, aggregation is efficient for array size operations
+    #   that would otherwise require client-side filtering.
     #
     # @see ContainsAllConstraint
     # @see ArraySetEqualsConstraint
@@ -670,12 +654,7 @@ module Parse
       #  q.where :field.set_equals => ["value1", "value2"]
       #  q.where :categories.set_equals => [cat1, cat2]
       # @return [ArraySetEqualsConstraint]
-
-      # @!method like
-      # Alias for {set_equals} - order-independent array matching
-      # @return [ArraySetEqualsConstraint]
       register :set_equals
-      register :like
 
       # @return [Hash] the compiled constraint using aggregation pipeline.
       def build
@@ -699,6 +678,11 @@ module Parse
             else
               item
             end
+          end
+
+          # Validate all IDs are present (unsaved objects have nil IDs)
+          if target_ids.any?(&:nil?)
+            raise ArgumentError, "#{self.class.name}: Cannot use unsaved objects (missing ID) in array constraint"
           end
 
           # For pointer arrays, we need to map the objectIds from the stored pointers
@@ -752,12 +736,10 @@ module Parse
       #  q.where :field.eq_array => ["value1", "value2"]
       #  q.where :categories.eq_array => [cat1, cat2]
       # @return [ArrayEqConstraint]
-
-      # @!method eq
-      # Alias for {eq_array}
-      # @return [ArrayEqConstraint]
+      #
+      # @note Use :eq_array for explicit array equality matching.
+      #   Simple :eq is handled by the base Constraint class for scalar equality.
       register :eq_array
-      register :eq
 
       # @return [Hash] the compiled constraint using aggregation pipeline.
       def build
@@ -781,6 +763,11 @@ module Parse
             else
               item
             end
+          end
+
+          # Validate all IDs are present (unsaved objects have nil IDs)
+          if target_ids.any?(&:nil?)
+            raise ArgumentError, "#{self.class.name}: Cannot use unsaved objects (missing ID) in array constraint"
           end
 
           # For pointer arrays, compare mapped objectIds with exact equality (order matters)
@@ -857,6 +844,11 @@ module Parse
             end
           end
 
+          # Validate all IDs are present (unsaved objects have nil IDs)
+          if target_ids.any?(&:nil?)
+            raise ArgumentError, "#{self.class.name}: Cannot use unsaved objects (missing ID) in array constraint"
+          end
+
           # For pointer arrays, compare mapped objectIds with $ne (order matters)
           pipeline = [
             {
@@ -906,12 +898,7 @@ module Parse
       #  q.where :field.not_set_equals => ["value1", "value2"]
       #  q.where :categories.not_set_equals => [cat1, cat2]
       # @return [ArrayNotSetEqualsConstraint]
-
-      # @!method nlike
-      # Alias for {not_set_equals} - order-independent array not-matching
-      # @return [ArrayNotSetEqualsConstraint]
       register :not_set_equals
-      register :nlike
 
       # @return [Hash] the compiled constraint using aggregation pipeline.
       def build
@@ -935,6 +922,11 @@ module Parse
             else
               item
             end
+          end
+
+          # Validate all IDs are present (unsaved objects have nil IDs)
+          if target_ids.any?(&:nil?)
+            raise ArgumentError, "#{self.class.name}: Cannot use unsaved objects (missing ID) in array constraint"
           end
 
           # For pointer arrays, use $not with $setEquals on mapped objectIds
@@ -973,7 +965,6 @@ module Parse
 
     # Element match constraint for arrays of objects.
     # Matches documents where at least one array element matches all specified criteria.
-    # Uses Parse's native $elemMatch operator.
     #
     #  # Find posts where comments array has an approved comment by the user
     #  q.where :comments.elem_match => { author: user, approved: true }
@@ -981,14 +972,17 @@ module Parse
     #  # Find items where tags array has a tag with specific properties
     #  q.where :tags.elem_match => { name: "featured", priority: { "$gt" => 5 } }
     #
-    # @note This uses MongoDB aggregation pipeline with $elemMatch since Parse Server
-    #   doesn't support $elemMatch as a native query constraint.
+    # @note While $elemMatch is a standard MongoDB query operator, Parse Server's
+    #   REST API query endpoint does not support it directly (returns "bad constraint").
+    #   This constraint uses aggregation pipeline to work around this limitation.
+    #   Aggregation is efficient for complex multi-field element matching that would
+    #   otherwise require multiple queries or client-side filtering.
     #
     # @see ContainsAllConstraint
     class ArrayElemMatchConstraint < Constraint
       # @!method elem_match
       # A registered method on a symbol to create the constraint.
-      # Uses MongoDB aggregation with $elemMatch.
+      # Uses aggregation pipeline since Parse Server doesn't support $elemMatch in queries.
       # @example
       #  q.where :comments.elem_match => { author: user, approved: true }
       # @return [ArrayElemMatchConstraint]
@@ -1007,6 +1001,8 @@ module Parse
         converted_val = convert_criteria(val)
 
         # Build the aggregation pipeline with $elemMatch
+        # Parse Server doesn't support $elemMatch as a native query constraint,
+        # but it works within aggregation pipeline $match stages
         pipeline = [
           {
             "$match" => {
@@ -1046,7 +1042,9 @@ module Parse
     #  #   ["rock", "pop"] - yes (subset)
     #  #   ["rock", "classical"] - no ("classical" not in allowed set)
     #
-    # @note This constraint uses aggregation pipeline with MongoDB $setIsSubset.
+    # @note This constraint uses MongoDB aggregation pipeline with $setIsSubset.
+    #   While $expr expressions cannot utilize field indexes, aggregation enables
+    #   set operations not available in standard Parse queries.
     #
     # @see ContainsAllConstraint
     class ArraySubsetOfConstraint < Constraint
@@ -1079,6 +1077,11 @@ module Parse
             else
               item
             end
+          end
+
+          # Validate all IDs are present (unsaved objects have nil IDs)
+          if target_ids.any?(&:nil?)
+            raise ArgumentError, "#{self.class.name}: Cannot use unsaved objects (missing ID) in array constraint"
           end
 
           pipeline = [
@@ -1114,7 +1117,9 @@ module Parse
     #
     #  q.where :tags.first => "rock"  # first element equals "rock"
     #
-    # @note This constraint uses aggregation pipeline with MongoDB $arrayElemAt.
+    # @note This constraint uses MongoDB aggregation pipeline with $arrayElemAt.
+    #   While $expr expressions cannot utilize field indexes, aggregation enables
+    #   positional array access not available in standard Parse queries.
     #
     # @see ArrayLastConstraint
     class ArrayFirstConstraint < Constraint
@@ -1183,7 +1188,9 @@ module Parse
     #
     #  q.where :tags.last => "pop"  # last element equals "pop"
     #
-    # @note This constraint uses aggregation pipeline with MongoDB $arrayElemAt.
+    # @note This constraint uses MongoDB aggregation pipeline with $arrayElemAt.
+    #   While $expr expressions cannot utilize field indexes, aggregation enables
+    #   positional array access not available in standard Parse queries.
     #
     # @see ArrayFirstConstraint
     class ArrayLastConstraint < Constraint

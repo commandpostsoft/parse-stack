@@ -5,6 +5,8 @@ require_relative "client"
 require_relative "query/operation"
 require_relative "query/constraints"
 require_relative "query/ordering"
+require_relative "query/cursor"
+require_relative "query/n_plus_one_detector"
 require "active_model"
 require "active_model/serializers/json"
 require "active_support"
@@ -1160,6 +1162,36 @@ module Parse
 
     # Alias for result_pointers for consistency
     alias_method :results_pointers, :result_pointers
+
+    # Create a cursor-based paginator for efficiently traversing large datasets.
+    #
+    # Cursor-based pagination is more efficient than skip/offset pagination for large
+    # datasets because it uses the last seen objectId to fetch the next page, rather
+    # than skipping over records.
+    #
+    # @example Basic usage
+    #   cursor = Song.query(:artist => "Artist").cursor(limit: 100)
+    #   cursor.each_page do |page|
+    #     process(page)
+    #   end
+    #
+    # @example Iterating over individual items
+    #   Song.query.cursor(limit: 50).each do |song|
+    #     puts song.title
+    #   end
+    #
+    # @example With custom ordering
+    #   cursor = User.query.cursor(limit: 100, order: :created_at.desc)
+    #   cursor.each_page { |page| process(page) }
+    #
+    # @param limit [Integer] the number of items per page (default: 100)
+    # @param order [Parse::Order, Symbol] the ordering for pagination.
+    #   Defaults to :created_at.asc for stable ordering.
+    # @return [Parse::Cursor] a cursor object for paginating results
+    # @see Parse::Cursor
+    def cursor(limit: 100, order: nil)
+      Parse::Cursor.new(self, limit: limit, order: order)
+    end
 
     # Returns the query execution plan from MongoDB.
     # This is useful for analyzing query performance and understanding
@@ -2918,31 +2950,45 @@ module Parse
     def pipeline
       # Format the group field name
       formatted_group_field = @query.send(:format_aggregation_field, @group_field)
-      
+
       # Build the aggregation pipeline (same logic as execute_group_aggregation)
       pipeline = []
-      
+
       # Add match stage if there are where conditions
       compiled_where = @query.send(:compile_where)
       if compiled_where.present?
-        # Convert field names for aggregation context and handle dates
-        aggregation_where = @query.send(:convert_constraints_for_aggregation, compiled_where)
-        stringified_where = @query.send(:convert_dates_for_aggregation, aggregation_where)
-        pipeline << { "$match" => stringified_where }
+        # Extract __aggregation_pipeline stages if present (these are pre-built $match stages)
+        if compiled_where.key?("__aggregation_pipeline")
+          # Add the pre-built aggregation pipeline stages directly
+          pipeline.concat(compiled_where["__aggregation_pipeline"])
+
+          # Get remaining constraints (everything except __aggregation_pipeline)
+          regular_constraints = compiled_where.reject { |k, _| k == "__aggregation_pipeline" }
+          if regular_constraints.present?
+            aggregation_where = @query.send(:convert_constraints_for_aggregation, regular_constraints)
+            stringified_where = @query.send(:convert_dates_for_aggregation, aggregation_where)
+            pipeline << { "$match" => stringified_where }
+          end
+        else
+          # No special pipeline stages, convert all constraints normally
+          aggregation_where = @query.send(:convert_constraints_for_aggregation, compiled_where)
+          stringified_where = @query.send(:convert_dates_for_aggregation, aggregation_where)
+          pipeline << { "$match" => stringified_where }
+        end
       end
-      
+
       # Add unwind stage if flatten_arrays is enabled
       if @flatten_arrays
         pipeline << { "$unwind" => "$#{formatted_group_field}" }
       end
-      
+
       # Add group and project stages (using count as example aggregation)
       pipeline.concat([
-        { 
-          "$group" => { 
-            "_id" => "$#{formatted_group_field}", 
-            "count" => { "$sum" => 1 } 
-          } 
+        {
+          "$group" => {
+            "_id" => "$#{formatted_group_field}",
+            "count" => { "$sum" => 1 }
+          }
         },
         {
           "$project" => {
@@ -2952,7 +2998,7 @@ module Parse
           }
         }
       ])
-      
+
       pipeline
     end
 

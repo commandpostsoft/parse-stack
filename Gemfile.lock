@@ -1,10 +1,11 @@
 PATH
   remote: .
   specs:
-    parse-stack (2.1.5)
+    parse-stack (2.3.0)
       activemodel (>= 5, < 9)
       activesupport (>= 5, < 9)
       faraday (~> 2.0)
+      faraday-net_http_persistent (~> 2.0)
       moneta (< 2)
       parallel (>= 1.6, < 2)
       rack (>= 2.0.6, < 4)
@@ -47,6 +48,9 @@ GEM
       logger
     faraday-net_http (3.4.1)
       net-http (>= 0.5.0)
+    faraday-net_http_persistent (2.3.1)
+      faraday (~> 2.5)
+      net-http-persistent (>= 4.0.4, < 5)
     i18n (1.14.7)
       concurrent-ruby (~> 1.0)
     json (2.15.1)
@@ -61,6 +65,8 @@ GEM
     moneta (1.6.0)
     net-http (0.6.0)
       uri
+    net-http-persistent (4.0.6)
+      connection_pool (~> 2.2, >= 2.2.4)
     parallel (1.27.0)
     pry (0.14.2)
       coderay (~> 1.1)

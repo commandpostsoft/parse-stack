@@ -152,31 +152,45 @@ module Parse
           validates_presence_of(key) if opts[:required]
 
           # We generate the getter method
+          # Store the key and class name for N+1 detection
+          association_key = key
+          owner_class_name = self.name
+
           define_method(key) do
             val = instance_variable_get ivar
             # We provide autofetch functionality. If the value is nil and the
             # current Parse::Object is a pointer, or if this is a selectively fetched
             # object and this field wasn't included in the fetch, then auto fetch it.
-            should_autofetch = val.nil? && (pointer? || (has_selective_keys? && !field_was_fetched?(key)))
+            should_autofetch = val.nil? && (pointer? || (has_selective_keys? && !field_was_fetched?(association_key)))
             if should_autofetch
               # If autofetch is disabled and we're accessing an unfetched field on a
               # selectively fetched object, raise an error to make the issue explicit
-              if autofetch_disabled? && has_selective_keys? && !field_was_fetched?(key)
-                raise Parse::UnfetchedFieldAccessError.new(key, self.class.name)
+              if autofetch_disabled? && has_selective_keys? && !field_was_fetched?(association_key)
+                raise Parse::UnfetchedFieldAccessError.new(association_key, self.class.name)
               end
-              autofetch!(key)
+              autofetch!(association_key)
               val = instance_variable_get ivar
             end
 
             # if for some reason we retrieved either from store or fetching a
-            # hash, lets try to buid a Pointer of that type.
+            # hash, lets try to build a Pointer of that type.
 
             if val.is_a?(Hash) && (val["__type"] == "Pointer" || val["__type"] == "Object")
               # Get nested fetched keys for this field if available
-              nested_keys = nested_keys_for(key)
+              nested_keys = nested_keys_for(association_key)
               val = Parse::Object.build val, (val[Parse::Model::KEY_CLASS_NAME] || klassName), fetched_keys: nested_keys
               instance_variable_set ivar, val
             end
+
+            # Track association source for N+1 detection when returning an unfetched pointer
+            # Uses a registry instead of setting instance variables on the pointer object
+            if val.is_a?(Parse::Pointer) && val.pointer? && Parse.warn_on_n_plus_one
+              Parse::NPlusOneDetector.register_source(val,
+                source_class: owner_class_name,
+                association: association_key
+              )
+            end
+
             val
           end
 
@@ -204,23 +218,7 @@ module Parse
             end
 
             if track == true
-              # If we're a pointer and autofetch is enabled, fetch BEFORE calling will_change!.
-              # This is critical because will_change! internally calls the getter to capture
-              # the old value. If autofetch triggers during that getter call, it calls
-              # clear_changes! which wipes the dirty tracking state that will_change! is
-              # trying to set up. By fetching first, the object is no longer a pointer,
-              # so will_change! can proceed without triggering another fetch.
-              if pointer? && !autofetch_disabled?
-                autofetch!(key)
-              end
-
-              # For selective fetch objects, mark this field as fetched to prevent autofetch.
-              # This is necessary because will_change! calls the getter to capture the old value,
-              # and we don't want assignment to trigger a network fetch.
-              if has_selective_keys? && !field_was_fetched?(key)
-                @_fetched_keys ||= []
-                @_fetched_keys << key unless @_fetched_keys.include?(key)
-              end
+              prepare_for_dirty_tracking!(key)
               send will_change_method unless val == instance_variable_get(ivar)
             else
               # During fetch (track=false), preserve existing embedded objects if the server
