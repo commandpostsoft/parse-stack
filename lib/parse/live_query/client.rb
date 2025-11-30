@@ -9,6 +9,7 @@ require "securerandom"
 require "base64"
 require "digest"
 require "monitor"
+require "timeout"
 
 require_relative "health_monitor"
 require_relative "circuit_breaker"
@@ -49,6 +50,9 @@ module Parse
       # Default maximum message size (1MB) - prevents memory exhaustion attacks
       DEFAULT_MAX_MESSAGE_SIZE = 1_048_576
 
+      # Default frame read timeout in seconds - prevents indefinite blocking
+      DEFAULT_FRAME_READ_TIMEOUT = 30
+
       # @return [String] WebSocket URL
       attr_reader :url
 
@@ -79,6 +83,9 @@ module Parse
       # @return [Integer] maximum allowed message size in bytes
       attr_reader :max_message_size
 
+      # @return [Integer] frame read timeout in seconds
+      attr_reader :frame_read_timeout
+
       # Create a new LiveQuery client
       # @param url [String] WebSocket URL (wss://...)
       # @param application_id [String] Parse application ID
@@ -102,12 +109,14 @@ module Parse
         @auto_connect = auto_connect.nil? ? cfg.auto_connect : auto_connect
         @auto_reconnect = auto_reconnect.nil? ? cfg.auto_reconnect : auto_reconnect
         @max_message_size = cfg.max_message_size || DEFAULT_MAX_MESSAGE_SIZE
+        @frame_read_timeout = cfg.frame_read_timeout || DEFAULT_FRAME_READ_TIMEOUT
 
         @state = :disconnected
         @subscriptions = {}
         @monitor = Monitor.new
         @socket = nil
         @reader_thread = nil
+        @reconnect_thread = nil
         @reconnect_interval = cfg.initial_reconnect_interval
         @callbacks = Hash.new { |h, k| h[k] = [] }
         @client_id = nil
@@ -195,6 +204,9 @@ module Parse
         Logging.info("Shutting down LiveQuery client", timeout: timeout)
 
         @auto_reconnect = false
+
+        # Cancel any pending reconnect thread
+        cancel_reconnect_thread
 
         # Stop health monitor
         @health_monitor.stop
@@ -382,11 +394,12 @@ module Parse
           ssl_context.cert_store.set_default_paths
 
           # Apply TLS version constraints from configuration
-          if @config.ssl_min_version
-            ssl_context.min_version = Configuration.tls_version_constant(@config.ssl_min_version)
+          cfg = config
+          if cfg.ssl_min_version
+            ssl_context.min_version = Configuration.tls_version_constant(cfg.ssl_min_version)
           end
-          if @config.ssl_max_version
-            ssl_context.max_version = Configuration.tls_version_constant(@config.ssl_max_version)
+          if cfg.ssl_max_version
+            ssl_context.max_version = Configuration.tls_version_constant(cfg.ssl_max_version)
           end
 
           @socket = OpenSSL::SSL::SSLSocket.new(tcp_socket, ssl_context)
@@ -459,23 +472,23 @@ module Parse
         handle_disconnect
       end
 
-      # Read a WebSocket frame
+      # Read a WebSocket frame with timeout protection
       def read_frame
-        first_byte = @socket.read(1)
+        first_byte = read_with_timeout(1)
         return nil unless first_byte
 
         first_byte = first_byte.unpack1("C")
         fin = (first_byte & 0x80) != 0
         opcode = first_byte & 0x0F
 
-        second_byte = @socket.read(1).unpack1("C")
+        second_byte = read_with_timeout(1).unpack1("C")
         masked = (second_byte & 0x80) != 0
         length = second_byte & 0x7F
 
         if length == 126
-          length = @socket.read(2).unpack1("n")
+          length = read_with_timeout(2).unpack1("n")
         elsif length == 127
-          length = @socket.read(8).unpack1("Q>")
+          length = read_with_timeout(8).unpack1("Q>")
         end
 
         # Prevent memory exhaustion from oversized frames
@@ -486,8 +499,8 @@ module Parse
           raise ConnectionError, "Message size #{length} exceeds maximum allowed #{@max_message_size}"
         end
 
-        mask_key = masked ? @socket.read(4) : nil
-        payload = @socket.read(length)
+        mask_key = masked ? read_with_timeout(4) : nil
+        payload = length > 0 ? read_with_timeout(length) : ""
 
         if masked && payload && mask_key
           payload = payload.bytes.each_with_index.map do |byte, i|
@@ -496,6 +509,21 @@ module Parse
         end
 
         { fin: fin, opcode: opcode, payload: payload }
+      end
+
+      # Read from socket with timeout protection
+      # @param length [Integer] number of bytes to read
+      # @return [String] the data read
+      # @raise [ConnectionError] if read times out
+      def read_with_timeout(length)
+        return @socket.read(length) unless @frame_read_timeout && @frame_read_timeout > 0
+
+        Timeout.timeout(@frame_read_timeout) do
+          @socket.read(length)
+        end
+      rescue Timeout::Error
+        Logging.error("Frame read timeout", timeout: @frame_read_timeout)
+        raise ConnectionError, "Frame read timed out after #{@frame_read_timeout} seconds"
       end
 
       # Handle a WebSocket frame
@@ -673,6 +701,9 @@ module Parse
       def schedule_reconnect
         return if @state == :closed
 
+        # Cancel any existing reconnect thread to prevent accumulation
+        cancel_reconnect_thread
+
         cfg = config
         jitter_factor = cfg.reconnect_jitter
         jitter = @reconnect_interval * jitter_factor * (rand - 0.5) * 2
@@ -681,11 +712,24 @@ module Parse
 
         Logging.info("Scheduling reconnect", delay: delay.round(2))
 
-        Thread.new do
+        @reconnect_thread = Thread.new do
           sleep delay
+          @monitor.synchronize do
+            @reconnect_thread = nil
+          end
           @reconnect_interval = [@reconnect_interval * cfg.reconnect_multiplier,
                                  cfg.max_reconnect_interval].min
           connect
+        end
+      end
+
+      # Cancel any pending reconnect thread
+      def cancel_reconnect_thread
+        @monitor.synchronize do
+          if @reconnect_thread&.alive?
+            @reconnect_thread.kill
+            @reconnect_thread = nil
+          end
         end
       end
 

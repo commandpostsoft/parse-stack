@@ -186,6 +186,9 @@ module Parse
     DEFAULT_RATE_LIMIT = 60   # requests per window
     DEFAULT_RATE_WINDOW = 60  # window in seconds
 
+    # Default operation log size (circular buffer)
+    DEFAULT_MAX_LOG_SIZE = 1000
+
     # @return [Symbol] the current permission level (:readonly, :write, or :admin)
     attr_reader :permissions
 
@@ -201,6 +204,9 @@ module Parse
     # @return [RateLimiter] the rate limiter instance
     attr_reader :rate_limiter
 
+    # @return [Integer] the maximum operation log size
+    attr_reader :max_log_size
+
     # Create a new Parse Agent instance.
     #
     # @param permissions [Symbol] the permission level (:readonly, :write, or :admin)
@@ -208,6 +214,7 @@ module Parse
     # @param client [Parse::Client, Symbol] the client instance or connection name
     # @param rate_limit [Integer] maximum requests per window (default: 60)
     # @param rate_window [Integer] rate limit window in seconds (default: 60)
+    # @param max_log_size [Integer] maximum operation log entries (default: 1000, uses circular buffer)
     #
     # @example Readonly agent with master key
     #   agent = Parse::Agent.new
@@ -218,12 +225,17 @@ module Parse
     # @example Agent with custom rate limiting
     #   agent = Parse::Agent.new(rate_limit: 100, rate_window: 60)
     #
+    # @example Agent with larger operation log
+    #   agent = Parse::Agent.new(max_log_size: 5000)
+    #
     def initialize(permissions: :readonly, session_token: nil, client: :default,
-                   rate_limit: DEFAULT_RATE_LIMIT, rate_window: DEFAULT_RATE_WINDOW)
+                   rate_limit: DEFAULT_RATE_LIMIT, rate_window: DEFAULT_RATE_WINDOW,
+                   max_log_size: DEFAULT_MAX_LOG_SIZE)
       @permissions = permissions
       @session_token = session_token
       @client = client.is_a?(Parse::Client) ? client : Parse::Client.client(client)
       @operation_log = []
+      @max_log_size = max_log_size
       @rate_limiter = RateLimiter.new(limit: rate_limit, window: rate_window)
     end
 
@@ -500,7 +512,7 @@ module Parse
         using_master_key: auth_context[:using_master_key],
         permissions: @permissions
       }
-      @operation_log << entry
+      append_log(entry)
 
       # Audit log master key usage
       if auth_context[:using_master_key]
@@ -533,7 +545,7 @@ module Parse
         entry[:reason] = error.reason if error.respond_to?(:reason)
       end
 
-      @operation_log << entry
+      append_log(entry)
 
       # Always warn on security events
       warn "[Parse::Agent:SECURITY] #{error.class.name}: #{error.message}"
@@ -544,6 +556,13 @@ module Parse
       { success: true, data: data }
     end
 
+    # Append an entry to the operation log with circular buffer enforcement
+    # @param entry [Hash] the log entry to append
+    def append_log(entry)
+      @operation_log << entry
+      @operation_log.shift if @operation_log.size > @max_log_size
+    end
+
     def error_response(message, error_code: nil, retry_after: nil)
       entry = {
         error: message,
@@ -551,7 +570,7 @@ module Parse
         timestamp: Time.now.iso8601,
         success: false
       }
-      @operation_log << entry
+      append_log(entry)
 
       response = { success: false, error: message }
       response[:error_code] = error_code if error_code

@@ -85,6 +85,9 @@ module Parse
           @audience_cache ||= {}
           @cache_timestamps ||= {}
 
+          # Cleanup expired entries periodically to prevent memory growth
+          cleanup_expired_cache_entries
+
           cached = @audience_cache[name]
           timestamp = @cache_timestamps[name]
 
@@ -102,6 +105,15 @@ module Parse
         end
       end
 
+      # Remove expired entries from cache to prevent memory leaks
+      # Called automatically during cache_fetch, but can also be called manually
+      # @return [Integer] number of entries removed
+      def cleanup_expired_cache!
+        cache_mutex.synchronize do
+          cleanup_expired_cache_entries
+        end
+      end
+
       # Thread-safe mutex for cache operations
       # @return [Mutex]
       def cache_mutex
@@ -109,6 +121,22 @@ module Parse
       end
 
       private
+
+      # Internal method to cleanup expired cache entries (must be called within synchronize block)
+      # @return [Integer] number of entries removed
+      def cleanup_expired_cache_entries
+        return 0 unless @cache_timestamps
+
+        now = Time.now.to_i
+        expired_keys = @cache_timestamps.select { |_key, ts| now - ts >= cache_ttl }.keys
+
+        expired_keys.each do |key|
+          @audience_cache&.delete(key)
+          @cache_timestamps.delete(key)
+        end
+
+        expired_keys.size
+      end
 
       def find_by_name_uncached(name)
         first(name: name)

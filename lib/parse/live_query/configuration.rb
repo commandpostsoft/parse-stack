@@ -71,6 +71,10 @@ module Parse
       #   Prevents memory exhaustion from malicious oversized frames
       attr_accessor :max_message_size
 
+      # @return [Integer] frame read timeout in seconds (default: 30)
+      #   Prevents indefinite blocking when reading from socket
+      attr_accessor :frame_read_timeout
+
       # @return [Symbol, nil] minimum TLS version :TLSv1, :TLSv1_1, :TLSv1_2, :TLSv1_3 (default: :TLSv1_2)
       #   Enforces minimum TLS version for WebSocket connections
       attr_accessor :ssl_min_version
@@ -138,6 +142,7 @@ module Parse
 
         # Security
         @max_message_size = 1_048_576  # 1MB
+        @frame_read_timeout = 30       # 30 seconds
         @ssl_min_version = :TLSv1_2    # Enforce modern TLS by default
         @ssl_max_version = nil         # No maximum (use highest available)
 
@@ -158,6 +163,7 @@ module Parse
         errors << "reconnect_jitter must be between 0.0 and 1.0" if @reconnect_jitter && (@reconnect_jitter < 0.0 || @reconnect_jitter > 1.0)
         errors << "backpressure_strategy must be :block, :drop_oldest, or :drop_newest" unless [:block, :drop_oldest, :drop_newest].include?(@backpressure_strategy)
         errors << "max_message_size must be positive" if @max_message_size && @max_message_size <= 0
+        errors << "frame_read_timeout must be positive" if @frame_read_timeout && @frame_read_timeout <= 0
         errors << "log_level must be :debug, :info, :warn, or :error" unless [:debug, :info, :warn, :error].include?(@log_level)
 
         # SSL/TLS version validation
@@ -194,6 +200,7 @@ module Parse
           event_queue_size: @event_queue_size,
           backpressure_strategy: @backpressure_strategy,
           max_message_size: @max_message_size,
+          frame_read_timeout: @frame_read_timeout,
           ssl_min_version: @ssl_min_version,
           ssl_max_version: @ssl_max_version,
           logging_enabled: @logging_enabled,
