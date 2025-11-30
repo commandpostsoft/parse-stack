@@ -1,5 +1,82 @@
 ## Parse-Stack Changelog
 
+### 2.1.9
+
+#### New Features: Advanced Array Query Constraints
+
+Parse Server doesn't natively support `$size` or exact array equality queries. This release adds comprehensive array query constraints using MongoDB aggregation pipelines under the hood.
+
+##### Array Size Constraints
+- **NEW**: `:field.size => n` - Match arrays with exact size
+  ```ruby
+  # Find items with exactly 2 tags
+  TaggedItem.query(:tags.size => 2)
+  ```
+
+- **NEW**: Size comparison operators via hash
+  ```ruby
+  :tags.size => { gt: 3 }       # size > 3
+  :tags.size => { gte: 2 }      # size >= 2
+  :tags.size => { lt: 5 }       # size < 5
+  :tags.size => { lte: 4 }      # size <= 4
+  :tags.size => { ne: 0 }       # size != 0
+  :tags.size => { gte: 2, lt: 10 }  # 2 <= size < 10 (range)
+  ```
+
+- **NEW**: `:field.arr_empty => true/false` - Match empty arrays
+- **NEW**: `:field.arr_nempty => true/false` - Match non-empty arrays
+
+##### Array Equality Constraints (Order-Dependent)
+- **NEW**: `:field.eq => [values]` / `:field.eq_array => [values]`
+  - Matches arrays with exact elements in exact order
+  - `["rock", "pop"]` matches `["rock", "pop"]` but NOT `["pop", "rock"]`
+  ```ruby
+  TaggedItem.query(:tags.eq => ["rock", "pop"])
+  ```
+
+- **NEW**: `:field.neq => [values]`
+  - Matches arrays that are NOT exactly equal (order matters)
+  ```ruby
+  TaggedItem.query(:tags.neq => ["rock", "pop"])  # Excludes exact match
+  ```
+
+##### Array Set Equality Constraints (Order-Independent)
+- **NEW**: `:field.like => [values]` / `:field.set_equals => [values]`
+  - Matches arrays with same elements regardless of order
+  - `["rock", "pop"]` matches both `["rock", "pop"]` AND `["pop", "rock"]`
+  ```ruby
+  TaggedItem.query(:tags.like => ["rock", "pop"])
+  ```
+
+- **NEW**: `:field.nlike => [values]` / `:field.not_set_equals => [values]`
+  - Matches arrays that do NOT have the same set of elements
+  ```ruby
+  TaggedItem.query(:tags.nlike => ["rock", "pop"])  # Excludes set-equal arrays
+  ```
+
+##### Pointer Array Support
+All array constraints work with `has_many :through => :array` pointer arrays:
+```ruby
+# Find products with exactly these 2 categories (any order)
+Product.query(:categories.like => [cat1, cat2])
+
+# Find products with more than 3 categories
+Product.query(:categories.size => { gt: 3 })
+```
+
+#### Constraint Summary Table
+
+| Constraint | Description | Order Matters? |
+|------------|-------------|----------------|
+| `:field.size => n` | Exact array length | N/A |
+| `:field.size => { gt: n }` | Array length comparisons | N/A |
+| `:field.arr_empty => true` | Empty arrays only | N/A |
+| `:field.arr_nempty => true` | Non-empty arrays only | N/A |
+| `:field.eq => [...]` | Exact match (order matters) | Yes |
+| `:field.neq => [...]` | Not exact match | Yes |
+| `:field.like => [...]` | Set equality (any order) | No |
+| `:field.nlike => [...]` | Not set equal | No |
+
 ### 2.1.8
 
 #### Bug Fixes

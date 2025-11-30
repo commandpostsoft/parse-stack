@@ -449,6 +449,509 @@ module Parse
       end
     end
 
+    # Array size constraint using MongoDB aggregation.
+    # Parse Server does not natively support $size query constraint, so we use
+    # MongoDB aggregation pipeline with $expr and $size to check array length.
+    #
+    #  # Exact size match
+    #  q.where :field.size => 2
+    #  q.where :tags.size => 5
+    #
+    #  # Comparison operators via hash
+    #  q.where :tags.size => { gt: 3 }      # size > 3
+    #  q.where :tags.size => { gte: 2 }     # size >= 2
+    #  q.where :tags.size => { lt: 5 }      # size < 5
+    #  q.where :tags.size => { lte: 4 }     # size <= 4
+    #  q.where :tags.size => { ne: 0 }      # size != 0
+    #
+    #  # Combine for range
+    #  q.where :tags.size => { gte: 2, lt: 10 }  # 2 <= size < 10
+    #
+    # @note This constraint uses aggregation pipeline because Parse Server
+    #   does not support the $size query operator natively.
+    #
+    # @see ContainsAllConstraint
+    # @see ArraySetEqualsConstraint
+    class ArraySizeConstraint < Constraint
+      # @!method size
+      # A registered method on a symbol to create the constraint.
+      # @example
+      #  q.where :field.size => 2
+      #  q.where :field.size => { gt: 3, lte: 10 }
+      # @return [ArraySizeConstraint]
+      register :size
+
+      # Mapping of constraint keys to MongoDB comparison operators
+      COMPARISON_OPERATORS = {
+        gt: "$gt",
+        gte: "$gte",
+        lt: "$lt",
+        lte: "$lte",
+        ne: "$ne",
+        eq: "$eq"
+      }.freeze
+
+      # @return [Hash] the compiled constraint using aggregation pipeline.
+      def build
+        value = formatted_value
+        field_name = @operation.operand.to_s
+        size_expr = { "$size" => { "$ifNull" => ["$#{field_name}", []] } }
+
+        if value.is_a?(Integer)
+          # Simple exact match
+          raise ArgumentError, "#{self.class}: Size value must be non-negative" if value < 0
+
+          pipeline = [
+            {
+              "$match" => {
+                "$expr" => {
+                  "$eq" => [size_expr, value]
+                }
+              }
+            }
+          ]
+        elsif value.is_a?(Hash)
+          # Hash with comparison operators
+          conditions = []
+
+          value.each do |op, val|
+            op_sym = op.to_sym
+            unless COMPARISON_OPERATORS.key?(op_sym)
+              raise ArgumentError, "#{self.class}: Unknown operator '#{op}'. Valid operators: #{COMPARISON_OPERATORS.keys.join(', ')}"
+            end
+            unless val.is_a?(Integer) && val >= 0
+              raise ArgumentError, "#{self.class}: Value for '#{op}' must be a non-negative integer"
+            end
+
+            mongo_op = COMPARISON_OPERATORS[op_sym]
+            conditions << { mongo_op => [size_expr, val] }
+          end
+
+          # Combine multiple conditions with $and
+          expr = conditions.length == 1 ? conditions.first : { "$and" => conditions }
+
+          pipeline = [
+            {
+              "$match" => {
+                "$expr" => expr
+              }
+            }
+          ]
+        else
+          raise ArgumentError, "#{self.class}: Value must be an integer or hash with comparison operators (gt, gte, lt, lte, ne, eq)"
+        end
+
+        { "__aggregation_pipeline" => pipeline }
+      end
+    end
+
+    # Array empty constraint - shorthand for size == 0.
+    # Matches arrays that have no elements.
+    #
+    #  q.where :tags.arr_empty => true   # arrays with 0 elements
+    #  q.where :tags.arr_empty => false  # arrays with 1+ elements (same as nempty)
+    #
+    # @note This uses the arr_empty name to avoid conflict with the existing empty constraint
+    #   which checks if the first array element exists.
+    #
+    # @see ArraySizeConstraint
+    # @see ArrayNotEmptyConstraint
+    class ArrayEmptyConstraint < Constraint
+      # @!method arr_empty
+      # A registered method on a symbol to create the constraint.
+      # @example
+      #  q.where :field.arr_empty => true
+      # @return [ArrayEmptyConstraint]
+      register :arr_empty
+
+      # @return [Hash] the compiled constraint using aggregation pipeline.
+      def build
+        value = formatted_value
+        unless value == true || value == false
+          raise ArgumentError, "#{self.class}: Value must be true or false"
+        end
+
+        field_name = @operation.operand.to_s
+        size_expr = { "$size" => { "$ifNull" => ["$#{field_name}", []] } }
+
+        # If true, match size == 0; if false, match size > 0
+        comparison = value ? { "$eq" => [size_expr, 0] } : { "$gt" => [size_expr, 0] }
+
+        pipeline = [
+          {
+            "$match" => {
+              "$expr" => comparison
+            }
+          }
+        ]
+
+        { "__aggregation_pipeline" => pipeline }
+      end
+    end
+
+    # Array not-empty constraint - shorthand for size > 0.
+    # Matches arrays that have at least one element.
+    #
+    #  q.where :tags.arr_nempty => true   # arrays with 1+ elements
+    #  q.where :tags.arr_nempty => false  # arrays with 0 elements (same as empty)
+    #
+    # @see ArraySizeConstraint
+    # @see ArrayEmptyConstraint
+    class ArrayNotEmptyConstraint < Constraint
+      # @!method arr_nempty
+      # A registered method on a symbol to create the constraint.
+      # @example
+      #  q.where :field.arr_nempty => true
+      # @return [ArrayNotEmptyConstraint]
+      register :arr_nempty
+
+      # @return [Hash] the compiled constraint using aggregation pipeline.
+      def build
+        value = formatted_value
+        unless value == true || value == false
+          raise ArgumentError, "#{self.class}: Value must be true or false"
+        end
+
+        field_name = @operation.operand.to_s
+        size_expr = { "$size" => { "$ifNull" => ["$#{field_name}", []] } }
+
+        # If true, match size > 0; if false, match size == 0
+        comparison = value ? { "$gt" => [size_expr, 0] } : { "$eq" => [size_expr, 0] }
+
+        pipeline = [
+          {
+            "$match" => {
+              "$expr" => comparison
+            }
+          }
+        ]
+
+        { "__aggregation_pipeline" => pipeline }
+      end
+    end
+
+    # Set equality constraint using MongoDB aggregation with $setEquals.
+    # Matches arrays that contain exactly the same elements, regardless of order.
+    # This is order-independent matching: [A, B] matches [B, A] but not [A, B, C].
+    #
+    #  q.where :field.set_equals => ["rock", "pop"]
+    #  q.where :tags.set_equals => [category1, category2]  # for pointers
+    #
+    # For pointer arrays (has_many relations), pass Parse objects or pointers.
+    # The constraint will automatically extract objectIds for comparison.
+    #
+    # @note This constraint uses aggregation pipeline with MongoDB $setEquals.
+    #
+    # @see ContainsAllConstraint
+    # @see ArrayEqConstraint
+    class ArraySetEqualsConstraint < Constraint
+      # @!method set_equals
+      # A registered method on a symbol to create the constraint.
+      # @example
+      #  q.where :field.set_equals => ["value1", "value2"]
+      #  q.where :categories.set_equals => [cat1, cat2]
+      # @return [ArraySetEqualsConstraint]
+
+      # @!method like
+      # Alias for {set_equals} - order-independent array matching
+      # @return [ArraySetEqualsConstraint]
+      register :set_equals
+      register :like
+
+      # @return [Hash] the compiled constraint using aggregation pipeline.
+      def build
+        val = formatted_value
+        val = [val].compact unless val.is_a?(Array)
+
+        field_name = @operation.operand.to_s
+
+        # Check if values are pointers (Parse objects or pointer objects)
+        is_pointer_array = val.any? do |item|
+          item.respond_to?(:pointer) || item.is_a?(Parse::Pointer)
+        end
+
+        if is_pointer_array
+          # Extract objectIds from pointers for comparison
+          target_ids = val.map do |item|
+            if item.respond_to?(:id)
+              item.id
+            elsif item.is_a?(Parse::Pointer)
+              item.id
+            else
+              item
+            end
+          end
+
+          # For pointer arrays, we need to map the objectIds from the stored pointers
+          pipeline = [
+            {
+              "$match" => {
+                "$expr" => {
+                  "$setEquals" => [
+                    { "$map" => { "input" => "$#{field_name}", "as" => "p", "in" => "$$p.objectId" } },
+                    target_ids
+                  ]
+                }
+              }
+            }
+          ]
+        else
+          # For simple value arrays (strings, numbers, etc.)
+          pipeline = [
+            {
+              "$match" => {
+                "$expr" => {
+                  "$setEquals" => ["$#{field_name}", val]
+                }
+              }
+            }
+          ]
+        end
+
+        { "__aggregation_pipeline" => pipeline }
+      end
+    end
+
+    # Exact array equality constraint using MongoDB aggregation with $eq.
+    # Matches arrays that are exactly equal, including element order.
+    # This is order-dependent matching: [A, B] does NOT match [B, A].
+    #
+    #  q.where :field.eq_array => ["rock", "pop"]
+    #  q.where :tags.eq_array => [category1, category2]  # for pointers
+    #
+    # For pointer arrays (has_many relations), pass Parse objects or pointers.
+    # The constraint will automatically extract objectIds for comparison.
+    #
+    # @note This constraint uses aggregation pipeline with MongoDB $eq on arrays.
+    #
+    # @see ContainsAllConstraint
+    # @see ArraySetEqualsConstraint
+    class ArrayEqConstraint < Constraint
+      # @!method eq_array
+      # A registered method on a symbol to create the constraint.
+      # @example
+      #  q.where :field.eq_array => ["value1", "value2"]
+      #  q.where :categories.eq_array => [cat1, cat2]
+      # @return [ArrayEqConstraint]
+
+      # @!method eq
+      # Alias for {eq_array}
+      # @return [ArrayEqConstraint]
+      register :eq_array
+      register :eq
+
+      # @return [Hash] the compiled constraint using aggregation pipeline.
+      def build
+        val = formatted_value
+        val = [val].compact unless val.is_a?(Array)
+
+        field_name = @operation.operand.to_s
+
+        # Check if values are pointers (Parse objects or pointer objects)
+        is_pointer_array = val.any? do |item|
+          item.respond_to?(:pointer) || item.is_a?(Parse::Pointer)
+        end
+
+        if is_pointer_array
+          # Extract objectIds from pointers for comparison
+          target_ids = val.map do |item|
+            if item.respond_to?(:id)
+              item.id
+            elsif item.is_a?(Parse::Pointer)
+              item.id
+            else
+              item
+            end
+          end
+
+          # For pointer arrays, compare mapped objectIds with exact equality (order matters)
+          pipeline = [
+            {
+              "$match" => {
+                "$expr" => {
+                  "$eq" => [
+                    { "$map" => { "input" => "$#{field_name}", "as" => "p", "in" => "$$p.objectId" } },
+                    target_ids
+                  ]
+                }
+              }
+            }
+          ]
+        else
+          # For simple value arrays, direct $eq comparison (order matters)
+          pipeline = [
+            {
+              "$match" => {
+                "$expr" => {
+                  "$eq" => ["$#{field_name}", val]
+                }
+              }
+            }
+          ]
+        end
+
+        { "__aggregation_pipeline" => pipeline }
+      end
+    end
+
+    # Array not-equal constraint using MongoDB aggregation with $ne.
+    # Matches arrays that are NOT exactly equal (including element order).
+    # This is order-dependent: [A, B] does NOT match [A, B] but DOES match [B, A].
+    #
+    #  q.where :field.neq => ["rock", "pop"]
+    #  q.where :tags.neq => [category1, category2]  # for pointers
+    #
+    # @note This constraint uses aggregation pipeline with MongoDB $ne on arrays.
+    #
+    # @see ArrayEqConstraint
+    # @see ArrayNotSetEqualsConstraint
+    class ArrayNeqConstraint < Constraint
+      # @!method neq
+      # A registered method on a symbol to create the constraint.
+      # @example
+      #  q.where :field.neq => ["value1", "value2"]
+      #  q.where :categories.neq => [cat1, cat2]
+      # @return [ArrayNeqConstraint]
+      register :neq
+
+      # @return [Hash] the compiled constraint using aggregation pipeline.
+      def build
+        val = formatted_value
+        val = [val].compact unless val.is_a?(Array)
+
+        field_name = @operation.operand.to_s
+
+        # Check if values are pointers (Parse objects or pointer objects)
+        is_pointer_array = val.any? do |item|
+          item.respond_to?(:pointer) || item.is_a?(Parse::Pointer)
+        end
+
+        if is_pointer_array
+          # Extract objectIds from pointers for comparison
+          target_ids = val.map do |item|
+            if item.respond_to?(:id)
+              item.id
+            elsif item.is_a?(Parse::Pointer)
+              item.id
+            else
+              item
+            end
+          end
+
+          # For pointer arrays, compare mapped objectIds with $ne (order matters)
+          pipeline = [
+            {
+              "$match" => {
+                "$expr" => {
+                  "$ne" => [
+                    { "$map" => { "input" => "$#{field_name}", "as" => "p", "in" => "$$p.objectId" } },
+                    target_ids
+                  ]
+                }
+              }
+            }
+          ]
+        else
+          # For simple value arrays, direct $ne comparison (order matters)
+          pipeline = [
+            {
+              "$match" => {
+                "$expr" => {
+                  "$ne" => ["$#{field_name}", val]
+                }
+              }
+            }
+          ]
+        end
+
+        { "__aggregation_pipeline" => pipeline }
+      end
+    end
+
+    # Not-set-equals constraint using MongoDB aggregation with $not and $setEquals.
+    # Matches arrays that do NOT contain exactly the same elements (regardless of order).
+    # This is order-independent: [A, B, C] does NOT match [A, B] but [C, B, A] DOES match.
+    #
+    #  q.where :field.nlike => ["rock", "pop"]
+    #  q.where :field.not_set_equals => ["rock", "pop"]
+    #  q.where :tags.nlike => [category1, category2]  # for pointers
+    #
+    # @note This constraint uses aggregation pipeline with MongoDB $not and $setEquals.
+    #
+    # @see ArraySetEqualsConstraint
+    # @see ArrayNeqConstraint
+    class ArrayNotSetEqualsConstraint < Constraint
+      # @!method not_set_equals
+      # A registered method on a symbol to create the constraint.
+      # @example
+      #  q.where :field.not_set_equals => ["value1", "value2"]
+      #  q.where :categories.not_set_equals => [cat1, cat2]
+      # @return [ArrayNotSetEqualsConstraint]
+
+      # @!method nlike
+      # Alias for {not_set_equals} - order-independent array not-matching
+      # @return [ArrayNotSetEqualsConstraint]
+      register :not_set_equals
+      register :nlike
+
+      # @return [Hash] the compiled constraint using aggregation pipeline.
+      def build
+        val = formatted_value
+        val = [val].compact unless val.is_a?(Array)
+
+        field_name = @operation.operand.to_s
+
+        # Check if values are pointers (Parse objects or pointer objects)
+        is_pointer_array = val.any? do |item|
+          item.respond_to?(:pointer) || item.is_a?(Parse::Pointer)
+        end
+
+        if is_pointer_array
+          # Extract objectIds from pointers for comparison
+          target_ids = val.map do |item|
+            if item.respond_to?(:id)
+              item.id
+            elsif item.is_a?(Parse::Pointer)
+              item.id
+            else
+              item
+            end
+          end
+
+          # For pointer arrays, use $not with $setEquals on mapped objectIds
+          pipeline = [
+            {
+              "$match" => {
+                "$expr" => {
+                  "$not" => {
+                    "$setEquals" => [
+                      { "$map" => { "input" => "$#{field_name}", "as" => "p", "in" => "$$p.objectId" } },
+                      target_ids
+                    ]
+                  }
+                }
+              }
+            }
+          ]
+        else
+          # For simple value arrays, use $not with $setEquals
+          pipeline = [
+            {
+              "$match" => {
+                "$expr" => {
+                  "$not" => {
+                    "$setEquals" => ["$#{field_name}", val]
+                  }
+                }
+              }
+            }
+          ]
+        end
+
+        { "__aggregation_pipeline" => pipeline }
+      end
+    end
+
     # Equivalent to the `$select` Parse query operation. This matches a value for a
     # key in the result of a different query.
     #  q.where :field.select => { key: "field", query: query }

@@ -2718,6 +2718,65 @@ Equivalent to the `$all` Parse query operation. Checks whether the value in the 
  q.where :field.contains_all => [item1,item2,...]
 ```
 
+#### Advanced Array Constraints
+Parse Server doesn't natively support `$size` or exact array equality queries. Parse-Stack provides these via MongoDB aggregation pipelines.
+
+##### Array Size
+Match arrays by their length:
+
+```ruby
+# Exact size
+q.where :tags.size => 2          # arrays with exactly 2 elements
+
+# Size comparisons
+q.where :tags.size => { gt: 3 }      # size > 3
+q.where :tags.size => { gte: 2 }     # size >= 2
+q.where :tags.size => { lt: 5 }      # size < 5
+q.where :tags.size => { lte: 4 }     # size <= 4
+q.where :tags.size => { ne: 0 }      # size != 0
+q.where :tags.size => { gte: 2, lt: 10 }  # range: 2 <= size < 10
+
+# Empty/non-empty shortcuts
+q.where :tags.arr_empty => true     # empty arrays
+q.where :tags.arr_nempty => true    # non-empty arrays
+```
+
+##### Array Equality (Order-Dependent)
+Match arrays with exact elements in exact order:
+
+```ruby
+# Matches ["rock", "pop"] but NOT ["pop", "rock"]
+q.where :tags.eq => ["rock", "pop"]
+q.where :tags.eq_array => ["rock", "pop"]  # alias
+
+# NOT equal (order-dependent)
+q.where :tags.neq => ["rock", "pop"]  # excludes exact match only
+```
+
+##### Array Set Equality (Order-Independent)
+Match arrays with same elements regardless of order:
+
+```ruby
+# Matches both ["rock", "pop"] AND ["pop", "rock"]
+q.where :tags.like => ["rock", "pop"]
+q.where :tags.set_equals => ["rock", "pop"]  # alias
+
+# NOT set equal
+q.where :tags.nlike => ["rock", "pop"]        # excludes both orderings
+q.where :tags.not_set_equals => ["rock", "pop"]  # alias
+```
+
+##### Pointer Arrays
+All array constraints work with `has_many :through => :array` relations:
+
+```ruby
+# Find products with exactly these categories (any order)
+Product.query(:categories.like => [cat1, cat2])
+
+# Find products with more than 3 categories
+Product.query(:categories.size => { gt: 3 })
+```
+
 #### Regex Matching
 Equivalent to the `$regex` Parse query operation. Requires that a field value match a regular expression.
 
