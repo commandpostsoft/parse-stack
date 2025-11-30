@@ -12,6 +12,57 @@ require_relative "constraint"
 # that inspired this, see http://datamapper.org/docs/find.html
 
 module Parse
+  # Security module for validating regex patterns to prevent ReDoS attacks.
+  # MongoDB uses PCRE which is susceptible to catastrophic backtracking.
+  module RegexSecurity
+    # Maximum allowed length for regex patterns
+    MAX_PATTERN_LENGTH = 500
+
+    # Patterns that can cause exponential backtracking in PCRE
+    DANGEROUS_PATTERNS = [
+      /\(\?\=|\(\?\!|\(\?\<[!=]/,                    # Lookahead/lookbehind assertions
+      /\{(\d{3,}|\d+,\d{3,})\}/,                     # Large repetition counts {1000} or {1,1000}
+      /(\.\*|\.\+)\s*(\.\*|\.\+)/,                   # Consecutive .* or .+ patterns
+      /\([^)]*(\+|\*)[^)]*\)\s*(\+|\*)/,             # Nested quantifiers like (a+)+
+      /\(\?[^)]*\([^)]*(\+|\*)[^)]*\)[^)]*(\+|\*)\)/ # More complex nested quantifiers
+    ].freeze
+
+    class << self
+      # Validates a regex pattern for potential ReDoS vulnerabilities.
+      # @param pattern [String, Regexp] the pattern to validate
+      # @param max_length [Integer] maximum allowed pattern length
+      # @raise [ArgumentError] if the pattern is potentially dangerous
+      # @return [String] the validated pattern string
+      def validate!(pattern, max_length: MAX_PATTERN_LENGTH)
+        pattern_str = pattern.is_a?(Regexp) ? pattern.source : pattern.to_s
+
+        if pattern_str.length > max_length
+          raise ArgumentError, "Regex pattern too long (#{pattern_str.length} chars, max #{max_length}). " \
+                               "Long patterns can cause performance issues."
+        end
+
+        DANGEROUS_PATTERNS.each do |dangerous|
+          if pattern_str.match?(dangerous)
+            raise ArgumentError, "Regex pattern contains potentially dangerous constructs that could cause " \
+                                 "ReDoS (Regular Expression Denial of Service). Pattern: #{pattern_str.inspect}"
+          end
+        end
+
+        pattern_str
+      end
+
+      # Checks if a pattern is safe without raising an exception.
+      # @param pattern [String, Regexp] the pattern to check
+      # @return [Boolean] true if safe, false if potentially dangerous
+      def safe?(pattern, max_length: MAX_PATTERN_LENGTH)
+        validate!(pattern, max_length: max_length)
+        true
+      rescue ArgumentError
+        false
+      end
+    end
+  end
+
   class Constraint
     # A constraint for matching by a specific objectId value.
     #
@@ -548,17 +599,20 @@ module Parse
       end
     end
 
-    # Array empty constraint - shorthand for size == 0.
-    # Matches arrays that have no elements.
+    # Array empty constraint - matches arrays with no elements.
+    # Uses direct equality for the true case (index-friendly) rather than $size.
     #
-    #  q.where :tags.arr_empty => true   # arrays with 0 elements
-    #  q.where :tags.arr_empty => false  # arrays with 1+ elements (same as nempty)
+    #  q.where :tags.arr_empty => true   # arrays with 0 elements (uses { field: [] })
+    #  q.where :tags.arr_empty => false  # arrays with 1+ elements (uses $size > 0)
     #
     # @note This uses the arr_empty name to avoid conflict with the existing empty constraint
     #   which checks if the first array element exists.
+    # @note The true case uses equality which can leverage MongoDB indexes.
+    #   The false case still requires $size which cannot use indexes.
     #
     # @see ArraySizeConstraint
     # @see ArrayNotEmptyConstraint
+    # @see ArrayEmptyOrNilConstraint
     class ArrayEmptyConstraint < Constraint
       # @!method arr_empty
       # A registered method on a symbol to create the constraint.
@@ -575,18 +629,16 @@ module Parse
         end
 
         field_name = @operation.operand.to_s
-        size_expr = { "$size" => { "$ifNull" => ["$#{field_name}", []] } }
 
-        # If true, match size == 0; if false, match size > 0
-        comparison = value ? { "$eq" => [size_expr, 0] } : { "$gt" => [size_expr, 0] }
-
-        pipeline = [
-          {
-            "$match" => {
-              "$expr" => comparison
-            }
-          }
-        ]
+        if value
+          # Use direct equality for empty array (can use MongoDB index)
+          pipeline = [{ "$match" => { field_name => [] } }]
+        else
+          # For non-empty, use $ne [] which is index-friendly
+          # Note: This matches arrays with elements but also matches nil/missing
+          # Use not_empty constraint if you need to exclude nil/missing
+          pipeline = [{ "$match" => { field_name => { "$ne" => [] } } }]
+        end
 
         { "__aggregation_pipeline" => pipeline }
       end
@@ -628,6 +680,128 @@ module Parse
             }
           }
         ]
+
+        { "__aggregation_pipeline" => pipeline }
+      end
+    end
+
+    # Array empty or nil constraint - matches arrays that are empty OR nil/missing.
+    # This is useful for finding records where an array field has no values,
+    # whether it's explicitly empty or was never set.
+    #
+    #  q.where :tags.empty_or_nil => true   # matches [] or nil/missing
+    #  q.where :tags.empty_or_nil => false  # matches non-empty arrays only
+    #
+    # @note Uses index-friendly operations where possible.
+    #
+    # @see ArrayEmptyConstraint
+    # @see ExistsConstraint
+    class ArrayEmptyOrNilConstraint < Constraint
+      # @!method empty_or_nil
+      # A registered method on a symbol to create the constraint.
+      # @example
+      #  q.where :field.empty_or_nil => true
+      # @return [ArrayEmptyOrNilConstraint]
+      register :empty_or_nil
+
+      # @return [Hash] the compiled constraint using aggregation pipeline.
+      def build
+        value = formatted_value
+        unless value == true || value == false
+          raise ArgumentError, "#{self.class}: Value must be true or false"
+        end
+
+        field_name = @operation.operand.to_s
+
+        if value
+          # Match empty array OR nil/missing field
+          # Uses $or with index-friendly conditions
+          pipeline = [
+            {
+              "$match" => {
+                "$or" => [
+                  { field_name => [] },
+                  { field_name => { "$exists" => false } },
+                  { field_name => nil }
+                ]
+              }
+            }
+          ]
+        else
+          # Match non-empty arrays (must exist, not nil, and not empty)
+          # Use $and to combine multiple conditions without duplicate keys
+          pipeline = [
+            {
+              "$match" => {
+                "$and" => [
+                  { field_name => { "$exists" => true } },
+                  { field_name => { "$ne" => nil } },
+                  { field_name => { "$ne" => [] } }
+                ]
+              }
+            }
+          ]
+        end
+
+        { "__aggregation_pipeline" => pipeline }
+      end
+    end
+
+    # Array not empty constraint - matches arrays that have at least one element.
+    # This is the opposite of empty_or_nil: it matches only non-empty arrays.
+    #
+    #  q.where :tags.not_empty => true   # matches non-empty arrays only
+    #  q.where :tags.not_empty => false  # matches [] or nil/missing
+    #
+    # @note Uses index-friendly operations where possible.
+    #
+    # @see ArrayEmptyOrNilConstraint
+    # @see ArrayEmptyConstraint
+    class ArrayNotEmptyOrNilConstraint < Constraint
+      # @!method not_empty
+      # A registered method on a symbol to create the constraint.
+      # @example
+      #  q.where :field.not_empty => true
+      # @return [ArrayNotEmptyOrNilConstraint]
+      register :not_empty
+
+      # @return [Hash] the compiled constraint using aggregation pipeline.
+      def build
+        value = formatted_value
+        unless value == true || value == false
+          raise ArgumentError, "#{self.class}: Value must be true or false"
+        end
+
+        field_name = @operation.operand.to_s
+
+        if value
+          # Match non-empty arrays (must exist, not nil, and not empty)
+          # Use $and to combine multiple conditions without duplicate keys
+          pipeline = [
+            {
+              "$match" => {
+                "$and" => [
+                  { field_name => { "$exists" => true } },
+                  { field_name => { "$ne" => nil } },
+                  { field_name => { "$ne" => [] } }
+                ]
+              }
+            }
+          ]
+        else
+          # Match empty array OR nil/missing field
+          pipeline = [
+            {
+              "$match" => {
+                "$or" => [
+                  { field_name => [] },
+                  { field_name => { "$exists" => false } },
+                  { field_name => nil }
+                ]
+              }
+            }
+          ]
+        end
 
         { "__aggregation_pipeline" => pipeline }
       end
@@ -1356,7 +1530,8 @@ module Parse
     #  :name.like => /Bob/i
     #
     class RegularExpressionConstraint < Constraint
-      #Requires that a key's value match a regular expression
+      # Requires that a key's value match a regular expression.
+      # Includes security validation to prevent ReDoS attacks.
 
       # @!method like
       # A registered method on a symbol to create the constraint. Maps to Parse operator "$regex".
@@ -1370,6 +1545,24 @@ module Parse
       constraint_keyword :$regex
       register :like
       register :regex
+
+      # Builds the regex constraint with security validation.
+      # @raise [ArgumentError] if the pattern is potentially dangerous (ReDoS)
+      # @return [Hash] the compiled constraint
+      def build
+        value = formatted_value
+        pattern_str = value.is_a?(Regexp) ? value.source : value.to_s
+        options = value.is_a?(Regexp) && value.casefold? ? "i" : nil
+
+        # Validate the regex pattern for ReDoS vulnerabilities
+        Parse::RegexSecurity.validate!(pattern_str)
+
+        if options
+          { @operation.operand => { key => pattern_str, :$options => options } }
+        else
+          { @operation.operand => { key => pattern_str } }
+        end
+      end
     end
 
     # Equivalent to the `$relatedTo` Parse query operation. If you want to
@@ -1749,11 +1942,16 @@ module Parse
         unless value.is_a?(String)
           raise ArgumentError, "#{self.class}: Value must be a string for starts_with constraint"
         end
-        
+
+        # Validate length to prevent performance issues
+        if value.length > Parse::RegexSecurity::MAX_PATTERN_LENGTH
+          raise ArgumentError, "#{self.class}: Value too long (#{value.length} chars, max #{Parse::RegexSecurity::MAX_PATTERN_LENGTH})"
+        end
+
         # Escape special regex characters in the prefix
         escaped_value = Regexp.escape(value)
         regex_pattern = "^#{escaped_value}"
-        
+
         { @operation.operand => { :$regex => regex_pattern, :$options => "i" } }
       end
     end
@@ -1780,11 +1978,16 @@ module Parse
         unless value.is_a?(String)
           raise ArgumentError, "#{self.class}: Value must be a string for contains constraint"
         end
-        
+
+        # Validate length to prevent performance issues
+        if value.length > Parse::RegexSecurity::MAX_PATTERN_LENGTH
+          raise ArgumentError, "#{self.class}: Value too long (#{value.length} chars, max #{Parse::RegexSecurity::MAX_PATTERN_LENGTH})"
+        end
+
         # Escape special regex characters in the search text
         escaped_value = Regexp.escape(value)
         regex_pattern = ".*#{escaped_value}.*"
-        
+
         { @operation.operand => { :$regex => regex_pattern, :$options => "i" } }
       end
     end

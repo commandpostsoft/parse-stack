@@ -23,6 +23,9 @@ echo "Looking for parse-server..."
 which node
 ls -la /parse-server/
 
+# LiveQuery classes to enable real-time updates
+LIVE_QUERY_CLASSES="Song,Album,User,_User,TestLiveQuery"
+
 # Try different ways to start parse-server
 if [ -f "/parse-server/bin/parse-server" ]; then
   echo "Using /parse-server/bin/parse-server"
@@ -34,7 +37,9 @@ if [ -f "/parse-server/bin/parse-server" ]; then
     --mountPath /parse \
     --cloud /parse-server/cloud/main.js \
     --logLevel info \
-    --allowClientClassCreation true
+    --allowClientClassCreation true \
+    --liveQuery.classNames "$LIVE_QUERY_CLASSES" \
+    --startLiveQueryServer true
 elif [ -f "/usr/src/app/bin/parse-server" ]; then
   echo "Using /usr/src/app/bin/parse-server"
   exec /usr/src/app/bin/parse-server \
@@ -45,7 +50,9 @@ elif [ -f "/usr/src/app/bin/parse-server" ]; then
     --mountPath /parse \
     --cloud /parse-server/cloud/main.js \
     --logLevel info \
-    --allowClientClassCreation true
+    --allowClientClassCreation true \
+    --liveQuery.classNames "$LIVE_QUERY_CLASSES" \
+    --startLiveQueryServer true
 else
   echo "Trying with node and index.js"
   cd /parse-server
@@ -57,5 +64,7 @@ else
     --mountPath /parse \
     --cloud /parse-server/cloud/main.js \
     --logLevel info \
-    --allowClientClassCreation true
+    --allowClientClassCreation true \
+    --liveQuery.classNames "$LIVE_QUERY_CLASSES" \
+    --startLiveQueryServer true
 fi

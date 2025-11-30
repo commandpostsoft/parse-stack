@@ -236,8 +236,8 @@ class ArrayConstraintsUnitTest < Minitest::Test
     puts "✅ size constraint correctly handles comparison operators"
   end
 
-  def test_arr_empty_constraint
-    puts "\n=== Testing arr_empty constraint ==="
+  def test_arr_empty_constraint_true
+    puts "\n=== Testing arr_empty => true constraint (uses equality) ==="
 
     query = Parse::Query.new("TestClass")
     query.where(:tags.arr_empty => true)
@@ -246,11 +246,27 @@ class ArrayConstraintsUnitTest < Minitest::Test
     match_stage = pipeline.find { |stage| stage["$match"] }
 
     assert match_stage, "Should have $match stage"
-    # Check for size == 0
-    expr = match_stage["$match"]["$expr"]
-    assert expr["$eq"], "Should use $eq for empty check"
+    # arr_empty => true now uses direct equality { field: [] } for index usage
+    assert_equal [], match_stage["$match"]["tags"], "Should use equality with empty array"
 
-    puts "✅ arr_empty constraint correctly builds pipeline"
+    puts "✅ arr_empty => true correctly uses equality (index-friendly)"
+  end
+
+  def test_arr_empty_constraint_false
+    puts "\n=== Testing arr_empty => false constraint (uses $ne []) ==="
+
+    query = Parse::Query.new("TestClass")
+    query.where(:tags.arr_empty => false)
+
+    pipeline = query.pipeline
+    match_stage = pipeline.find { |stage| stage["$match"] }
+
+    assert match_stage, "Should have $match stage"
+    # arr_empty => false uses $ne [] which is index-friendly
+    tags_condition = match_stage["$match"]["tags"]
+    assert_equal [], tags_condition["$ne"], "Should use $ne => []"
+
+    puts "✅ arr_empty => false correctly uses $ne [] (index-friendly)"
   end
 
   def test_arr_nempty_constraint
@@ -303,5 +319,125 @@ class ArrayConstraintsUnitTest < Minitest::Test
     assert match_stage["$match"]["$expr"]["$eq"], "Should use $eq for empty array"
 
     puts "✅ eq_array correctly handles empty array"
+  end
+
+  # ==========================================================================
+  # Test: empty_or_nil constraint
+  # ==========================================================================
+
+  def test_empty_or_nil_constraint_true
+    puts "\n=== Testing empty_or_nil => true constraint ==="
+
+    query = Parse::Query.new("TestClass")
+    query.where(:tags.empty_or_nil => true)
+
+    pipeline = query.pipeline
+    match_stage = pipeline.find { |stage| stage["$match"] }
+
+    assert match_stage, "Should have $match stage"
+    or_conditions = match_stage["$match"]["$or"]
+    assert or_conditions, "Should use $or for empty_or_nil"
+    assert_equal 3, or_conditions.length, "Should have 3 conditions (empty, not exists, nil)"
+
+    # Check for empty array condition
+    assert or_conditions.any? { |c| c["tags"] == [] }, "Should match empty array"
+    # Check for exists => false condition
+    assert or_conditions.any? { |c| c["tags"].is_a?(Hash) && c["tags"]["$exists"] == false }, "Should match non-existent field"
+    # Check for nil condition
+    assert or_conditions.any? { |c| c["tags"].nil? }, "Should match nil value"
+
+    puts "✅ empty_or_nil => true correctly builds $or with 3 conditions"
+  end
+
+  def test_empty_or_nil_constraint_false
+    puts "\n=== Testing empty_or_nil => false constraint ==="
+
+    query = Parse::Query.new("TestClass")
+    query.where(:tags.empty_or_nil => false)
+
+    pipeline = query.pipeline
+    match_stage = pipeline.find { |stage| stage["$match"] }
+
+    assert match_stage, "Should have $match stage"
+    and_conditions = match_stage["$match"]["$and"]
+    assert and_conditions, "Should use $and for non-empty check"
+    assert_equal 3, and_conditions.length, "Should have 3 conditions"
+
+    # Check for exists => true condition
+    assert and_conditions.any? { |c| c["tags"].is_a?(Hash) && c["tags"]["$exists"] == true }, "Should check $exists => true"
+    # Check for $ne => nil condition
+    assert and_conditions.any? { |c| c["tags"].is_a?(Hash) && c["tags"]["$ne"] == nil }, "Should check $ne => nil"
+    # Check for $ne => [] condition
+    assert and_conditions.any? { |c| c["tags"].is_a?(Hash) && c["tags"]["$ne"] == [] }, "Should check $ne => []"
+
+    puts "✅ empty_or_nil => false correctly builds $and with 3 conditions"
+  end
+
+  # ==========================================================================
+  # Test: not_empty constraint (opposite of empty_or_nil)
+  # ==========================================================================
+
+  def test_not_empty_constraint_true
+    puts "\n=== Testing not_empty => true constraint ==="
+
+    query = Parse::Query.new("TestClass")
+    query.where(:tags.not_empty => true)
+
+    pipeline = query.pipeline
+    match_stage = pipeline.find { |stage| stage["$match"] }
+
+    assert match_stage, "Should have $match stage"
+    and_conditions = match_stage["$match"]["$and"]
+    assert and_conditions, "Should use $and for non-empty check"
+    assert_equal 3, and_conditions.length, "Should have 3 conditions"
+
+    puts "✅ not_empty => true correctly builds $and with 3 conditions"
+  end
+
+  def test_not_empty_constraint_false
+    puts "\n=== Testing not_empty => false constraint ==="
+
+    query = Parse::Query.new("TestClass")
+    query.where(:tags.not_empty => false)
+
+    pipeline = query.pipeline
+    match_stage = pipeline.find { |stage| stage["$match"] }
+
+    assert match_stage, "Should have $match stage"
+    or_conditions = match_stage["$match"]["$or"]
+    assert or_conditions, "Should use $or for not_empty => false"
+    assert_equal 3, or_conditions.length, "Should have 3 conditions"
+
+    puts "✅ not_empty => false correctly builds empty/nil check"
+  end
+
+  def test_empty_or_nil_requires_boolean
+    puts "\n=== Testing empty_or_nil validation ==="
+
+    query = Parse::Query.new("TestClass")
+
+    error = assert_raises(ArgumentError) do
+      query.where(:tags.empty_or_nil => "yes")
+      query.pipeline
+    end
+
+    assert_match(/must be true or false/, error.message)
+
+    puts "✅ empty_or_nil correctly validates boolean input"
+  end
+
+  def test_not_empty_requires_boolean
+    puts "\n=== Testing not_empty validation ==="
+
+    query = Parse::Query.new("TestClass")
+
+    error = assert_raises(ArgumentError) do
+      query.where(:tags.not_empty => "yes")
+      query.pipeline
+    end
+
+    assert_match(/must be true or false/, error.message)
+
+    puts "✅ not_empty correctly validates boolean input"
   end
 end

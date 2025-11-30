@@ -367,6 +367,38 @@ module Parse
         query(constraints).cursor(limit: limit, order: order)
       end
 
+      # Subscribe to real-time updates for objects in this collection.
+      # Uses Parse LiveQuery WebSocket connection to receive push notifications
+      # when objects are created, updated, deleted, or enter/leave the query results.
+      #
+      # @example Basic subscription (all objects)
+      #   subscription = Song.subscribe
+      #   subscription.on(:create) { |song| puts "New song: #{song.title}" }
+      #   subscription.on(:update) { |song, original| puts "Updated!" }
+      #   subscription.on(:delete) { |song| puts "Deleted!" }
+      #
+      # @example Subscribe with query constraints
+      #   subscription = Song.subscribe(where: { artist: "Beatles" })
+      #   subscription.on_create { |song| puts "New Beatles song!" }
+      #
+      # @example With field filtering
+      #   subscription = User.subscribe(where: { status: "online" }, fields: ["name", "avatar"])
+      #   subscription.on_update { |user| puts "User changed: #{user.name}" }
+      #
+      # @example With session token for ACL-aware subscriptions
+      #   subscription = PrivateData.subscribe(session_token: current_user.session_token)
+      #
+      # @param where [Hash] query constraints for the subscription
+      # @param fields [Array<String>] specific fields to watch for changes (nil = all fields)
+      # @param session_token [String] session token for ACL-aware subscriptions
+      # @param client [Parse::LiveQuery::Client] custom LiveQuery client (optional)
+      # @return [Parse::LiveQuery::Subscription] the subscription object
+      # @see Parse::LiveQuery::Subscription
+      # @see Parse::Query#subscribe
+      def subscribe(where: {}, fields: nil, session_token: nil, client: nil)
+        query(where).subscribe(fields: fields, session_token: session_token, client: client)
+      end
+
       # Find objects for a given objectId in this collection. The result is a list
       # (or single item) of the objects that were successfully found.
       # @example

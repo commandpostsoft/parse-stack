@@ -5,7 +5,9 @@ module Parse
   # Set of Parse protocol constants.
   module Protocol
     # The default server url, based on the hosted Parse platform.
-    SERVER_URL = "http://localhost:1337/parse".freeze
+    # Uses HTTPS by default for security. Override with ENV["PARSE_SERVER_URL"]
+    # or pass server_url: to Parse.setup for custom configurations.
+    SERVER_URL = "https://localhost:1337/parse".freeze
     # The request header field to send the application Id.
     APP_ID = "X-Parse-Application-Id"
     # The request header field to send the REST API key.

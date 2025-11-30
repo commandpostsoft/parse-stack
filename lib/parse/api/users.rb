@@ -122,6 +122,37 @@ module Parse
         response
       end
 
+      # Login a user with MFA (Multi-Factor Authentication).
+      #
+      # This method handles Parse Server's MFA adapter which requires both
+      # standard credentials AND an MFA token when MFA is enabled for the user.
+      #
+      # @param username [String] the Parse user username.
+      # @param password [String] the Parse user's associated password.
+      # @param mfa_token [String] the TOTP code from authenticator app or recovery code.
+      # @param headers [Hash] additional HTTP headers to send with the request.
+      # @param opts [Hash] additional options to pass to the {Parse::Client} request.
+      # @return [Parse::Response]
+      #
+      # @example
+      #   response = client.login_with_mfa("john", "password123", "123456")
+      def login_with_mfa(username, password, mfa_token, headers: {}, **opts)
+        # Parse Server expects authData to be sent with POST for MFA login
+        body = {
+          username: username,
+          password: password,
+          authData: {
+            mfa: {
+              token: mfa_token
+            }
+          }
+        }
+        headers.merge!({ Parse::Protocol::REVOCABLE_SESSION => "1" })
+        response = request :post, LOGIN_PATH, body: body, headers: headers, opts: opts
+        response.parse_class = Parse::Model::CLASS_USER
+        response
+      end
+
       # Logout a user by deleting the associated session.
       # @param session_token [String] the Parse user session token to delete.
       # @param headers [Hash] additional HTTP headers to send with the request.

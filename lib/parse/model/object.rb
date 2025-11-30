@@ -19,6 +19,8 @@ require_relative "file"
 require_relative "bytes"
 require_relative "date"
 require_relative "time_zone"
+require_relative "phone"
+require_relative "email"
 require_relative "acl"
 require_relative "push"
 require_relative "core/actions"
@@ -879,8 +881,10 @@ class Array
 end
 
 # Load all the core classes.
+require_relative "classes/audience"
 require_relative "classes/installation"
 require_relative "classes/product"
+require_relative "classes/push_status"
 require_relative "classes/role"
 require_relative "classes/session"
 require_relative "classes/user"

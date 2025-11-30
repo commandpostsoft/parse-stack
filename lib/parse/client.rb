@@ -275,6 +275,21 @@ module Parse
     #    cache using the clear_cache! method on your Parse::Client instance.
     # @option opts [Hash] :faraday You may pass a hash of options that will be
     #    passed to the Faraday constructor.
+    # @option opts [String] :live_query_url The WebSocket URL for Parse LiveQuery server
+    #    (e.g., "wss://your-parse-server.com"). If not specified, falls back to
+    #    ENV["PARSE_LIVE_QUERY_URL"]. LiveQuery enables real-time subscriptions
+    #    to changes in Parse objects.
+    #    @example Enable LiveQuery
+    #      Parse.setup(
+    #        server_url: "https://your-server.com/parse",
+    #        application_id: "YOUR_APP_ID",
+    #        api_key: "YOUR_API_KEY",
+    #        live_query_url: "wss://your-server.com"
+    #      )
+    # @option opts [Hash] :live_query Advanced LiveQuery configuration options.
+    #    Pass a hash with custom settings for the LiveQuery client.
+    #    - :url [String] - WebSocket URL (alternative to :live_query_url)
+    #    - :auto_reconnect [Boolean] - Auto-reconnect on disconnect (default: true)
     # @raise Parse::Error::ConnectionError if the client was not properly configured with required keys or url.
     # @raise ArgumentError if the cache instance passed to the :cache option is not of Moneta::Transformer or Moneta::Expires
     # @see Parse::Middleware::BodyBuilder
@@ -286,6 +301,13 @@ module Parse
       @application_id = opts[:application_id] || opts[:app_id] || ENV["PARSE_SERVER_APPLICATION_ID"] || ENV["PARSE_APP_ID"]
       @api_key = opts[:api_key] || opts[:rest_api_key] || ENV["PARSE_SERVER_REST_API_KEY"] || ENV["PARSE_API_KEY"]
       @master_key = opts[:master_key] || ENV["PARSE_SERVER_MASTER_KEY"] || ENV["PARSE_MASTER_KEY"]
+
+      # Security warning for HTTP usage (except localhost/127.0.0.1 for development)
+      if @server_url&.start_with?("http://") && !@server_url.match?(%r{^http://(localhost|127\.0\.0\.1)(:|/)})
+        warn "[Parse::Client] SECURITY WARNING: Using HTTP instead of HTTPS for Parse server. " \
+             "This exposes credentials and data to network interception. " \
+             "Use HTTPS in production: #{@server_url}"
+      end
 
       # Determine the HTTP adapter to use
       # Priority: explicit :adapter > :connection_pooling setting > default (pooling enabled)
@@ -401,6 +423,31 @@ module Parse
         end
       end
       Parse::Client.clients[:default] ||= self
+
+      # Configure LiveQuery if URL provided
+      configure_live_query(opts)
+    end
+
+    # Configure LiveQuery with the given options
+    # @param opts [Hash] configuration options
+    # @option opts [String] :live_query_url WebSocket URL for LiveQuery server (wss://...)
+    # @api private
+    def configure_live_query(opts)
+      live_query_url = opts[:live_query_url] || ENV["PARSE_LIVE_QUERY_URL"]
+
+      return unless live_query_url || opts[:live_query]
+
+      require_relative "live_query"
+
+      live_query_opts = opts[:live_query].is_a?(Hash) ? opts[:live_query] : {}
+
+      Parse::LiveQuery.configure(
+        url: live_query_url || live_query_opts[:url],
+        application_id: @application_id,
+        client_key: @api_key,
+        master_key: @master_key,
+        **live_query_opts
+      )
     end
 
     # If set, returns the current retry count for this instance. Otherwise,

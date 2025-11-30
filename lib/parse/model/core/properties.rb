@@ -19,7 +19,7 @@ module Parse
   # supported in Parse and mapping them between their remote names with their local ruby named attributes.
   module Properties
     # These are the base types supported by Parse.
-    TYPES = [:string, :relation, :integer, :float, :boolean, :date, :array, :file, :geopoint, :bytes, :object, :acl, :timezone].freeze
+    TYPES = [:string, :relation, :integer, :float, :boolean, :date, :array, :file, :geopoint, :bytes, :object, :acl, :timezone, :phone, :email].freeze
     # These are the base mappings of the remote field name types.
     BASE = { objectId: :string, createdAt: :date, updatedAt: :date, ACL: :acl }.freeze
     # The list of properties that are part of all objects
@@ -61,6 +61,12 @@ module Parse
       # @return [Hash] the fields that are marked as enums.
       def enums
         @enums ||= {}
+      end
+
+      # @return [Hash] semantic descriptions for properties (used by Parse::Agent).
+      # Maps property names (symbols) to their description strings.
+      def property_descriptions
+        @property_descriptions ||= {}
       end
 
       # Set the property fields for this class.
@@ -120,6 +126,8 @@ module Parse
         data_type = :timezone if data_type == :time_zone
         data_type = :geopoint if data_type == :geo_point
         data_type = :integer if data_type == :int || data_type == :number
+        data_type = :phone if data_type == :phone_number || data_type == :mobile || data_type == :e164
+        data_type = :email if data_type == :email_address
 
         # set defaults
         opts = { required: false,
@@ -129,6 +137,7 @@ module Parse
                 scopes: true,
                 _prefix: nil,
                 _suffix: false,
+                _description: nil,  # Agent metadata: semantic description for LLMs
                 field: key.to_s.camelize(:lower) }.merge(opts)
         #By default, the remote field name is a lower-first-camelcase version of the key
         # it can be overriden by the :field parameter
@@ -157,6 +166,11 @@ module Parse
         # This creates a mapping between the local field and the remote field name.
         self.field_map.merge!(key => parse_field)
 
+        # Store the property description for agent metadata if provided
+        if opts[:_description].present?
+          self.property_descriptions[key] = opts[:_description].to_s.freeze
+        end
+
         # if the field is marked as required, then add validations
         if opts[:required]
           # if integer or float, validate that it's a number
@@ -176,6 +190,26 @@ module Parse
             end
           end # validates_each
         end # data_type == :timezone
+
+        # phone datatypes validate E.164 format.
+        if data_type == :phone
+          validates_each key do |record, attribute, value|
+            # Parse::Phone objects have a `valid?` method to determine if the phone is valid E.164.
+            unless value.nil? || value.valid?
+              record.errors.add(attribute, "field :#{attribute} must be a valid E.164 phone number (e.g., +14155551234).")
+            end
+          end # validates_each
+        end # data_type == :phone
+
+        # email datatypes validate email format.
+        if data_type == :email
+          validates_each key do |record, attribute, value|
+            # Parse::Email objects have a `valid?` method to determine if the email is valid.
+            unless value.nil? || value.valid?
+              record.errors.add(attribute, "field :#{attribute} must be a valid email address.")
+            end
+          end # validates_each
+        end # data_type == :email
 
         is_enum_type = opts[:enum].nil? == false
 
@@ -605,6 +639,10 @@ module Parse
         end
       when :timezone
         val = Parse::TimeZone.new(val) if val.present?
+      when :phone
+        val = Parse::Phone.new(val) if val.present?
+      when :email
+        val = Parse::Email.new(val) if val.present?
       else
         # You can provide a specific class instead of a symbol format
         if data_type.respond_to?(:typecast)

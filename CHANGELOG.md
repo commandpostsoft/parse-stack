@@ -1,5 +1,890 @@
 ## Parse-Stack Changelog
 
+### 3.0.0
+
+#### New Features: Push Notifications Enhancement
+
+Comprehensive improvements to the Push notification system with a fluent builder pattern API, iOS silent push support, rich push support, and Installation channel management.
+
+##### Push Builder Pattern API
+
+New fluent API for building push notifications with method chaining:
+
+```ruby
+# Fluent builder pattern
+Parse::Push.new
+  .to_channel("news")
+  .with_title("Breaking News")
+  .with_body("Major event happening now!")
+  .with_badge(1)
+  .with_sound("alert.caf")
+  .with_data(article_id: "12345")
+  .schedule(Time.now + 3600)
+  .expires_in(7200)
+  .send!
+
+# Class method shortcuts
+Parse::Push.to_channel("news").with_alert("Hello!").send!
+Parse::Push.to_channels("sports", "weather").with_alert("Update").send!
+
+# Query-based targeting
+Parse::Push.new
+  .to_query { |q| q.where(device_type: "ios", :app_version.gte => "2.0") }
+  .with_alert("iOS 2.0+ users only")
+  .send!
+```
+
+**Builder Methods:**
+- `to_channel(channel)` / `to_channels(*channels)` - Target specific channels
+- `to_query { |q| }` - Target via query constraints on Installation
+- `with_alert(message)` / `with_body(body)` - Set the alert message
+- `with_title(title)` - Set notification title
+- `with_badge(count)` - Set badge number
+- `with_sound(name)` - Set sound file
+- `with_data(hash)` - Add custom payload data
+- `schedule(time)` - Schedule for future delivery
+- `expires_at(time)` / `expires_in(seconds)` - Set expiration
+- `send!` - Send with error raising
+
+**Class Methods:**
+- `Parse::Push.to_channel(channel)` - Create push targeting a channel
+- `Parse::Push.to_channels(*channels)` - Create push targeting multiple channels
+- `Parse::Push.channels` - Alias for `Parse::Installation.all_channels`
+
+##### Silent Push Support (iOS)
+
+Support for iOS background/silent push notifications using `content-available`:
+
+```ruby
+# Silent push for background data sync
+Parse::Push.new
+  .to_channel("sync")
+  .silent!
+  .with_data(action: "refresh", resource: "users")
+  .send!
+```
+
+- `content_available` attribute for iOS background notifications
+- `silent!` builder method to enable content-available
+- `content_available?` predicate method
+- Payload automatically includes `content-available: 1` when enabled
+
+##### Rich Push Support (iOS)
+
+Support for iOS rich notifications with images, categories, and mutable content:
+
+```ruby
+# Rich push with image
+Parse::Push.new
+  .to_channel("media")
+  .with_title("New Photo")
+  .with_body("Check out this photo!")
+  .with_image("https://example.com/photo.jpg")
+  .with_category("PHOTO_ACTIONS")
+  .send!
+```
+
+- `mutable_content` attribute for notification service extensions
+- `category` attribute for action buttons
+- `image_url` attribute for image attachments
+- `with_image(url)` - Set image URL (auto-enables mutable-content)
+- `with_category(name)` - Set notification category
+- `mutable!` - Enable mutable-content explicitly
+- `mutable_content?` predicate method
+
+##### Installation Channel Management
+
+New methods on `Parse::Installation` for managing channel subscriptions:
+
+```ruby
+# Instance methods
+installation = Parse::Installation.first
+installation.subscribe("news", "weather")      # Subscribe and save
+installation.unsubscribe("sports")              # Unsubscribe and save
+installation.subscribed_to?("news")             # Check subscription
+
+# Class methods
+Parse::Installation.all_channels                # List all unique channels
+Parse::Installation.subscribers_count("news")   # Count channel subscribers
+Parse::Installation.subscribers("news")         # Query for subscribers
+  .where(device_type: "ios")
+  .all
+```
+
+**Instance Methods:**
+- `subscribe(*channels)` - Subscribe to channels and save
+- `unsubscribe(*channels)` - Unsubscribe from channels and save
+- `subscribed_to?(channel)` - Check if subscribed to a channel
+
+**Class Methods:**
+- `all_channels` - List all unique channel names across installations
+- `subscribers_count(channel)` - Count subscribers to a channel
+- `subscribers(channel)` - Get a query for channel subscribers
+
+##### Push Localization
+
+Support for language-specific push notifications. Parse Server automatically sends the appropriate message based on device locale:
+
+```ruby
+# Localized push notification
+Parse::Push.new
+  .to_channel("international")
+  .with_alert("Default message")
+  .with_title("Default title")
+  .with_localized_alerts(
+    en: "Hello!",
+    fr: "Bonjour!",
+    es: "Hola!",
+    de: "Hallo!"
+  )
+  .with_localized_titles(
+    en: "Welcome",
+    fr: "Bienvenue",
+    es: "Bienvenido",
+    de: "Willkommen"
+  )
+  .send!
+
+# Or add one language at a time
+Parse::Push.new
+  .with_localized_alert(:en, "Hello!")
+  .with_localized_alert(:fr, "Bonjour!")
+  .with_localized_title(:en, "Welcome")
+  .send!
+```
+
+- `with_localized_alert(lang, message)` - Add alert for specific language
+- `with_localized_title(lang, title)` - Add title for specific language
+- `with_localized_alerts(hash)` - Set multiple localized alerts at once
+- `with_localized_titles(hash)` - Set multiple localized titles at once
+- Payload includes `alert-{lang}` and `title-{lang}` keys
+
+##### Badge Increment
+
+Support for incrementing badge counts instead of setting absolute values:
+
+```ruby
+# Increment badge by 1
+Parse::Push.new
+  .to_channel("messages")
+  .with_alert("New message!")
+  .increment_badge
+  .send!
+
+# Increment badge by custom amount
+Parse::Push.new
+  .to_channel("bulk")
+  .with_alert("5 new items!")
+  .increment_badge(5)
+  .send!
+
+# Clear badge (set to 0)
+Parse::Push.new
+  .to_channel("read")
+  .silent!
+  .clear_badge
+  .send!
+```
+
+- `increment_badge(amount = 1)` - Increment badge by amount (default: 1)
+- `clear_badge` - Set badge to 0
+- Uses Parse Server's `Increment` operation for atomic updates
+
+##### Saved Audiences (Parse::Audience)
+
+New `Parse::Audience` class for working with the `_Audience` collection. Audiences are pre-defined groups of installations that can be targeted for push notifications:
+
+```ruby
+# Target a saved audience
+Parse::Push.new
+  .to_audience("VIP Users")
+  .with_alert("Exclusive offer!")
+  .send!
+
+# Or by audience ID
+Parse::Push.new
+  .to_audience_id("abc123")
+  .with_alert("Hello!")
+  .send!
+
+# Create and manage audiences
+audience = Parse::Audience.new(
+  name: "iOS Premium Users",
+  query: { "deviceType" => "ios", "premium" => true }
+)
+audience.save
+
+# Query audience stats
+Parse::Audience.find_by_name("VIP Users")
+Parse::Audience.installation_count("VIP Users")
+Parse::Audience.installations("VIP Users").all
+```
+
+**Instance Methods:**
+- `query_constraint` - Get the audience's query constraints
+- `installation_count` - Count matching installations
+- `installations` - Get query for matching installations
+
+**Class Methods:**
+- `find_by_name(name)` - Find audience by name
+- `installation_count(name)` - Count installations for audience
+- `installations(name)` - Query installations for audience
+
+##### Push Status Tracking (Parse::PushStatus)
+
+New `Parse::PushStatus` class for tracking push delivery status from the `_PushStatus` collection:
+
+```ruby
+# Query push status
+status = Parse::PushStatus.find(push_id)
+
+# Check status
+status.succeeded?      # => true
+status.failed?         # => false
+status.complete?       # => true
+status.in_progress?    # => false
+
+# Get metrics
+status.num_sent        # => 1250
+status.num_failed      # => 12
+status.success_rate    # => 99.05
+status.sent_per_type   # => {"ios" => 800, "android" => 450}
+
+# Get summary
+status.summary
+# => { status: "succeeded", sent: 1250, failed: 12, success_rate: 99.05, ... }
+
+# Query scopes
+Parse::PushStatus.succeeded.all    # All successful pushes
+Parse::PushStatus.failed.all       # All failed pushes
+Parse::PushStatus.recent.limit(10) # Recent pushes
+Parse::PushStatus.running.all      # Currently sending
+```
+
+**Status Predicates:**
+- `pending?`, `scheduled?`, `running?`, `succeeded?`, `failed?`
+- `complete?` - True if succeeded or failed
+- `in_progress?` - True if pending, scheduled, or running
+
+**Metrics Methods:**
+- `total_attempted` - num_sent + num_failed
+- `success_rate` - Percentage of successful sends
+- `failure_rate` - Percentage of failed sends
+- `summary` - Hash with all key metrics
+
+**Query Scopes:**
+- `pending`, `scheduled`, `running`, `succeeded`, `failed`
+- `recent` - Ordered by creation time descending
+
+#### New Features: Session Management
+
+Comprehensive session management with expiration checking, query scopes, and bulk operations.
+
+##### Session Expiration Checking
+
+```ruby
+session = Parse::Session.first
+
+# Check if session has expired
+session.expired?          # => false
+session.valid?            # => true (opposite of expired?)
+
+# Get remaining time
+session.time_remaining    # => 3542.5 (seconds until expiration)
+
+# Check if expiring soon
+session.expires_within?(1.hour)  # => true if expires within 1 hour
+
+# Revoke this session
+session.revoke!
+```
+
+##### Session Query Scopes
+
+```ruby
+# Query for active sessions
+Parse::Session.active.all
+
+# Query for expired sessions
+Parse::Session.expired.all
+
+# Query sessions for a specific user
+Parse::Session.for_user(user).all
+Parse::Session.for_user("userId123").all
+
+# Count active sessions for user
+Parse::Session.active_count_for_user(user)
+
+# Revoke all sessions for a user
+Parse::Session.revoke_all_for_user(user)
+
+# Revoke all except current session
+Parse::Session.revoke_all_for_user(user, except: current_session_token)
+```
+
+##### User Session Management
+
+```ruby
+user = Parse::User.first
+
+# Logout from all devices
+user.logout_all!
+
+# Logout from all devices except current
+user.logout_all!(keep_current: true)
+
+# Get count of active sessions
+user.active_session_count
+
+# Get all sessions for user
+user.sessions
+
+# Check if logged in on multiple devices
+user.multi_session?
+```
+
+#### New Features: Installation Management
+
+Enhanced Installation management with device type scopes, badge management, and stale token detection.
+
+##### Device Type Scopes
+
+```ruby
+# Query by device type
+Parse::Installation.ios.all
+Parse::Installation.android.all
+Parse::Installation.by_device_type(:winrt).all
+
+# Instance predicates
+installation.ios?      # => true if iOS device
+installation.android?  # => true if Android device
+```
+
+##### Badge Management
+
+```ruby
+# Reset badge for a specific installation
+installation.reset_badge!
+
+# Increment badge
+installation.increment_badge!      # +1
+installation.increment_badge!(5)   # +5
+
+# Bulk reset badges for a channel
+Parse::Installation.reset_badges_for_channel("news")
+
+# Reset all badges for a device type
+Parse::Installation.reset_all_badges           # iOS (default)
+Parse::Installation.reset_all_badges(:android)
+```
+
+##### Stale Token Detection
+
+Identify and clean up inactive installations:
+
+```ruby
+# Query for stale installations (not updated in 90 days by default)
+Parse::Installation.stale_tokens.all
+Parse::Installation.stale_tokens(days: 30).all
+
+# Count stale installations
+Parse::Installation.stale_count(days: 60)
+
+# Clean up stale installations (use with caution!)
+Parse::Installation.cleanup_stale_tokens!(days: 180)
+
+# Check individual installation
+installation.stale?              # true if not updated in 90 days
+installation.stale?(days: 30)    # custom threshold
+installation.days_since_update   # => 45 (days since last update)
+```
+
+#### Tests Added
+
+- `test/lib/parse/push_test.rb` - 93 unit tests for Push functionality (includes localization, badge increment, audience targeting)
+- `test/lib/parse/installation_channels_test.rb` - 16 unit tests for Installation channels
+- `test/lib/parse/push_integration_test.rb` - 23 integration tests for Push (includes localization, Audience, PushStatus)
+- `test/lib/parse/session_management_test.rb` - 16 unit tests for Session management
+- `test/lib/parse/installation_management_test.rb` - 30 unit tests for Installation management
+- `test/lib/parse/array_constraints_unit_test.rb` - 23 unit tests for array constraints
+
+#### New Features: Query Constraints
+
+##### Array Empty/Nil Constraints
+
+New index-friendly constraints for querying empty and nil arrays:
+
+```ruby
+# Match empty arrays (uses equality, index-friendly)
+query.where(:tags.arr_empty => true)
+
+# Match non-empty arrays
+query.where(:tags.arr_empty => false)
+
+# Match empty OR nil/missing (combines both checks)
+query.where(:tags.empty_or_nil => true)
+
+# Match only non-empty arrays (must exist and have elements)
+query.where(:tags.not_empty => true)
+```
+
+**Performance Improvements:**
+- `arr_empty => true` now uses `{ field: [] }` equality instead of `$size: 0` for better MongoDB index utilization
+- `arr_empty => false` now uses `{ field: { $ne: [] } }` instead of `$size > 0`
+
+**New Constraints:**
+- `empty_or_nil` - Matches arrays that are empty `[]` OR nil/missing fields
+- `not_empty` - Matches arrays that have at least one element (must exist, not nil, not empty)
+
+#### New Classes
+
+- `Parse::Audience` - Represents the `_Audience` collection for saved push audiences
+- `Parse::PushStatus` - Represents the `_PushStatus` collection for push delivery tracking
+
+#### New Feature: Multi-Factor Authentication (MFA)
+
+Comprehensive MFA support that integrates with Parse Server's built-in MFA adapter for TOTP and SMS-based two-factor authentication.
+
+**Features:**
+- TOTP (Time-based One-Time Password) support with authenticator apps (Google Authenticator, Authy, 1Password, etc.)
+- SMS OTP integration via Parse Server's SMS callback
+- QR code generation for easy authenticator app setup
+- Recovery codes for account access
+- MFA status checking and management
+
+**Prerequisites:**
+- Parse Server must have MFA adapter enabled in auth configuration
+- Optional gems: `rotp` (for TOTP), `rqrcode` (for QR codes)
+
+**Parse Server Configuration:**
+```javascript
+{
+  auth: {
+    mfa: {
+      enabled: true,
+      options: ["TOTP"],  // or ["SMS", "TOTP"]
+      digits: 6,
+      period: 30,
+      algorithm: "SHA1"
+    }
+  }
+}
+```
+
+**Usage Examples:**
+
+```ruby
+# Configure MFA issuer name (shown in authenticator apps)
+Parse::MFA.configure do |config|
+  config[:issuer] = "MyApp"
+end
+
+# Step 1: Generate a secret
+secret = Parse::MFA.generate_secret
+
+# Step 2: Show QR code to user
+qr_svg = user.mfa_qr_code(secret, issuer: "MyApp")
+# Render in HTML: <%= raw qr_svg %>
+
+# Step 3: User scans QR and enters code from authenticator
+recovery_codes = user.setup_mfa!(secret: secret, token: "123456")
+# IMPORTANT: Display recovery codes to user - they can only see them once!
+
+# Login with MFA
+user = Parse::User.login_with_mfa("username", "password", "123456")
+
+# Check MFA status
+user.mfa_enabled?  # => true
+user.mfa_status    # => :enabled, :disabled, or :unknown
+
+# Disable MFA (requires current token for verification)
+user.disable_mfa!(current_token: "123456")
+
+# Admin reset (requires master key)
+user.disable_mfa_admin!
+
+# SMS MFA setup (requires Parse Server SMS callback)
+user.setup_sms_mfa!(mobile: "+1234567890")
+user.confirm_sms_mfa!(mobile: "+1234567890", token: "123456")
+```
+
+**Class Methods:**
+- `Parse::MFA.generate_secret` - Generate a new TOTP secret
+- `Parse::MFA.provisioning_uri(secret, account)` - Get otpauth:// URI
+- `Parse::MFA.qr_code(secret, account)` - Generate QR code SVG
+- `Parse::MFA.verify(secret, code)` - Verify a TOTP code locally
+- `Parse::User.login_with_mfa(username, password, token)` - Login with MFA
+- `Parse::User.mfa_required?(username)` - Check if user requires MFA
+
+**Instance Methods on User:**
+- `setup_mfa!(secret:, token:)` - Enable TOTP MFA, returns recovery codes
+- `setup_sms_mfa!(mobile:)` - Initiate SMS MFA setup
+- `confirm_sms_mfa!(mobile:, token:)` - Confirm SMS MFA
+- `disable_mfa!(current_token:)` - Disable MFA with verification
+- `disable_mfa_admin!` - Admin disable without verification (master key)
+- `mfa_enabled?` - Check if MFA is enabled
+- `mfa_status` - Get MFA status (:enabled, :disabled, :unknown)
+- `mfa_qr_code(secret)` - Generate QR code for this user
+- `mfa_provisioning_uri(secret)` - Get provisioning URI for this user
+
+**Errors:**
+- `Parse::MFA::VerificationError` - Invalid MFA token
+- `Parse::MFA::RequiredError` - MFA required but token not provided
+- `Parse::MFA::AlreadyEnabledError` - MFA is already set up
+- `Parse::MFA::NotEnabledError` - MFA is not enabled
+- `Parse::MFA::DependencyError` - Required gem (rotp/rqrcode) not available
+
+**Files Added:**
+- `lib/parse/two_factor_auth.rb` - Core MFA module
+- `lib/parse/two_factor_auth/user_extension.rb` - User class MFA methods
+- `test/lib/parse/mfa_test.rb` - MFA unit tests
+
+#### New Feature: LiveQuery (Experimental)
+
+Real-time data subscriptions using WebSocket connections to Parse Server's LiveQuery feature. Includes production-ready components for reliability and performance.
+
+##### WebSocket Client
+- Full WebSocket RFC 6455 implementation
+- Automatic reconnection with exponential backoff and jitter
+- TLS/SSL support with configurable certificate verification
+- Message size limits to prevent memory exhaustion (default: 1MB)
+
+##### Health Monitoring
+- Ping/pong keep-alive mechanism
+- Stale connection detection
+- Automatic reconnection on connection loss
+
+##### Circuit Breaker Pattern
+- Prevents connection hammering when server is unavailable
+- Three states: closed (normal), open (blocking), half_open (testing)
+- Configurable failure threshold and reset timeout
+
+##### Event Queue with Backpressure
+- Bounded queue prevents memory exhaustion during high event rates
+- Three strategies: `:block`, `:drop_oldest`, `:drop_newest`
+- Configurable queue size and drop callbacks
+
+##### TLS/SSL Security
+Configurable certificate verification modes for secure WebSocket connections:
+- `:verify_peer` (default) - Full certificate validation, recommended for production
+- `:verify_none` - Skip certificate validation, use only for development/testing
+
+##### Configuration
+```ruby
+Parse::LiveQuery.configure do |config|
+  config.url = "wss://your-server.com"
+
+  # TLS/SSL verification
+  config.tls_verify_mode = :verify_peer  # :verify_peer (default) or :verify_none
+
+  # Message size protection (default: 1MB)
+  config.max_message_size = 1_048_576    # bytes
+
+  # Health monitoring
+  config.ping_interval = 30.0        # seconds between pings
+  config.pong_timeout = 10.0         # seconds to wait for pong
+
+  # Circuit breaker
+  config.circuit_failure_threshold = 5
+  config.circuit_reset_timeout = 60.0
+
+  # Event queue backpressure
+  config.event_queue_size = 1000
+  config.backpressure_strategy = :drop_oldest
+
+  # Logging
+  config.logging_enabled = true
+  config.log_level = :debug
+end
+```
+
+##### Usage
+```ruby
+# Subscribe to changes
+client = Parse::LiveQuery::Client.new(
+  url: "wss://your-server.com",
+  application_id: "your_app_id",
+  client_key: "your_client_key"
+)
+
+subscription = client.subscribe("Song", where: { "plays" => { "$gt" => 1000 } })
+
+subscription.on(:create) { |song| puts "New hit: #{song['title']}" }
+subscription.on(:update) { |song, original| puts "Updated: #{song['title']}" }
+subscription.on(:delete) { |song| puts "Deleted: #{song['objectId']}" }
+subscription.on(:enter) { |song| puts "Now matches query" }
+subscription.on(:leave) { |song| puts "No longer matches" }
+
+# Check health
+puts client.health_monitor.health_info
+
+# Graceful shutdown
+client.close
+```
+
+##### Files Added
+- `lib/parse/live_query.rb` - Main module and client
+- `lib/parse/live_query/configuration.rb` - Centralized configuration
+- `lib/parse/live_query/logging.rb` - Structured logging module
+- `lib/parse/live_query/health_monitor.rb` - Ping/pong and stale detection
+- `lib/parse/live_query/circuit_breaker.rb` - Circuit breaker pattern
+- `lib/parse/live_query/event_queue.rb` - Bounded queue with backpressure
+- `lib/parse/live_query/subscription.rb` - Subscription management
+
+##### Tests Added
+- `test/lib/parse/live_query/client_test.rb`
+- `test/lib/parse/live_query/configuration_test.rb`
+- `test/lib/parse/live_query/logging_test.rb`
+- `test/lib/parse/live_query/health_monitor_test.rb`
+- `test/lib/parse/live_query/circuit_breaker_test.rb`
+- `test/lib/parse/live_query/event_queue_test.rb`
+
+#### New Feature: Fetch Key Validation
+
+New configuration option to validate keys in partial fetch operations, helping catch typos and undefined field references early.
+
+```ruby
+# Default behavior: validation enabled
+song.fetch!(keys: [:title, :nonexistent_field])
+# => [Parse::Fetch] Warning: unknown keys [:nonexistent_field] for Song.
+#    These fields are not defined on the model. (silence with Parse.validate_query_keys = false)
+
+# Disable key validation (useful for dynamic schemas)
+Parse.validate_query_keys = false
+
+# Or disable all query warnings globally
+Parse.warn_on_query_issues = false
+```
+
+**Configuration Options:**
+- `Parse.validate_query_keys = true` (default) - Warn about undefined keys in fetch operations
+- `Parse.validate_query_keys = false` - Disable key validation (for dynamic schemas)
+- Validation only runs when both `validate_query_keys` AND `warn_on_query_issues` are `true`
+
+#### New Features: AI/LLM Agent Integration (Experimental)
+
+Parse Stack now includes experimental support for AI/LLM agents to interact with your Parse data through a standardized tool interface. This enables natural language querying and intelligent data exploration.
+
+##### Parse::Agent
+
+The `Parse::Agent` class provides a programmatic interface for AI agents to execute database operations:
+
+```ruby
+# Create an agent
+agent = Parse::Agent.new
+
+# Execute tools directly
+result = agent.execute(:get_all_schemas)
+result = agent.execute(:query_class, class_name: "Song", limit: 10)
+result = agent.execute(:count_objects, class_name: "Song", where: { plays: { "$gte" => 1000 } })
+
+# Ask natural language questions (requires LLM endpoint)
+response = agent.ask("How many songs have more than 1000 plays?")
+puts response[:answer]
+```
+
+**Permission Levels:**
+- `:readonly` (default) - Query, count, schema, and aggregation operations
+- `:write` - Adds create/update object operations
+- `:admin` - Full access including delete operations
+
+**Available Tools:**
+- `get_all_schemas` - List all classes with field counts
+- `get_schema` - Get detailed field info for a class
+- `query_class` - Query objects with constraints
+- `count_objects` - Count objects matching constraints
+- `get_object` - Fetch a single object by ID
+- `get_sample_objects` - Get sample objects to understand data format
+- `aggregate` - Run MongoDB aggregation pipelines
+- `explain_query` - Get query execution plan
+- `call_method` - Call agent-allowed methods on models
+
+##### MCP Server (Model Context Protocol)
+
+An HTTP server that exposes Parse data to external AI agents via the Model Context Protocol:
+
+```ruby
+# Enable MCP server (experimental)
+Parse.mcp_server_enabled = true
+Parse::Agent.enable_mcp!(port: 3001)
+Parse::Agent::MCPServer.run(port: 3001)
+```
+
+**Endpoints:**
+- `GET /health` - Health check
+- `GET /tools` - List available tools
+- `POST /mcp` - Execute tool calls
+
+##### Agent Metadata DSL
+
+New DSL methods to annotate your models with agent-friendly metadata:
+
+```ruby
+class Song < Parse::Object
+  # Mark class as visible to agents (filters schema listing)
+  agent_visible
+
+  # Class description for agent context
+  agent_description "A music track in the catalog"
+
+  # Property descriptions
+  property :title, :string, _description: "The song title"
+  property :plays, :integer, _description: "Total play count"
+  property :artist, :pointer, _description: "The performing artist"
+
+  # Expose methods to agents with permission levels
+  agent_readonly :find_popular, "Find songs with high play counts"
+  agent_write :increment_plays, "Increment the play counter"
+  agent_admin :reset_stats, "Reset all statistics"
+
+  def self.find_popular(min_plays: 1000)
+    query(:plays.gte => min_plays).limit(100)
+  end
+
+  def increment_plays
+    self.plays ||= 0
+    self.plays += 1
+    save
+  end
+
+  def self.reset_stats
+    # Admin-only operation
+  end
+end
+```
+
+**DSL Methods:**
+- `agent_visible` - Include this class in agent schema listings
+- `agent_description "text"` - Set class description
+- `property :name, :type, _description: "text"` - Set field description
+- `agent_method :name, "description"` - Expose a method (default: readonly)
+- `agent_readonly :name, "description"` - Expose as readonly
+- `agent_write :name, "description"` - Require write permission
+- `agent_admin :name, "description"` - Require admin permission
+
+##### Token-Optimized Schema Output
+
+Schema responses are optimized for LLM token efficiency with a compact format:
+
+```ruby
+# get_all_schemas returns compact format
+{
+  total: 5,
+  note: "Use get_schema(class_name) for detailed field info",
+  built_in: [{ name: "_User", fields: 8 }, { name: "_Role", fields: 3 }],
+  custom: [
+    { name: "Song", fields: 5, desc: "A music track", methods: 2 },
+    { name: "Artist", fields: 3 }
+  ]
+}
+```
+
+##### Security Features (Hardened in 3.0.0)
+
+Comprehensive security measures protect against injection attacks, resource exhaustion, and unauthorized access.
+
+**Rate Limiting (Thread-Safe Sliding Window):**
+```ruby
+# Default: 60 requests per 60-second window
+agent = Parse::Agent.new
+
+# Custom rate limit
+agent = Parse::Agent.new(
+  rate_limit: 100,      # requests per window
+  rate_window: 60       # window in seconds
+)
+
+# Check rate limit status
+agent.rate_limiter.remaining   # => 57 (requests left)
+agent.rate_limiter.retry_after # => nil (or seconds if limited)
+agent.rate_limiter.stats       # => { limit: 60, used: 3, remaining: 57, ... }
+```
+
+**Aggregation Pipeline Validation:**
+Pipelines are validated against a strict whitelist before execution.
+
+| Blocked (Security Risk) | Reason |
+|------------------------|--------|
+| `$out` | Writes data to collections |
+| `$merge` | Writes/modifies data |
+| `$function` | Executes arbitrary JavaScript |
+| `$accumulator` | Executes arbitrary JavaScript |
+
+| Allowed (Read-Only) |
+|--------------------|
+| `$match`, `$group`, `$sort`, `$project`, `$limit`, `$skip`, `$unwind`, `$lookup`, `$count`, `$addFields`, `$set`, `$bucket`, `$bucketAuto`, `$facet`, `$sample`, `$sortByCount`, `$replaceRoot`, `$replaceWith`, `$redact`, `$graphLookup`, `$unionWith` |
+
+```ruby
+# Blocked operations raise PipelineSecurityError
+begin
+  agent.execute(:aggregate,
+    class_name: "Song",
+    pipeline: [{ "$out" => "hacked" }]
+  )
+rescue Parse::Agent::PipelineValidator::PipelineSecurityError => e
+  puts "Security violation: #{e.message}"
+end
+```
+
+**Query Constraint Validation:**
+Query operators are validated against a strict whitelist to prevent code injection.
+
+| Blocked (Security Risk) | Reason |
+|------------------------|--------|
+| `$where` | Executes arbitrary JavaScript |
+| `$function` | Executes arbitrary JavaScript |
+| `$accumulator` | Executes arbitrary JavaScript |
+| `$expr` | Can enable injection attacks |
+
+Unknown operators are rejected immediately (no configurable permissive mode).
+
+**Tool Timeouts:**
+Per-tool timeouts prevent runaway operations:
+
+| Tool | Timeout |
+|------|---------|
+| `aggregate` | 60 seconds |
+| `call_method` | 60 seconds |
+| `query_class` | 30 seconds |
+| `explain_query` | 30 seconds |
+| `count_objects` | 20 seconds |
+| Others | 10-15 seconds |
+
+**Audit Logging:**
+All operations are logged with authentication context. Master key usage is prominently logged for security auditing:
+```
+[Parse::Agent:AUDIT] Master key operation: query_class at 2024-01-15T10:30:00Z
+```
+
+**Error Handling Hierarchy:**
+Security errors are never swallowed - they are always re-raised to the caller:
+- `PipelineSecurityError` - Blocked aggregation stages
+- `ConstraintSecurityError` - Blocked query operators
+- `RateLimitExceeded` - Rate limit exceeded (includes `retry_after`)
+- `ToolTimeoutError` - Operation timeout
+
+##### Environment Variables
+
+Configure the `ask` method's LLM endpoint via environment:
+
+```bash
+export LLM_ENDPOINT="http://127.0.0.1:1234/v1"  # Default: LM Studio
+export LLM_MODEL="qwen2.5-7b-instruct"           # Model name
+```
+
+```ruby
+# Or pass directly
+agent.ask("How many users?",
+  llm_endpoint: "http://localhost:1234/v1",
+  model: "gpt-4"
+)
+```
+
+#### Bug Fixes
+
+- **FIXED**: Removed dead `@fetch_lock` code that was set but never checked in `autofetch!`
+- **IMPROVED**: Marshal serialization now excludes `@client` in addition to `@fetch_mutex`
+
 ### 2.3.0
 
 #### New Features: HTTP Connection Pooling (Default)

@@ -73,6 +73,12 @@ module Parse
         # Build formatted keys once (reused for query and tracking)
         formatted_keys = keys_array&.map { |k| Parse::Query.format_field(k) }
 
+        # Validate keys against model fields if validation is enabled
+        # Skip validation if warnings are disabled (nothing to report)
+        if keys_array && Parse.validate_query_keys && Parse.warn_on_query_issues
+          validate_fetch_keys(keys_array)
+        end
+
         # Build query parameters for partial fetch
         query = {}
         query[:keys] = formatted_keys.join(",") if formatted_keys
@@ -339,6 +345,40 @@ module Parse
         end
       end
       private :validate_fetch_includes_vs_keys
+
+      # Validates that fetch keys match defined properties on the model.
+      # Warns about unknown keys that don't correspond to any field.
+      # Skips validation for base keys (objectId, createdAt, etc.) and nested keys.
+      # @param keys [Array] the keys array to validate
+      # @!visibility private
+      def validate_fetch_keys(keys)
+        return unless self.class.respond_to?(:fields)
+
+        model_fields = self.class.fields
+        unknown_keys = []
+
+        keys.each do |key|
+          key_str = key.to_s
+          # Extract top-level field (before any dot notation)
+          top_level_key = key_str.split('.').first.to_sym
+
+          # Skip base keys (objectId, createdAt, updatedAt, ACL)
+          next if Parse::Properties::BASE_KEYS.include?(top_level_key)
+          next if [:acl, :ACL, :objectId].include?(top_level_key)
+
+          # Check if field exists on the model
+          unless model_fields.key?(top_level_key)
+            unknown_keys << top_level_key
+          end
+        end
+
+        if unknown_keys.any?
+          unknown_keys.uniq!
+          puts "[Parse::Fetch] Warning: unknown keys #{unknown_keys.inspect} for #{self.class.name}. " \
+               "These fields are not defined on the model. (silence with Parse.validate_query_keys = false)"
+        end
+      end
+      private :validate_fetch_keys
 
       # Autofetches the object based on a key that is not part {Parse::Properties::BASE_KEYS}.
       # If the key is not a Parse standard key, and the current object is in a

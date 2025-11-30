@@ -35,6 +35,15 @@ Gem::Specification.new do |spec|
   spec.add_runtime_dependency "moneta", "< 2"
   spec.add_runtime_dependency "rack", ">= 2.0.6", "< 4"
 
+  # Optional dependencies for MFA (Multi-Factor Authentication) support
+  # Users must add these to their Gemfile to use MFA features:
+  #   gem 'rotp'    # For TOTP generation/verification
+  #   gem 'rqrcode' # For QR code generation
+
+  # Optional dependency for enhanced phone number validation
+  # Users can add this to their Gemfile for comprehensive phone validation:
+  #   gem 'phonelib' # For full ITU-T E.164 validation with libphonenumber data
+
   #   spec.post_install_message = <<UPGRADE
   #
   # ** BREAKING CHANGES **

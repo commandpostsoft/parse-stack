@@ -13,6 +13,9 @@ A full featured Active Model ORM and Ruby REST API for Parse-Server. [Parse Stac
 - Request idempotency system
 - Timezone support for date operations
 - Partial fetch with smart autofetch and serialization control
+- Multi-Factor Authentication (MFA/2FA) support
+- LiveQuery real-time subscriptions with TLS/SSL, circuit breaker, health monitoring (experimental)
+- AI/LLM Agent integration with security hardening (rate limiting, injection protection)
 - And many more improvements (see [CHANGELOG.md](./CHANGELOG.md))
 
 Below is a [quick start guide](#overview), but you can also check out the full *[API Reference](https://www.modernistik.com/gems/parse-stack/index.html)* for more detailed information about our Parse Server SDK.
@@ -262,6 +265,39 @@ combined = Parse::Query.or(query1, query2)
 songs = Song.all(:plays.between => [100, 1000])
 ```
 
+### LiveQuery (Real-Time Subscriptions) - Experimental
+
+Subscribe to real-time changes on Parse objects using WebSocket connections:
+
+```ruby
+# Configure LiveQuery
+Parse::LiveQuery.configure do |config|
+  config.url = "wss://your-parse-server.com"
+end
+
+# Create a client and subscribe
+client = Parse::LiveQuery::Client.new(
+  url: "wss://your-parse-server.com",
+  application_id: "your_app_id",
+  client_key: "your_client_key"
+)
+
+subscription = client.subscribe("Song", where: { "plays" => { "$gt" => 1000 } })
+
+subscription.on(:create) { |song| puts "New song: #{song['title']}" }
+subscription.on(:update) { |song, original| puts "Song updated!" }
+subscription.on(:delete) { |song| puts "Song deleted" }
+
+# Or use with Parse::Query
+query = Song.query(:plays.gt => 1000)
+subscription = client.subscribe(query)
+
+# Close when done
+client.close
+```
+
+Features include health monitoring with ping/pong, circuit breaker pattern for fault tolerance, and bounded event queues with backpressure handling.
+
 ### Breaking Changes
 
 - **Minimum Ruby 3.2+** (dropped support for Ruby < 3.2)
@@ -397,6 +433,14 @@ For complete details, see [CHANGELOG.md](./CHANGELOG.md) and [Releases](https://
 - [Active Model Callbacks](#active-model-callbacks)
 - [Schema Upgrades and Migrations](#schema-upgrades-and-migrations)
 - [Push Notifications](#push-notifications)
+  - [Builder Pattern API](#builder-pattern-api)
+  - [Silent Push](#silent-push-ios-background-notifications)
+  - [Rich Push](#rich-push-ios-notification-extensions)
+  - [Localization](#localization)
+  - [Badge Management](#badge-management)
+  - [Saved Audiences](#saved-audiences)
+  - [Push Status Tracking](#push-status-tracking)
+  - [Installation Channel Management](#installation-channel-management)
 - [Cloud Code Webhooks](#cloud-code-webhooks)
   - [Cloud Code Functions](#cloud-code-functions)
   - [Cloud Code Triggers](#cloud-code-triggers)
@@ -1115,6 +1159,92 @@ user = Parse::User.first
 Parse::User.request_password_reset user
 # or email
 Parse::User.request_password_reset("user@example.com")
+```
+
+#### Multi-Factor Authentication (MFA)
+
+Parse-Stack provides comprehensive MFA support that integrates with Parse Server's built-in MFA adapter. This enables TOTP (Time-based One-Time Password) authentication with apps like Google Authenticator, Authy, or 1Password.
+
+**Prerequisites:**
+- Parse Server must have the MFA adapter enabled
+- Add optional gems to your Gemfile: `gem 'rotp'` and `gem 'rqrcode'`
+
+**Parse Server Configuration:**
+```javascript
+{
+  auth: {
+    mfa: {
+      enabled: true,
+      options: ["TOTP"],
+      digits: 6,
+      period: 30,
+      algorithm: "SHA1"
+    }
+  }
+}
+```
+
+**Setting Up MFA:**
+```ruby
+# Configure the issuer name shown in authenticator apps
+Parse::MFA.configure do |config|
+  config[:issuer] = "MyApp"
+end
+
+# Step 1: Generate a TOTP secret
+secret = Parse::MFA.generate_secret
+
+# Step 2: Display QR code to the user
+qr_svg = user.mfa_qr_code(secret, issuer: "MyApp")
+# Render in HTML: <%= raw qr_svg %>
+
+# Step 3: User scans QR and enters code from their authenticator
+recovery_codes = user.setup_mfa!(secret: secret, token: "123456")
+# IMPORTANT: Display recovery codes to user - they can only see them once!
+```
+
+**Logging In with MFA:**
+```ruby
+# Login with username, password, and MFA token
+user = Parse::User.login_with_mfa("username", "password", "123456")
+
+# Check if MFA is required before login
+if Parse::User.mfa_required?("username")
+  # Prompt for MFA token
+end
+```
+
+**Managing MFA:**
+```ruby
+# Check MFA status
+user.mfa_enabled?  # => true
+user.mfa_status    # => :enabled, :disabled, or :unknown
+
+# Disable MFA (requires current token)
+user.disable_mfa!(current_token: "123456")
+
+# Admin reset (requires master key)
+user.disable_mfa_admin!
+```
+
+**SMS MFA (requires Parse Server SMS callback):**
+```ruby
+# Initiate SMS setup
+user.setup_sms_mfa!(mobile: "+1234567890")
+
+# Confirm with received code
+user.confirm_sms_mfa!(mobile: "+1234567890", token: "123456")
+```
+
+**Error Handling:**
+```ruby
+begin
+  user = Parse::User.login_with_mfa(username, password, token)
+rescue Parse::MFA::RequiredError
+  # MFA token was not provided but is required
+rescue Parse::MFA::VerificationError
+  # Invalid MFA token
+end
 ```
 
 
@@ -2943,10 +3073,21 @@ q.where :tags.size => { lte: 4 }     # size <= 4
 q.where :tags.size => { ne: 0 }      # size != 0
 q.where :tags.size => { gte: 2, lt: 10 }  # range: 2 <= size < 10
 
-# Empty/non-empty shortcuts
-q.where :tags.arr_empty => true     # empty arrays
-q.where :tags.arr_nempty => true    # non-empty arrays
+# Empty/non-empty shortcuts (index-friendly)
+q.where :tags.arr_empty => true     # empty arrays (uses { field: [] })
+q.where :tags.arr_empty => false    # non-empty arrays
+q.where :tags.arr_nempty => true    # non-empty arrays (alias)
+
+# Empty OR nil/missing - combines both checks
+q.where :tags.empty_or_nil => true  # matches [] OR nil/missing
+q.where :tags.empty_or_nil => false # matches non-empty arrays only
+
+# Not empty - opposite of empty_or_nil
+q.where :tags.not_empty => true     # must exist AND have elements
+q.where :tags.not_empty => false    # matches [] OR nil/missing
 ```
+
+**Performance Note:** `arr_empty` and `empty_or_nil` use index-friendly equality checks (`{ field: [] }`) instead of `$size: 0` for better MongoDB index utilization.
 
 ##### Array Equality (Order-Dependent)
 Match arrays with exact elements in exact order:
@@ -3612,31 +3753,260 @@ You may change your local Parse ruby classes by adding new properties. To easily
 ```
 
 ## Push Notifications
-Push notifications are implemented through the `Parse::Push` class. To send push notifications through the REST API, you must enable `REST push enabled?` option in the `Push Notification Settings` section of the `Settings` page in your Parse application. Push notifications targeting uses the Installation Parse class to determine which devices receive the notification. You can provide any query constraint, similar to using `Parse::Query`, in order to target the specific set of devices you want given the columns you have configured in your `Installation` class. The `Parse::Push` class supports many other options not listed here.
+Push notifications are implemented through the `Parse::Push` class. To send push notifications through the REST API, you must enable `REST push enabled?` option in the `Push Notification Settings` section of the `Settings` page in your Parse application. Push notifications targeting uses the Installation Parse class to determine which devices receive the notification. You can provide any query constraint, similar to using `Parse::Query`, in order to target the specific set of devices you want given the columns you have configured in your `Installation` class.
+
+### Builder Pattern API
+
+The recommended way to send push notifications is using the fluent builder pattern:
 
 ```ruby
+# Simple channel push
+Parse::Push.new
+  .to_channel("news")
+  .with_alert("Breaking news!")
+  .send!
 
- push = Parse::Push.new
- push.send( "Hello World!") # to everyone
+# Rich push with all options
+Parse::Push.new
+  .to_channels("sports", "alerts")
+  .with_title("Game Alert")
+  .with_body("Your team is playing now!")
+  .with_badge(1)
+  .with_sound("alert.caf")
+  .with_data(game_id: "12345", action: "open_game")
+  .schedule(1.hour.from_now)
+  .expires_in(3600)
+  .send!
 
- # simple channel push
- push = Parse::Push.new
- push.channels = ["addicted2salsa"]
- push.send "You are subscribed to Addicted2Salsa!"
+# Query-based targeting
+Parse::Push.new
+  .to_query { |q| q.where(device_type: "ios", :app_version.gte => "2.0") }
+  .with_alert("iOS 2.0+ users only")
+  .send!
 
- # advanced targeting
- push = Parse::Push.new( {..where query constraints..} )
- # or use `where()`
- push.where :device_type.in => ['ios','android'], :location.near => some_geopoint
- push.alert = "Hello World!"
- push.sound = "soundfile.caf"
+# Class method shortcuts
+Parse::Push.to_channel("alerts").with_alert("Important!").send!
+```
 
-  # additional payload data
- push.data = { uri: "app://deep_link_path" }
+### Silent Push (iOS Background Notifications)
 
- # Send the push
- push.send
+Send background notifications that wake the app without displaying an alert:
 
+```ruby
+Parse::Push.new
+  .to_channel("sync")
+  .silent!
+  .with_data(action: "refresh", resource: "users")
+  .send!
+```
+
+### Rich Push (iOS Notification Extensions)
+
+Send rich notifications with images, categories, and mutable content:
+
+```ruby
+Parse::Push.new
+  .to_channel("media")
+  .with_title("New Photo")
+  .with_body("Check out this photo!")
+  .with_image("https://example.com/photo.jpg")  # Auto-enables mutable-content
+  .with_category("PHOTO_ACTIONS")
+  .send!
+```
+
+### Localization
+
+Send language-specific messages based on device locale:
+
+```ruby
+Parse::Push.new
+  .to_channel("international")
+  .with_alert("Default message")
+  .with_localized_alerts(
+    en: "Hello!",
+    fr: "Bonjour!",
+    es: "Hola!",
+    de: "Hallo!"
+  )
+  .with_localized_titles(
+    en: "Welcome",
+    fr: "Bienvenue"
+  )
+  .send!
+```
+
+### Badge Management
+
+```ruby
+# Increment badge by 1
+Parse::Push.new.to_channel("messages").increment_badge.with_alert("New!").send!
+
+# Increment by custom amount
+Parse::Push.new.to_channel("bulk").increment_badge(5).with_alert("5 new!").send!
+
+# Clear badge
+Parse::Push.new.to_channel("read").clear_badge.silent!.send!
+```
+
+### Saved Audiences
+
+Target pre-defined audiences stored in the `_Audience` collection:
+
+```ruby
+# Target by audience name
+Parse::Push.new
+  .to_audience("VIP Users")
+  .with_alert("Exclusive offer!")
+  .send!
+
+# Manage audiences
+audience = Parse::Audience.new(name: "Premium iOS", query: { "deviceType" => "ios", "premium" => true })
+audience.save
+
+Parse::Audience.find_by_name("VIP Users")
+Parse::Audience.installation_count("VIP Users")
+```
+
+### Push Status Tracking
+
+Track push delivery status via the `_PushStatus` collection:
+
+```ruby
+status = Parse::PushStatus.find(push_id)
+
+status.succeeded?      # => true
+status.num_sent        # => 1250
+status.num_failed      # => 12
+status.success_rate    # => 99.05
+status.sent_per_type   # => {"ios" => 800, "android" => 450}
+
+# Query scopes
+Parse::PushStatus.succeeded.all
+Parse::PushStatus.failed.all
+Parse::PushStatus.recent.limit(10)
+```
+
+### Installation Channel Management
+
+Manage channel subscriptions on installations:
+
+```ruby
+installation = Parse::Installation.first
+
+# Subscribe/unsubscribe
+installation.subscribe("news", "weather")
+installation.unsubscribe("sports")
+installation.subscribed_to?("news")  # => true
+
+# Query channels
+Parse::Installation.all_channels              # All unique channels
+Parse::Installation.subscribers("news").all   # Installations in channel
+Parse::Installation.subscribers_count("news") # Count subscribers
+```
+
+### Traditional API
+
+The traditional API is still supported:
+
+```ruby
+push = Parse::Push.new
+push.send("Hello World!")  # to everyone
+
+# Channel push
+push = Parse::Push.new
+push.channels = ["mychannel"]
+push.send "You are subscribed!"
+
+# Advanced targeting
+push = Parse::Push.new
+push.where :device_type.in => ['ios','android'], :location.near => some_geopoint
+push.alert = "Hello World!"
+push.sound = "soundfile.caf"
+push.data = { uri: "app://deep_link_path" }
+push.send
+```
+
+## AI Agent Integration (Experimental)
+
+Parse Stack includes experimental support for AI/LLM agents to interact with your Parse data through a standardized tool interface. This enables natural language querying and intelligent data exploration.
+
+### Basic Usage
+
+```ruby
+require 'parse/stack'
+
+# Create an agent
+agent = Parse::Agent.new
+
+# Execute tools directly
+result = agent.execute(:get_all_schemas)
+result = agent.execute(:query_class, class_name: "Song", limit: 10)
+result = agent.execute(:count_objects, class_name: "Song", where: { plays: { "$gte" => 1000 } })
+
+# Ask natural language questions (requires LLM endpoint)
+response = agent.ask("How many songs have more than 1000 plays?")
+puts response[:answer]
+```
+
+### Permission Levels
+
+Agents support three permission levels:
+
+```ruby
+# Readonly (default) - queries only
+agent = Parse::Agent.new(permissions: :readonly)
+
+# Write - adds create/update
+agent = Parse::Agent.new(permissions: :write)
+
+# Admin - full access including delete
+agent = Parse::Agent.new(permissions: :admin)
+```
+
+### Agent Metadata DSL
+
+Annotate your models with agent-friendly metadata:
+
+```ruby
+class Song < Parse::Object
+  agent_visible  # Include in agent schema listings
+  agent_description "A music track in the catalog"
+
+  property :title, :string, _description: "The song title"
+  property :plays, :integer, _description: "Total play count"
+
+  # Expose methods with permission levels
+  agent_readonly :find_popular, "Find songs with high play counts"
+  agent_write :increment_plays, "Increment the play counter"
+
+  def self.find_popular(min_plays: 1000)
+    query(:plays.gte => min_plays).limit(100)
+  end
+end
+```
+
+### MCP Server
+
+Run an HTTP server for external AI agents:
+
+```ruby
+# Enable and start MCP server
+Parse.mcp_server_enabled = true
+Parse::Agent.enable_mcp!(port: 3001)
+Parse::Agent::MCPServer.run(port: 3001)
+```
+
+### Security
+
+Built-in protections:
+- **Rate limiting**: 60 requests/minute default
+- **Pipeline validation**: Blocks dangerous aggregation stages (`$out`, `$merge`, `$function`)
+- **Permission levels**: Restrict agent capabilities (readonly/write/admin)
+
+Configure LLM endpoint via environment:
+```bash
+export LLM_ENDPOINT="http://127.0.0.1:1234/v1"
+export LLM_MODEL="qwen2.5-7b-instruct"
 ```
 
 ## Cloud Code Webhooks

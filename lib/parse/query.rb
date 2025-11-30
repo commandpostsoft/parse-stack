@@ -1193,6 +1193,40 @@ module Parse
       Parse::Cursor.new(self, limit: limit, order: order)
     end
 
+    # Subscribe to real-time updates for objects matching this query.
+    # Uses Parse LiveQuery WebSocket connection to receive push notifications
+    # when objects are created, updated, deleted, or enter/leave the query results.
+    #
+    # @example Basic subscription
+    #   subscription = Song.query(:artist => "Beatles").subscribe
+    #   subscription.on(:create) { |song| puts "New song: #{song.title}" }
+    #   subscription.on(:update) { |song, original| puts "Updated!" }
+    #   subscription.on(:delete) { |song| puts "Deleted: #{song.id}" }
+    #
+    # @example With field filtering
+    #   subscription = User.query(:status => "active").subscribe(fields: ["name", "email"])
+    #   subscription.on_update { |user| puts "User updated: #{user.name}" }
+    #
+    # @example With session token for ACL-aware subscriptions
+    #   subscription = PrivateData.query.subscribe(session_token: current_user.session_token)
+    #
+    # @param fields [Array<String>] specific fields to watch for changes (nil = all fields)
+    # @param session_token [String] session token for ACL-aware subscriptions
+    # @param client [Parse::LiveQuery::Client] custom LiveQuery client (optional)
+    # @return [Parse::LiveQuery::Subscription] the subscription object
+    # @see Parse::LiveQuery::Subscription
+    def subscribe(fields: nil, session_token: nil, client: nil)
+      require_relative "live_query"
+
+      lq_client = client || Parse::LiveQuery.client
+      lq_client.subscribe(
+        @table,
+        where: compile_where,
+        fields: fields,
+        session_token: session_token || @session_token
+      )
+    end
+
     # Returns the query execution plan from MongoDB.
     # This is useful for analyzing query performance and understanding
     # which indexes are being used.

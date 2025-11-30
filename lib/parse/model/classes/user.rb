@@ -434,5 +434,59 @@ module Parse
       end
       @session_token
     end
+
+    # =========================================================================
+    # Session Management Methods
+    # =========================================================================
+
+    # Logout from all sessions, effectively signing out on all devices.
+    # Optionally keep the current session active.
+    # @param keep_current [Boolean] if true, keeps the current session active (default: false)
+    # @return [Integer] the number of sessions revoked
+    # @example
+    #   # Logout from all devices
+    #   user.logout_all!
+    #
+    #   # Logout from all devices except current
+    #   user.logout_all!(keep_current: true)
+    def logout_all!(keep_current: false)
+      return 0 unless id.present?
+      except_token = keep_current ? @session_token : nil
+      count = Parse::Session.revoke_all_for_user(self, except: except_token)
+      @session_token = nil unless keep_current
+      @session = nil unless keep_current
+      count
+    end
+
+    # Get the count of active (non-expired) sessions for this user.
+    # @return [Integer] the number of active sessions
+    # @example
+    #   count = user.active_session_count
+    #   puts "User is logged in on #{count} devices"
+    def active_session_count
+      return 0 unless id.present?
+      Parse::Session.active_count_for_user(self)
+    end
+
+    # Get all active sessions for this user.
+    # @return [Array<Parse::Session>] array of active session objects
+    # @example
+    #   user.sessions.each do |session|
+    #     puts "Session created: #{session.created_at}"
+    #   end
+    def sessions
+      return [] unless id.present?
+      Parse::Session.for_user(self).all
+    end
+
+    # Check if this user has multiple active sessions (logged in on multiple devices).
+    # @return [Boolean] true if user has more than one active session
+    # @example
+    #   if user.multi_session?
+    #     puts "User is logged in on multiple devices"
+    #   end
+    def multi_session?
+      active_session_count > 1
+    end
   end
 end
