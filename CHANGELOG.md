@@ -829,6 +829,11 @@ Parse.warn_on_query_issues = false
 - **IMPROVED**: Autofetch prevented during `apply_defaults!` when object is partially fetched
 - **IMPROVED**: Info-level logging when autofetch is triggered (shows class, id, and field that triggered fetch)
 
+#### Thread Safety Notes
+- **NOTE**: `Parse::Object` instances are not designed to be shared across threads during partial fetch operations. Each thread should work with its own object instances.
+- **NOTE**: The autofetch mechanism uses a mutex for thread safety when fetching, but the partial fetch state (`@_fetched_keys`) itself is not synchronized for cross-thread access.
+- **NOTE**: N+1 detection uses thread-local storage, so each thread has independent tracking with automatic cleanup.
+
 #### Testing
 - **NEW**: 34 unit tests for partial fetch functionality (no Docker required)
 - **NEW**: 18 integration tests for partial fetch with real Parse Server

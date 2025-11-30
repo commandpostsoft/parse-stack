@@ -18,14 +18,17 @@ module Parse
         @fetch_mutex ||= Mutex.new
       end
 
+      # Non-serializable instance variables that should be excluded from Marshal.
+      # - @fetch_mutex: Mutex objects cannot be marshalled
+      # - @client: HTTP client objects contain non-serializable connections
+      NON_SERIALIZABLE_IVARS = [:@fetch_mutex, :@client].freeze
+
       # Custom marshal serialization to exclude non-serializable instance variables.
-      # Mutex objects cannot be marshalled, so we exclude @fetch_mutex.
       # @return [Hash] instance variables suitable for Marshal serialization
       # @!visibility private
       def marshal_dump
         instance_variables.each_with_object({}) do |var, hash|
-          # Skip mutex and other non-serializable objects
-          next if var == :@fetch_mutex
+          next if NON_SERIALIZABLE_IVARS.include?(var)
           hash[var] = instance_variable_get(var)
         end
       end

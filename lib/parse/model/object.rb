@@ -403,12 +403,10 @@ module Parse
       self.acl = self.class.default_acls.as_json if self.acl.nil?
 
       # do not apply defaults on a pointer because it will stop it from being
-      # a pointer and will cause its field to be autofetched (for sync)
-      # Use fetch_lock to prevent autofetch during default application when selectively fetched
+      # a pointer and will cause its field to be autofetched (for sync).
+      # Note: apply_defaults! already skips unfetched fields on selectively fetched objects.
       if !pointer?
-        @fetch_lock = true if has_selective_keys?
         apply_defaults!
-        @fetch_lock = false
       end
 
       # clear changes AFTER applying defaults, so fields set by defaults
