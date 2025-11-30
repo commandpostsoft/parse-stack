@@ -17,6 +17,7 @@ require_relative "client/body_builder"
 require_relative "client/authentication"
 require_relative "client/caching"
 require_relative "client/logging"
+require_relative "client/profiling"
 require_relative "api/all"
 
 module Parse
@@ -298,6 +299,9 @@ module Parse
                  api_key: @api_key
         # Request/response logging middleware (configured via Parse.logging_enabled)
         conn.use Parse::Middleware::Logging
+
+        # Performance profiling middleware (configured via Parse.profiling_enabled)
+        conn.use Parse::Middleware::Profiling
 
         # This middleware turns the result from Parse into a Parse::Response object
         # and making sure request that are going out, follow the proper MIME format.

@@ -1161,6 +1161,33 @@ module Parse
     # Alias for result_pointers for consistency
     alias_method :results_pointers, :result_pointers
 
+    # Returns the query execution plan from MongoDB.
+    # This is useful for analyzing query performance and understanding
+    # which indexes are being used.
+    #
+    # @example Get execution plan for a query
+    #   Song.query(:plays.gt => 1000).explain
+    #   # Returns detailed execution plan showing index usage, stages, etc.
+    #
+    # @example Analyze a complex query
+    #   query = User.query(:email.like => "%@example.com").order(:createdAt.desc)
+    #   plan = query.explain
+    #   puts "Index used: #{plan['queryPlanner']['winningPlan']['stage']}"
+    #
+    # @return [Hash] the query execution plan from MongoDB
+    # @note This feature requires MongoDB explain support in Parse Server.
+    #   The format of the returned plan depends on the MongoDB version.
+    def explain
+      compiled_query = compile
+      compiled_query[:explain] = true
+      response = client.find_objects(@table, compiled_query.as_json, **_opts)
+      if response.error?
+        puts "[ParseQuery:Explain] #{response.error}"
+        return {}
+      end
+      response.result
+    end
+
     # Create an Aggregation object for executing arbitrary MongoDB pipelines
     # @param pipeline [Array<Hash>] the MongoDB aggregation pipeline stages
     # @param verbose [Boolean] whether to print verbose debug output for the aggregation

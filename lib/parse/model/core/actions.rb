@@ -676,6 +676,18 @@ module Parse
         update!(force: force)
       end
 
+      # Internal method to perform update with :update callbacks.
+      # Called from save() for existing objects.
+      # @param force [Boolean] whether to send the update even if there are no changes.
+      # @return [Boolean] true/false whether it was successful.
+      # @!visibility private
+      def perform_update(force: false)
+        return true unless attribute_changes? || force
+        run_callbacks :update do
+          update!(force: force)
+        end
+      end
+
       # Save the object as a new record, running all callbacks.
       # @return [Boolean] true/false whether it was successful.
       def create
@@ -718,6 +730,14 @@ module Parse
       # You may pass a session token to the `session` argument to perform this actions
       # with the privileges of a certain user.
       #
+      # Callback order:
+      # 1. before_validation / around_validation / after_validation
+      # 2. before_save / around_save
+      # 3. before_create or before_update / around_create or around_update
+      # 4. [actual save operation]
+      # 5. after_create or after_update
+      # 6. after_save
+      #
       # You can define before and after :save callbacks
       # autoraise: set to true will automatically raise an exception if the save fails
       # @raise {Parse::RecordNotSaved} if the save fails
@@ -725,8 +745,9 @@ module Parse
       # @param session [String] a session token in order to apply ACLs to this operation.
       # @param autoraise [Boolean] whether to raise an exception if the save fails.
       # @param force [Boolean] whether to run callbacks and send request even if there are no changes.
+      # @param validate [Boolean] whether to run validations (default: true).
       # @return [Boolean] whether the save was successful.
-      def save(session: nil, autoraise: false, force: false)
+      def save(session: nil, autoraise: false, force: false, validate: true)
         # Prevent saving objects that have been fetched and found to be deleted
         if _deleted?
           error_msg = "Cannot save deleted object. Object with id '#{@id}' no longer exists on the server."
@@ -735,15 +756,28 @@ module Parse
 
         @_session_token = _validate_session_token! session, :save
         return true unless changed? || force
+
+        # Run validations (validation callbacks are now triggered by valid? method)
+        if validate
+          validation_passed = valid?
+
+          unless validation_passed
+            if self.class.raise_on_save_failure || autoraise.present?
+              raise Parse::RecordNotSaved.new(self), "Validation failed: #{errors.full_messages.join(', ')}"
+            end
+            return false
+          end
+        end
+
         success = false
-        
+
         # Track if callbacks are halted by a before_save hook returning false
         callback_executed = false
         run_callbacks :save do
           callback_executed = true
           #first process the create/update action if any
           #then perform any relation changes that need to be performed
-          success = new? ? create : update(force: force)
+          success = new? ? create : perform_update(force: force)
 
           # if the save was successful and we have relational changes
           # let's update send those next.
@@ -767,10 +801,10 @@ module Parse
             raise Parse::RecordNotSaved.new(self), "Failed to create or save attributes. #{self.parse_class} was not saved."
           end
         end #callbacks
-        
+
         # If callbacks were halted (before_save returned false), return false
         return false unless callback_executed
-        
+
         @_session_token = nil
         success
       end

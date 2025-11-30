@@ -1,5 +1,151 @@
 ## Parse-Stack Changelog
 
+### 2.2.0
+
+#### New Features: Validations DSL
+
+Parse Stack now includes Rails-style validations with a custom uniqueness validator that queries Parse Server.
+
+##### Validation Callbacks
+- **NEW**: `before_validation` callback - runs before validations execute
+  ```ruby
+  before_validation :normalize_data
+  ```
+
+- **NEW**: `after_validation` callback - runs after validations complete
+  ```ruby
+  after_validation :log_validation_result
+  ```
+
+- **NEW**: `around_validation` callback - wraps validation execution
+  ```ruby
+  around_validation :track_validation_time
+  ```
+
+##### Uniqueness Validator
+- **NEW**: `validates :field, uniqueness: true` - Queries Parse Server to ensure field uniqueness
+  ```ruby
+  class User < Parse::Object
+    property :email, :string
+    property :username, :string
+
+    validates :email, uniqueness: true
+    validates :username, uniqueness: { case_sensitive: false }
+  end
+  ```
+
+- **NEW**: Case-insensitive uniqueness checking
+  ```ruby
+  validates :username, uniqueness: { case_sensitive: false }
+  ```
+
+- **NEW**: Scoped uniqueness (unique within a subset)
+  ```ruby
+  validates :employee_id, uniqueness: { scope: :organization }
+  ```
+
+- **NEW**: Custom error messages
+  ```ruby
+  validates :email, uniqueness: { message: "is already registered" }
+  ```
+
+#### New Features: Complete Callback Lifecycle
+
+Extended callback system with full before/after/around support for all lifecycle events.
+
+##### Update Callbacks
+- **NEW**: `before_update` callback - runs before updating an existing record
+- **NEW**: `after_update` callback - runs after updating an existing record
+- **NEW**: `around_update` callback - wraps the update operation
+  ```ruby
+  class Song < Parse::Object
+    before_update :log_changes
+    after_update :notify_listeners
+    around_update :track_update_timing
+  end
+  ```
+
+##### Around Callbacks for All Events
+- **NEW**: `around_validation` callback support
+- **NEW**: `around_create` callback support
+- **NEW**: `around_save` callback support
+- **NEW**: `around_update` callback support
+- **NEW**: `around_destroy` callback support
+
+##### Validation Integration
+- **IMPROVED**: Validations now run automatically during save (configurable with `validate: true/false`)
+- **IMPROVED**: Failed validations halt the save operation and return `false`
+- **IMPROVED**: Error messages are available via `object.errors`
+
+#### New Features: Performance Profiling Middleware
+
+New Faraday middleware for profiling Parse API requests with detailed timing information.
+
+##### Enable Profiling
+```ruby
+Parse.profiling_enabled = true
+```
+
+##### Access Profile Data
+```ruby
+# Get recent profiles
+Parse.recent_profiles.each do |profile|
+  puts "#{profile[:method]} #{profile[:url]}: #{profile[:duration_ms]}ms"
+end
+
+# Get aggregate statistics
+stats = Parse.profiling_statistics
+puts "Total requests: #{stats[:count]}"
+puts "Average time: #{stats[:avg_ms]}ms"
+puts "Min/Max: #{stats[:min_ms]}ms / #{stats[:max_ms]}ms"
+
+# Breakdown by method and status
+stats[:by_method]  # => { "GET" => 10, "POST" => 5, "PUT" => 3 }
+stats[:by_status]  # => { 200 => 15, 201 => 3 }
+```
+
+##### Register Callbacks
+```ruby
+Parse.on_request_complete do |profile|
+  # Log to monitoring system, update metrics, etc.
+  puts "Request completed in #{profile[:duration_ms]}ms"
+end
+```
+
+##### Profile Data Structure
+Each profile includes:
+- `method` - HTTP method (GET, POST, PUT, DELETE)
+- `url` - Request URL (sensitive params filtered)
+- `status` - HTTP status code
+- `duration_ms` - Total request duration in milliseconds
+- `started_at` - ISO8601 timestamp of request start
+- `completed_at` - ISO8601 timestamp of request completion
+- `request_size` - Size of request body in bytes
+- `response_size` - Size of response body in bytes
+
+##### Security
+- Session tokens, master keys, and API keys are automatically filtered from URLs
+- Maximum 100 profiles kept in memory (configurable via `MAX_PROFILES`)
+
+#### New Features: Query Explain
+
+New method to get query execution plans from MongoDB for performance analysis.
+
+##### Usage
+```ruby
+# Get execution plan for a query
+plan = Song.query(:plays.gt => 1000).explain
+
+# Analyze complex queries
+query = User.query(:email.like => "%@example.com").order(:createdAt.desc)
+plan = query.explain
+```
+
+##### Notes
+- Returns raw MongoDB explain output
+- Format depends on MongoDB version
+- Useful for understanding index usage and query performance
+
 ### 2.1.10
 
 #### New Features: Additional Array Constraints

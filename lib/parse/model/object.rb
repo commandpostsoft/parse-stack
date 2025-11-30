@@ -29,6 +29,7 @@ require_relative "core/properties"
 require_relative "core/errors"
 require_relative "core/builder"
 require_relative "core/enhanced_change_tracking"
+require_relative "validations"
 require_relative "associations/has_one"
 require_relative "associations/belongs_to"
 require_relative "associations/has_many"
@@ -145,12 +146,40 @@ module Parse
     # Default ActiveModel::Callbacks
     # @!group Callbacks
     #
+    # @!method before_validation
+    #   A callback called before validations are run.
+    #   @yield A block to execute for the callback.
+    #   @see ActiveModel::Callbacks
+    # @!method after_validation
+    #   A callback called after validations are run.
+    #   @yield A block to execute for the callback.
+    #   @see ActiveModel::Callbacks
+    # @!method around_validation
+    #   A callback called around validations.
+    #   @yield A block to execute for the callback.
+    #   @see ActiveModel::Callbacks
     # @!method before_create
     #   A callback called before the object has been created.
     #   @yield A block to execute for the callback.
     #   @see ActiveModel::Callbacks
     # @!method after_create
     #   A callback called after the object has been created.
+    #   @yield A block to execute for the callback.
+    #   @see ActiveModel::Callbacks
+    # @!method around_create
+    #   A callback called around object creation.
+    #   @yield A block to execute for the callback.
+    #   @see ActiveModel::Callbacks
+    # @!method before_update
+    #   A callback called before the object is updated (not on create).
+    #   @yield A block to execute for the callback.
+    #   @see ActiveModel::Callbacks
+    # @!method after_update
+    #   A callback called after the object has been updated.
+    #   @yield A block to execute for the callback.
+    #   @see ActiveModel::Callbacks
+    # @!method around_update
+    #   A callback called around object update.
     #   @yield A block to execute for the callback.
     #   @see ActiveModel::Callbacks
     # @!method before_save
@@ -163,6 +192,10 @@ module Parse
     #   @note This is not related to a Parse afterSave webhook trigger.
     #   @yield A block to execute for the callback.
     #   @see ActiveModel::Callbacks
+    # @!method around_save
+    #   A callback called around object save.
+    #   @yield A block to execute for the callback.
+    #   @see ActiveModel::Callbacks
     # @!method before_destroy
     #   A callback called before the object is about to be deleted.
     #   @note This is not related to a Parse beforeDelete webhook trigger.
@@ -173,8 +206,19 @@ module Parse
     #   @note This is not related to a Parse afterDelete webhook trigger.
     #   @yield A block to execute for the callback.
     #   @see ActiveModel::Callbacks
+    # @!method around_destroy
+    #   A callback called around object destruction.
+    #   @yield A block to execute for the callback.
+    #   @see ActiveModel::Callbacks
     # @!endgroup
-    define_model_callbacks :create, :save, :destroy, only: [:after, :before], terminator: ->(target, result_lambda) { result_lambda.call == false }
+
+    # Define all model callbacks with :before, :after, and :around support
+    # :validation - runs before/after/around validations
+    # :create - runs before/after/around creating a new object
+    # :update - runs before/after/around updating an existing object
+    # :save - runs before/after/around both create and update
+    # :destroy - runs before/after/around deleting an object
+    define_model_callbacks :validation, :create, :update, :save, :destroy, terminator: ->(target, result_lambda) { result_lambda.call == false }
 
     attr_accessor :created_at, :updated_at, :acl
 
@@ -420,6 +464,18 @@ module Parse
     # @return [Boolean] true if the object has no id.
     def new?
       @id.blank?
+    end
+
+    # Override valid? to run validation callbacks.
+    # This wraps the standard ActiveModel validation with our custom :validation callbacks.
+    # @param context [Symbol, nil] validation context (same as ActiveModel)
+    # @return [Boolean] true if the object passes all validations
+    def valid?(context = nil)
+      result = true
+      run_callbacks :validation do
+        result = super(context)
+      end
+      result
     end
 
     # Existed returns true if the object had existed before *its last save
