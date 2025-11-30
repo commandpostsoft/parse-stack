@@ -16,6 +16,7 @@ require_relative "client/batch"
 require_relative "client/body_builder"
 require_relative "client/authentication"
 require_relative "client/caching"
+require_relative "client/logging"
 require_relative "api/all"
 
 module Parse
@@ -218,10 +219,15 @@ module Parse
     # @option opts [String] :master_key The Parse application master key (optional).
     #    If this key is set, it will be sent on every request sent by the client
     #    and your models. Defaults to ENV['PARSE_SERVER_MASTER_KEY'].
-    # @option opts [Boolean] :logging It provides you additional logging information
-    #    of requests and responses. If set to the special symbol of *:debug*, it
-    #    will provide additional payload data in the log messages. This option affects
-    #    the logging performed by {Parse::Middleware::BodyBuilder}.
+    # @option opts [Boolean, Symbol] :logging Controls request/response logging.
+    #    - `true` - Enable logging at :info level
+    #    - `:debug` - Enable verbose logging with headers and body content
+    #    - `:warn` - Only log errors and warnings
+    #    - `false` or `nil` - Disable logging (default)
+    #    This configures both the new {Parse::Middleware::Logging} middleware
+    #    and the legacy {Parse::Middleware::BodyBuilder} logging.
+    # @option opts [Logger] :logger A custom logger instance for request/response logging.
+    #    Defaults to Logger.new(STDOUT) if not specified.
     # @option opts [Object] :adapter The connection adapter. By default it uses
     #    the `Faraday.default_adapter` which is Net/HTTP.
     # @option opts [Moneta::Transformer,Moneta::Expires] :cache A caching adapter of type
@@ -264,7 +270,21 @@ module Parse
       @conn = Faraday.new(opts[:faraday]) do |conn|
         #conn.request :json
 
-        conn.response :logger if opts[:logging]
+        # Configure logging if enabled
+        if opts[:logging].present?
+          # Configure the new structured logging middleware
+          Parse::Middleware::Logging.enabled = true
+          Parse::Middleware::Logging.logger = opts[:logger] if opts[:logger]
+          case opts[:logging]
+          when :debug
+            Parse::Middleware::Logging.log_level = :debug
+            Parse::Middleware::BodyBuilder.logging = true
+          when :warn
+            Parse::Middleware::Logging.log_level = :warn
+          else
+            Parse::Middleware::Logging.log_level = :info
+          end
+        end
 
         # This middleware handles sending the proper authentication headers to Parse
         # on each request.
@@ -276,14 +296,14 @@ module Parse
                  application_id: @application_id,
                  master_key: @master_key,
                  api_key: @api_key
+        # Request/response logging middleware (configured via Parse.logging_enabled)
+        conn.use Parse::Middleware::Logging
+
         # This middleware turns the result from Parse into a Parse::Response object
         # and making sure request that are going out, follow the proper MIME format.
         # We place it after the Authentication middleware in case we need to use then
         # authentication information when building request and responses.
         conn.use Parse::Middleware::BodyBuilder
-        if opts[:logging].present? && opts[:logging] == :debug
-          Parse::Middleware::BodyBuilder.logging = true
-        end
 
         if opts[:cache].present? && opts[:expires].to_i > 0
           # advanced: provide a REDIS url, we'll configure a Moneta Redis store.

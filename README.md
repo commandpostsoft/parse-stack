@@ -492,7 +492,32 @@ The Parse REST API Key. By default it will use `PARSE_SERVER_REST_API_KEY` envir
 The Parse application master key. If this key is set, it will be sent on every request sent by the client and your models. By default it will use `PARSE_SERVER_MASTER_KEY` environment variable if not specified.
 
 #### `:logging`
-A true or false value. It provides you additional logging information of requests and responses. If set to the special symbol of `:debug`, it will provide additional payload data in the log messages.
+Controls request/response logging. Accepts:
+- `true` - Enable logging at `:info` level (logs method, URL, status, timing)
+- `:debug` - Enable verbose logging with headers and body content
+- `:warn` - Only log errors and warnings
+- `false` or `nil` - Disable logging (default)
+
+```ruby
+Parse.setup(logging: true, ...)      # info level
+Parse.setup(logging: :debug, ...)    # verbose with body content
+```
+
+#### `:logger`
+A custom Logger instance for request/response logging. Defaults to `Logger.new(STDOUT)`.
+
+```ruby
+Parse.setup(logging: true, logger: Rails.logger, ...)
+```
+
+You can also configure logging programmatically after setup:
+
+```ruby
+Parse.logging_enabled = true     # Enable/disable
+Parse.log_level = :debug         # :info, :debug, or :warn
+Parse.logger = Rails.logger      # Custom logger
+Parse.log_max_body_length = 1000 # Truncate body after N chars (default: 500)
+```
 
 #### `:adapter`
 The connection adapter. By default it uses the `Faraday.default_adapter` which is Net/HTTP.
@@ -2775,6 +2800,49 @@ Product.query(:categories.like => [cat1, cat2])
 
 # Find products with more than 3 categories
 Product.query(:categories.size => { gt: 3 })
+```
+
+##### Readable Array Aliases
+More readable aliases for common array operations:
+
+```ruby
+# Any/None - readable aliases for $in/$nin
+q.where :tags.any => ["rock", "pop"]    # matches if contains any (same as :tags.in)
+q.where :tags.none => ["jazz", "blues"] # matches if contains none (same as :tags.nin)
+
+# Superset - readable alias for $all
+q.where :tags.superset_of => ["rock", "pop"]  # must have all (same as :tags.all)
+```
+
+##### Element Match (Arrays of Objects)
+Match array elements using multiple criteria with `$elemMatch`:
+
+```ruby
+# Find posts where comments has an element matching multiple conditions
+q.where :comments.elem_match => { author: user, approved: true }
+
+# Works with nested objects
+q.where :items.elem_match => { product: "SKU123", quantity: { "$gt" => 5 } }
+```
+
+##### Subset Of
+Match arrays that only contain elements from a given set:
+
+```ruby
+# Find items where tags only include elements from the allowed list
+q.where :tags.subset_of => ["rock", "pop", "jazz", "classical"]
+# ["rock", "pop"] matches, ["rock", "metal"] does NOT match
+```
+
+##### First/Last Element
+Match based on the first or last element of an array:
+
+```ruby
+# First element equals value
+q.where :tags.first => "featured"   # first tag is "featured"
+
+# Last element equals value
+q.where :tags.last => "archived"    # last tag is "archived"
 ```
 
 #### Regex Matching

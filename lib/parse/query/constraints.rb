@@ -333,9 +333,15 @@ module Parse
       # @!method contained_in
       # Alias for {in}
       # @return [ContainedInConstraint]
+      # @!method any
+      # Alias for {in} - more readable when checking if array contains any of the values
+      # @example
+      #  q.where :tags.any => ["rock", "pop"]  # has at least one of these tags
+      # @return [ContainedInConstraint]
       constraint_keyword :$in
       register :in
       register :contained_in
+      register :any
 
       # @return [Hash] the compiled constraint.
       def build
@@ -387,16 +393,22 @@ module Parse
       # @!method not_contained_in
       # Alias for {not_in}
       # @return [NotContainedInConstraint]
+      # @!method none
+      # Alias for {not_in} - more readable when checking if array contains none of the values
+      # @example
+      #  q.where :tags.none => ["rock", "pop"]  # has none of these tags
+      # @return [NotContainedInConstraint]
       constraint_keyword :$nin
       register :not_in
       register :nin
       register :not_contained_in
+      register :none
 
       # @return [Hash] the compiled constraint.
       def build
         val = formatted_value
         val = [val].compact unless val.is_a?(Array)
-        
+
         # Special handling for array pointer fields
         # Convert Parse objects and objectId strings to pointers for array contains queries
         if val.is_a?(Array)
@@ -413,7 +425,7 @@ module Parse
             end
           end
         end
-        
+
         { @operation.operand => { key => val } }
       end
     end
@@ -437,9 +449,16 @@ module Parse
       # @!method contains_all
       # Alias for {all}
       # @return [ContainsAllConstraint]
+
+      # @!method superset_of
+      # Alias for {all} - semantically clearer when checking if array is a superset
+      # @example
+      #  q.where :tags.superset_of => ["rock"]  # contains at least "rock" (and possibly more)
+      # @return [ContainsAllConstraint]
       constraint_keyword :$all
       register :all
       register :contains_all
+      register :superset_of
 
       # @return [Hash] the compiled constraint.
       def build
@@ -942,6 +961,282 @@ module Parse
                   "$not" => {
                     "$setEquals" => ["$#{field_name}", val]
                   }
+                }
+              }
+            }
+          ]
+        end
+
+        { "__aggregation_pipeline" => pipeline }
+      end
+    end
+
+    # Element match constraint for arrays of objects.
+    # Matches documents where at least one array element matches all specified criteria.
+    # Uses Parse's native $elemMatch operator.
+    #
+    #  # Find posts where comments array has an approved comment by the user
+    #  q.where :comments.elem_match => { author: user, approved: true }
+    #
+    #  # Find items where tags array has a tag with specific properties
+    #  q.where :tags.elem_match => { name: "featured", priority: { "$gt" => 5 } }
+    #
+    # @note This uses MongoDB aggregation pipeline with $elemMatch since Parse Server
+    #   doesn't support $elemMatch as a native query constraint.
+    #
+    # @see ContainsAllConstraint
+    class ArrayElemMatchConstraint < Constraint
+      # @!method elem_match
+      # A registered method on a symbol to create the constraint.
+      # Uses MongoDB aggregation with $elemMatch.
+      # @example
+      #  q.where :comments.elem_match => { author: user, approved: true }
+      # @return [ArrayElemMatchConstraint]
+      register :elem_match
+
+      # @return [Hash] the compiled constraint using aggregation pipeline.
+      def build
+        val = formatted_value
+        unless val.is_a?(Hash)
+          raise ArgumentError, "#{self.class}: Value must be a hash of criteria for element matching"
+        end
+
+        field_name = @operation.operand.to_s
+
+        # Convert any Parse objects to pointers in the criteria
+        converted_val = convert_criteria(val)
+
+        # Build the aggregation pipeline with $elemMatch
+        pipeline = [
+          {
+            "$match" => {
+              field_name => {
+                "$elemMatch" => converted_val
+              }
+            }
+          }
+        ]
+
+        { "__aggregation_pipeline" => pipeline }
+      end
+
+      private
+
+      def convert_criteria(criteria)
+        criteria.transform_values do |v|
+          if v.respond_to?(:pointer)
+            v.pointer
+          elsif v.is_a?(Hash)
+            convert_criteria(v)
+          else
+            v
+          end
+        end
+      end
+    end
+
+    # Subset constraint - array only contains elements from the given set.
+    # Uses MongoDB aggregation with $setIsSubset.
+    #
+    #  # Find items where tags only contain elements from the allowed list
+    #  q.where :tags.subset_of => ["rock", "pop", "jazz"]
+    #
+    #  # This will match:
+    #  #   ["rock"] - yes (subset)
+    #  #   ["rock", "pop"] - yes (subset)
+    #  #   ["rock", "classical"] - no ("classical" not in allowed set)
+    #
+    # @note This constraint uses aggregation pipeline with MongoDB $setIsSubset.
+    #
+    # @see ContainsAllConstraint
+    class ArraySubsetOfConstraint < Constraint
+      # @!method subset_of
+      # A registered method on a symbol to create the constraint.
+      # @example
+      #  q.where :tags.subset_of => ["rock", "pop", "jazz"]
+      # @return [ArraySubsetOfConstraint]
+      register :subset_of
+
+      # @return [Hash] the compiled constraint using aggregation pipeline.
+      def build
+        val = formatted_value
+        val = [val].compact unless val.is_a?(Array)
+
+        field_name = @operation.operand.to_s
+
+        # Check if values are pointers
+        is_pointer_array = val.any? do |item|
+          item.respond_to?(:pointer) || item.is_a?(Parse::Pointer)
+        end
+
+        if is_pointer_array
+          # Extract objectIds from pointers
+          target_ids = val.map do |item|
+            if item.respond_to?(:id)
+              item.id
+            elsif item.is_a?(Parse::Pointer)
+              item.id
+            else
+              item
+            end
+          end
+
+          pipeline = [
+            {
+              "$match" => {
+                "$expr" => {
+                  "$setIsSubset" => [
+                    { "$map" => { "input" => "$#{field_name}", "as" => "p", "in" => "$$p.objectId" } },
+                    target_ids
+                  ]
+                }
+              }
+            }
+          ]
+        else
+          pipeline = [
+            {
+              "$match" => {
+                "$expr" => {
+                  "$setIsSubset" => ["$#{field_name}", val]
+                }
+              }
+            }
+          ]
+        end
+
+        { "__aggregation_pipeline" => pipeline }
+      end
+    end
+
+    # First element constraint - match based on the first element of an array.
+    # Uses MongoDB aggregation with $arrayElemAt.
+    #
+    #  q.where :tags.first => "rock"  # first element equals "rock"
+    #
+    # @note This constraint uses aggregation pipeline with MongoDB $arrayElemAt.
+    #
+    # @see ArrayLastConstraint
+    class ArrayFirstConstraint < Constraint
+      # @!method first
+      # A registered method on a symbol to create the constraint.
+      # @example
+      #  q.where :tags.first => "rock"
+      # @return [ArrayFirstConstraint]
+      register :first
+
+      # @return [Hash] the compiled constraint using aggregation pipeline.
+      def build
+        val = formatted_value
+        field_name = @operation.operand.to_s
+
+        # Handle pointer values
+        if val.respond_to?(:id)
+          compare_val = val.id
+          pipeline = [
+            {
+              "$match" => {
+                "$expr" => {
+                  "$eq" => [
+                    { "$arrayElemAt" => [{ "$map" => { "input" => "$#{field_name}", "as" => "p", "in" => "$$p.objectId" } }, 0] },
+                    compare_val
+                  ]
+                }
+              }
+            }
+          ]
+        elsif val.is_a?(Parse::Pointer)
+          compare_val = val.id
+          pipeline = [
+            {
+              "$match" => {
+                "$expr" => {
+                  "$eq" => [
+                    { "$arrayElemAt" => [{ "$map" => { "input" => "$#{field_name}", "as" => "p", "in" => "$$p.objectId" } }, 0] },
+                    compare_val
+                  ]
+                }
+              }
+            }
+          ]
+        else
+          pipeline = [
+            {
+              "$match" => {
+                "$expr" => {
+                  "$eq" => [
+                    { "$arrayElemAt" => ["$#{field_name}", 0] },
+                    val
+                  ]
+                }
+              }
+            }
+          ]
+        end
+
+        { "__aggregation_pipeline" => pipeline }
+      end
+    end
+
+    # Last element constraint - match based on the last element of an array.
+    # Uses MongoDB aggregation with $arrayElemAt and index -1.
+    #
+    #  q.where :tags.last => "pop"  # last element equals "pop"
+    #
+    # @note This constraint uses aggregation pipeline with MongoDB $arrayElemAt.
+    #
+    # @see ArrayFirstConstraint
+    class ArrayLastConstraint < Constraint
+      # @!method last
+      # A registered method on a symbol to create the constraint.
+      # @example
+      #  q.where :tags.last => "pop"
+      # @return [ArrayLastConstraint]
+      register :last
+
+      # @return [Hash] the compiled constraint using aggregation pipeline.
+      def build
+        val = formatted_value
+        field_name = @operation.operand.to_s
+
+        # Handle pointer values
+        if val.respond_to?(:id)
+          compare_val = val.id
+          pipeline = [
+            {
+              "$match" => {
+                "$expr" => {
+                  "$eq" => [
+                    { "$arrayElemAt" => [{ "$map" => { "input" => "$#{field_name}", "as" => "p", "in" => "$$p.objectId" } }, -1] },
+                    compare_val
+                  ]
+                }
+              }
+            }
+          ]
+        elsif val.is_a?(Parse::Pointer)
+          compare_val = val.id
+          pipeline = [
+            {
+              "$match" => {
+                "$expr" => {
+                  "$eq" => [
+                    { "$arrayElemAt" => [{ "$map" => { "input" => "$#{field_name}", "as" => "p", "in" => "$$p.objectId" } }, -1] },
+                    compare_val
+                  ]
+                }
+              }
+            }
+          ]
+        else
+          pipeline = [
+            {
+              "$match" => {
+                "$expr" => {
+                  "$eq" => [
+                    { "$arrayElemAt" => ["$#{field_name}", -1] },
+                    val
+                  ]
                 }
               }
             }

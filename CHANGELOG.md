@@ -1,5 +1,93 @@
 ## Parse-Stack Changelog
 
+### 2.1.10
+
+#### New Features: Additional Array Constraints
+
+##### Readable Array Query Aliases
+- **NEW**: `:field.any => [values]` - Alias for `$in`, matches if field contains any of the values
+  ```ruby
+  Item.query(:tags.any => ["rock", "pop"])  # Same as :tags.in => [...]
+  ```
+
+- **NEW**: `:field.none => [values]` - Alias for `$nin`, matches if field contains none of the values
+  ```ruby
+  Item.query(:tags.none => ["jazz", "classical"])  # Excludes these tags
+  ```
+
+- **NEW**: `:field.superset_of => [values]` - Semantic alias for `all`, matches if field contains all values
+  ```ruby
+  Item.query(:tags.superset_of => ["rock", "pop"])  # Must have both tags
+  ```
+
+##### Element Matching for Arrays of Objects
+- **NEW**: `:field.elem_match => { criteria }` - Match array elements with multiple criteria
+  ```ruby
+  # Find posts where comments array has a comment by user that's approved
+  Post.query(:comments.elem_match => { author: user, approved: true })
+  ```
+
+##### Set Operations
+- **NEW**: `:field.subset_of => [values]` - Match arrays that only contain elements from the given set
+  ```ruby
+  # Find items where tags only include elements from the allowed list
+  Item.query(:tags.subset_of => ["rock", "pop", "jazz"])
+  ```
+
+##### Positional Element Matching
+- **NEW**: `:field.first => value` - Match if first array element equals value
+  ```ruby
+  Item.query(:tags.first => "featured")  # First tag is "featured"
+  ```
+
+- **NEW**: `:field.last => value` - Match if last array element equals value
+  ```ruby
+  Item.query(:tags.last => "archived")  # Last tag is "archived"
+  ```
+
+#### New Features: Request/Response Logging Middleware
+
+##### Structured Logging
+- **NEW**: Parse::Middleware::Logging - Faraday middleware for detailed request/response logging
+  ```ruby
+  # Enable via setup
+  Parse.setup(
+    app_id: "...",
+    api_key: "...",
+    logging: true,           # or :debug for verbose, :warn for errors only
+    logger: Rails.logger     # optional custom logger
+  )
+
+  # Or configure programmatically
+  Parse.logging_enabled = true
+  Parse.log_level = :debug
+  Parse.logger = Logger.new("parse.log")
+  ```
+
+##### Configuration Options
+- `Parse.logging_enabled` - Enable/disable logging
+- `Parse.log_level` - Set level (:info, :debug, :warn)
+- `Parse.logger` - Custom logger instance
+- `Parse.log_max_body_length` - Maximum body length before truncation (default: 500)
+
+##### Log Output Format
+- Request: `▶ POST /parse/classes/Song`
+- Response: `◀ 201 (45ms)` or `✗ 400 (23ms) - 101: Object not found`
+- Debug mode includes headers and truncated body content
+- Sensitive data (API keys, session tokens) automatically filtered
+
+#### Constraint Summary (All Array Constraints)
+
+| Constraint | Description | Uses |
+|------------|-------------|------|
+| `:field.any => [...]` | Contains any (alias for `$in`) | Native |
+| `:field.none => [...]` | Contains none (alias for `$nin`) | Native |
+| `:field.superset_of => [...]` | Contains all (alias for `$all`) | Native |
+| `:field.elem_match => { }` | Array element matches criteria | Aggregation ($elemMatch) |
+| `:field.subset_of => [...]` | Only contains from set | Aggregation |
+| `:field.first => val` | First element equals | Aggregation |
+| `:field.last => val` | Last element equals | Aggregation |
+
 ### 2.1.9
 
 #### New Features: Advanced Array Query Constraints
