@@ -631,13 +631,13 @@ class ArrayEqualityIntegrationTest < Minitest::Test
   end
 
   # ==========================================================================
-  # Test 13: Native :nlike constraint (order-independent not-equal)
+  # Test 13: Native :not_set_equals constraint (order-independent not-equal)
   # ==========================================================================
-  def test_native_nlike_constraint
+  def test_native_not_set_equals_constraint
     skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
 
     with_parse_server do
-      puts "\n=== Testing Native :nlike Constraint ==="
+      puts "\n=== Testing Native :not_set_equals Constraint ==="
 
       with_timeout(10, "creating test data") do
         TaggedItem.new(name: "exact", tags: ["rock", "pop"]).save
@@ -646,27 +646,27 @@ class ArrayEqualityIntegrationTest < Minitest::Test
         TaggedItem.new(name: "different", tags: ["classical"]).save
       end
 
-      with_timeout(5, "testing :nlike constraint") do
+      with_timeout(5, "testing :not_set_equals constraint") do
         begin
-          # Test :tags.nlike => ["rock", "pop"] - should NOT match any set-equal arrays
-          results = TaggedItem.query(:tags.nlike => ["rock", "pop"]).all
+          # Test :tags.not_set_equals => ["rock", "pop"] - should NOT match any set-equal arrays
+          results = TaggedItem.query(:tags.not_set_equals => ["rock", "pop"]).all
           names = results.map(&:name).sort
 
-          puts "Query: :tags.nlike => ['rock', 'pop']"
+          puts "Query: :tags.not_set_equals => ['rock', 'pop']"
           puts "Results: #{names.inspect}"
 
           # Should match: superset, different (anything NOT set-equal to ["rock", "pop"])
           # Should NOT match: exact, reordered (both are set-equal)
-          refute_includes names, "exact", "nlike should NOT match exact"
-          refute_includes names, "reordered", "nlike should NOT match reordered"
-          assert_includes names, "superset", "nlike should match superset"
-          assert_includes names, "different", "nlike should match different"
+          refute_includes names, "exact", "not_set_equals should NOT match exact"
+          refute_includes names, "reordered", "not_set_equals should NOT match reordered"
+          assert_includes names, "superset", "not_set_equals should match superset"
+          assert_includes names, "different", "not_set_equals should match different"
 
           assert_equal 2, results.length, "Should find 2 items"
 
-          puts "✅ :nlike constraint works correctly!"
+          puts "✅ :not_set_equals constraint works correctly!"
         rescue => e
-          puts "❌ :nlike constraint failed: #{e.class} - #{e.message}"
+          puts "❌ :not_set_equals constraint failed: #{e.class} - #{e.message}"
           puts e.backtrace.first(5).join("\n")
           raise
         end

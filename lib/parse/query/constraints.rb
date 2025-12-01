@@ -1060,9 +1060,8 @@ module Parse
     # Matches arrays that do NOT contain exactly the same elements (regardless of order).
     # This is order-independent: [A, B, C] does NOT match [A, B] but [C, B, A] DOES match.
     #
-    #  q.where :field.nlike => ["rock", "pop"]
     #  q.where :field.not_set_equals => ["rock", "pop"]
-    #  q.where :tags.nlike => [category1, category2]  # for pointers
+    #  q.where :tags.not_set_equals => [category1, category2]  # for pointers
     #
     # @note This constraint uses aggregation pipeline with MongoDB $not and $setEquals.
     #
