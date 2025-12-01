@@ -542,6 +542,16 @@ end
 # DEFAULT_PRICING Constant Tests
 # ============================================================
 class AgentPricingConstantTest < Minitest::Test
+  def setup
+    unless Parse::Client.client?
+      Parse.setup(
+        server_url: "http://localhost:1337/parse",
+        application_id: "test-app-id",
+        api_key: "test-api-key"
+      )
+    end
+  end
+
   def test_default_pricing_constant_exists
     assert_equal({ prompt: 0.0, completion: 0.0 }, Parse::Agent::DEFAULT_PRICING)
   end

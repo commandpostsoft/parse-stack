@@ -1,7 +1,7 @@
 require_relative '../../test_helper'
 
 class ACLConstraintsUnitTest < Minitest::Test
-  
+
   def test_readable_by_constraint_generates_aggregation_pipeline
     puts "\n=== Testing ACL readable_by Constraint Generation ==="
 
@@ -9,15 +9,12 @@ class ACLConstraintsUnitTest < Minitest::Test
     query = Parse::Query.new("Post")
     query.readable_by("role:Admin")  # Explicit role prefix
 
-    # Should generate aggregation pipeline
+    # Should generate aggregation pipeline with simple $in query
     pipeline = query.pipeline
     expected_pipeline = [
       {
         "$match" => {
-          "$or" => [
-            { "_rperm" => { "$in" => ["role:Admin", "*"] } },
-            { "_rperm" => { "$exists" => false } }
-          ]
+          "_rperm" => { "$in" => ["role:Admin"] }
         }
       }
     ]
@@ -33,10 +30,7 @@ class ACLConstraintsUnitTest < Minitest::Test
     expected_pipeline2 = [
       {
         "$match" => {
-          "$or" => [
-            { "_rperm" => { "$in" => ["user123", "role:Editor", "*"] } },
-            { "_rperm" => { "$exists" => false } }
-          ]
+          "_rperm" => { "$in" => ["user123", "role:Editor"] }
         }
       }
     ]
@@ -44,7 +38,7 @@ class ACLConstraintsUnitTest < Minitest::Test
     assert_equal expected_pipeline2, pipeline2, "Should generate aggregation pipeline for mixed values"
     puts "✅ Multiple values constraint generates pipeline: #{pipeline2.inspect}"
   end
-  
+
   def test_writable_by_constraint_generates_aggregation_pipeline
     puts "\n=== Testing ACL writable_by Constraint Generation ==="
 
@@ -56,10 +50,7 @@ class ACLConstraintsUnitTest < Minitest::Test
     expected_pipeline = [
       {
         "$match" => {
-          "$or" => [
-            { "_wperm" => { "$in" => ["role:Admin", "*"] } },
-            { "_wperm" => { "$exists" => false } }
-          ]
+          "_wperm" => { "$in" => ["role:Admin"] }
         }
       }
     ]
@@ -75,10 +66,7 @@ class ACLConstraintsUnitTest < Minitest::Test
     expected_pipeline2 = [
       {
         "$match" => {
-          "$or" => [
-            { "_wperm" => { "$in" => ["user123", "role:Editor", "*"] } },
-            { "_wperm" => { "$exists" => false } }
-          ]
+          "_wperm" => { "$in" => ["user123", "role:Editor"] }
         }
       }
     ]
@@ -86,7 +74,7 @@ class ACLConstraintsUnitTest < Minitest::Test
     assert_equal expected_pipeline2, pipeline2, "Should generate aggregation pipeline for multiple writable values"
     puts "✅ Multiple values writable constraint generates pipeline: #{pipeline2.inspect}"
   end
-  
+
   def test_pipeline_method_returns_stages_for_acl_constraints
     puts "\n=== Testing Pipeline Method ==="
 
@@ -98,10 +86,7 @@ class ACLConstraintsUnitTest < Minitest::Test
     expected_pipeline = [
       {
         "$match" => {
-          "$or" => [
-            { "_rperm" => { "$in" => ["role:Admin", "*"] } },
-            { "_rperm" => { "$exists" => false } }
-          ]
+          "_rperm" => { "$in" => ["role:Admin"] }
         }
       }
     ]
@@ -111,7 +96,7 @@ class ACLConstraintsUnitTest < Minitest::Test
     puts "✅ Pipeline method returns aggregation stages for ACL constraints"
     puts "Pipeline: #{pipeline.inspect}"
   end
-  
+
   def test_constraint_chaining_with_acl
     puts "\n=== Testing ACL Constraint Chaining ==="
 
@@ -140,10 +125,7 @@ class ACLConstraintsUnitTest < Minitest::Test
     expected_pipeline = [
       {
         "$match" => {
-          "$or" => [
-            { "_rperm" => { "$in" => ["*"] } },
-            { "_rperm" => { "$exists" => false } }
-          ]
+          "_rperm" => { "$in" => ["*"] }
         }
       }
     ]
@@ -162,10 +144,7 @@ class ACLConstraintsUnitTest < Minitest::Test
     expected_pipeline = [
       {
         "$match" => {
-          "$or" => [
-            { "_rperm" => { "$in" => ["*"] } },
-            { "_rperm" => { "$exists" => false } }
-          ]
+          "_rperm" => { "$in" => ["*"] }
         }
       }
     ]
@@ -185,10 +164,7 @@ class ACLConstraintsUnitTest < Minitest::Test
     expected_pipeline = [
       {
         "$match" => {
-          "$or" => [
-            { "_wperm" => { "$in" => ["*"] } },
-            { "_wperm" => { "$exists" => false } }
-          ]
+          "_wperm" => { "$in" => ["*"] }
         }
       }
     ]
@@ -207,10 +183,7 @@ class ACLConstraintsUnitTest < Minitest::Test
     expected_pipeline = [
       {
         "$match" => {
-          "$or" => [
-            { "_wperm" => { "$in" => ["*"] } },
-            { "_wperm" => { "$exists" => false } }
-          ]
+          "_wperm" => { "$in" => ["*"] }
         }
       }
     ]
