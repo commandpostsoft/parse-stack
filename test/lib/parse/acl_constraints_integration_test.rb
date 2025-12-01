@@ -437,7 +437,7 @@ class ACLConstraintsIntegrationTest < Minitest::Test
   def test_acl_constraints_with_arrays
     # Ensure Parse is setup before running the test
     Parse::Test::ServerHelper.setup
-    
+
     with_parse_server do
       with_timeout(20, "ACL constraints with arrays test") do
         puts "\n=== Testing ACL Constraints with Arrays ==="
@@ -467,15 +467,126 @@ class ACLConstraintsIntegrationTest < Minitest::Test
         # Test readable_by with array of roles
         query_multiple = Parse::Query.new("TestDocument")
         query_multiple.readable_by([admin_role.name, editor_role.name])
-        
+
         multiple_results = query_multiple.results
         assert_equal 2, multiple_results.size, "Should find documents for both roles"
-        
+
         multiple_titles = multiple_results.map { |doc| doc["title"] }.sort
         expected_titles = ["Admin Doc", "Editor Doc"].sort
         assert_equal expected_titles, multiple_titles, "Should find documents for both Admin and Editor"
 
         puts "✅ ACL constraints with arrays test passed"
+      end
+    end
+  end
+
+  def test_readable_by_public_access_integration
+    # Ensure Parse is setup before running the test
+    Parse::Test::ServerHelper.setup
+
+    with_parse_server do
+      with_timeout(20, "readable_by public access test") do
+        puts "\n=== Testing readable_by Public Access Integration ==="
+
+        # Clean up any existing test documents first
+        TestDocument.query.results.each(&:destroy)
+        sleep 0.1
+
+        # Create documents with different access levels
+
+        # Document 1: Public read access
+        doc1 = create_test_document(title: "Public Doc", content: "Public content")
+        doc1.acl = Parse::ACL.new
+        doc1.acl.apply(:public, read: true, write: false)
+        assert doc1.save, "Should save public doc"
+
+        # Document 2: Private (no public access)
+        doc2 = create_test_document(title: "Private Doc", content: "Private content")
+        doc2.acl = Parse::ACL.new
+        doc2.acl.apply(:public, read: false, write: false)
+        # Add some user access so it's not completely inaccessible
+        doc2.acl.apply("someUserId", read: true, write: true)
+        assert doc2.save, "Should save private doc"
+
+        # Document 3: Another public doc
+        doc3 = create_test_document(title: "Another Public Doc", content: "More public content")
+        doc3.acl = Parse::ACL.new
+        doc3.acl.apply(:public, read: true, write: true)
+        assert doc3.save, "Should save another public doc"
+
+        # Test readable_by("*") - should find public docs
+        query_asterisk = Parse::Query.new("TestDocument")
+        query_asterisk.readable_by("*")
+
+        asterisk_results = query_asterisk.results
+        asterisk_titles = asterisk_results.map { |doc| doc["title"] }.sort
+        expected_public_titles = ["Another Public Doc", "Public Doc"].sort
+
+        puts "DEBUG: readable_by('*') found #{asterisk_results.size} documents: #{asterisk_titles}"
+        assert_equal expected_public_titles, asterisk_titles, "readable_by('*') should find public docs"
+
+        # Test readable_by("public") - same as "*"
+        query_public = Parse::Query.new("TestDocument")
+        query_public.readable_by("public")
+
+        public_results = query_public.results
+        public_titles = public_results.map { |doc| doc["title"] }.sort
+
+        puts "DEBUG: readable_by('public') found #{public_results.size} documents: #{public_titles}"
+        assert_equal expected_public_titles, public_titles, "readable_by('public') should find public docs"
+
+        puts "✅ readable_by public access integration test passed"
+      end
+    end
+  end
+
+  def test_writable_by_public_access_integration
+    # Ensure Parse is setup before running the test
+    Parse::Test::ServerHelper.setup
+
+    with_parse_server do
+      with_timeout(20, "writable_by public access test") do
+        puts "\n=== Testing writable_by Public Access Integration ==="
+
+        # Clean up any existing test documents first
+        TestDocument.query.results.each(&:destroy)
+        sleep 0.1
+
+        # Create documents with different write access levels
+
+        # Document 1: Public write access
+        doc1 = create_test_document(title: "Public Writable", content: "Anyone can edit")
+        doc1.acl = Parse::ACL.new
+        doc1.acl.apply(:public, read: true, write: true)
+        assert doc1.save, "Should save public writable doc"
+
+        # Document 2: Public read, no public write
+        doc2 = create_test_document(title: "Read Only Public", content: "Cannot edit")
+        doc2.acl = Parse::ACL.new
+        doc2.acl.apply(:public, read: true, write: false)
+        assert doc2.save, "Should save read-only public doc"
+
+        # Test writable_by("*") - should find publicly writable docs
+        query_asterisk = Parse::Query.new("TestDocument")
+        query_asterisk.writable_by("*")
+
+        asterisk_results = query_asterisk.results
+        asterisk_titles = asterisk_results.map { |doc| doc["title"] }
+
+        puts "DEBUG: writable_by('*') found #{asterisk_results.size} documents: #{asterisk_titles}"
+        assert_equal ["Public Writable"], asterisk_titles, "writable_by('*') should find publicly writable docs"
+
+        # Test writable_by("public") - same as "*"
+        query_public = Parse::Query.new("TestDocument")
+        query_public.writable_by("public")
+
+        public_results = query_public.results
+        public_titles = public_results.map { |doc| doc["title"] }
+
+        puts "DEBUG: writable_by('public') found #{public_results.size} documents: #{public_titles}"
+        assert_equal ["Public Writable"], public_titles, "writable_by('public') should find publicly writable docs"
+
+        puts "✅ writable_by public access integration test passed"
       end
     end
   end

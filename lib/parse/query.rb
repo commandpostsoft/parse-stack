@@ -2475,16 +2475,29 @@ module Parse
       pipeline, has_lookup_stages = build_aggregation_pipeline
 
       # Auto-detect if MongoDB direct is needed:
-      # When lookup stages use $split with $literal (to parse pointer format),
-      # Parse Server's REST API can't handle it correctly, so we need MongoDB direct
+      # 1. When lookup stages use $split with $literal (to parse pointer format),
+      #    Parse Server's REST API can't handle it correctly
+      # 2. When querying internal fields like _rperm or _wperm (ACL fields),
+      #    Parse Server blocks these for security - must use MongoDB direct
       use_mongo_direct = false
-      if has_lookup_stages && defined?(Parse::MongoDB) && Parse::MongoDB.enabled?
-        use_mongo_direct = true
+      if defined?(Parse::MongoDB) && Parse::MongoDB.enabled?
+        if has_lookup_stages || pipeline_uses_internal_fields?(pipeline)
+          use_mongo_direct = true
+        end
       end
 
       # Create Aggregation directly to avoid double-applying constraints
       # The aggregate() method would redundantly add where constraints again
       Aggregation.new(self, pipeline, verbose: @verbose_aggregate, mongo_direct: use_mongo_direct)
+    end
+
+    # Check if the pipeline references internal Parse fields that require MongoDB direct access
+    # @param pipeline [Array] the aggregation pipeline stages
+    # @return [Boolean] true if internal fields are used
+    def pipeline_uses_internal_fields?(pipeline)
+      internal_fields = %w[_rperm _wperm _acl]
+      pipeline_json = pipeline.to_json
+      internal_fields.any? { |field| pipeline_json.include?(field) }
     end
 
     # Build the complete aggregation pipeline from constraints

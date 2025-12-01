@@ -1,6 +1,67 @@
 ## Parse-Stack Changelog
 
+### 3.1.3
+
+#### ACL Query Improvements
+
+- **FIXED**: `readable_by("*")` and `readable_by("public")` queries now work correctly. The aggregation pipeline automatically uses MongoDB direct access when querying internal ACL fields (`_rperm`, `_wperm`) that Parse Server blocks through its REST API.
+
+```ruby
+# Find all publicly readable documents
+Post.query.readable_by("*").results
+Post.query.readable_by("public").results
+
+# Find all publicly writable documents
+Post.query.writable_by("*").results
+Post.query.writable_by("public").results
+```
+
+#### Active Model Consistency
+
+- **NEW**: Added `create!` class method for Active Model consistency. This is equivalent to `new(attrs).save!` and raises `Parse::RecordNotSaved` on failure.
+
+```ruby
+# Create and save in one call (raises on failure)
+song = Song.create!(title: "New Song", artist: "Artist")
+```
+
+---
+
 ### 3.1.2
+
+#### Validation Context Support
+
+- **NEW**: The `save()` method now passes validation context (`:create` or `:update`) to validations and callbacks, matching ActiveRecord behavior. This enables context-aware validations and callbacks.
+
+- **NEW**: `before_validation`, `after_validation`, and `around_validation` callbacks now support the `on:` option to run only on create or update:
+
+```ruby
+class Task < Parse::Object
+  property :name, :string, required: true
+  property :status, :string, required: true
+  property :completed_at, :date
+
+  # Set defaults only when creating new objects
+  before_validation :set_defaults, on: :create
+
+  # Require completion date only when updating
+  validates :completed_at, presence: true, on: :update, if: -> { status == "completed" }
+
+  def set_defaults
+    self.status ||= "pending"
+  end
+end
+
+# New object - before_validation on: :create runs, sets status to "pending"
+task = Task.new(name: "My Task")
+task.save  # status is automatically set to "pending"
+
+# Existing object - before_validation on: :create does NOT run
+task.status = "completed"
+task.save  # completed_at validation runs because it's an update
+```
+
+This is particularly useful for setting default values before validation runs, solving the issue where `before_create` callbacks run after validation.
 
 #### Bug Fixes
 

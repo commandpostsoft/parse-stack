@@ -3757,9 +3757,9 @@ ActiveModel callbacks can now halt operations by returning `false`. When a `befo
 ```ruby
 class Song < Parse::Object
   before_save :validate_song
-  
+
   private
-  
+
   def validate_song
     if name.blank?
       puts "Song name cannot be blank"
@@ -3768,6 +3768,59 @@ class Song < Parse::Object
     true
   end
 end
+```
+
+### Validation Context (on: :create / on: :update)
+
+Parse Stack supports ActiveRecord-style validation context for `before_validation`, `after_validation`, and `around_validation` callbacks. This allows you to run callbacks only when creating or updating objects:
+
+```ruby
+class Project < Parse::Object
+  property :name, :string, required: true
+  property :status, :string, required: true
+  property :owner, :pointer
+  property :completed_at, :date
+
+  # Set defaults only when creating new objects
+  before_validation :set_defaults, on: :create
+
+  # Validate completion date only on updates
+  validates :completed_at, presence: true, on: :update, if: -> { status == "completed" }
+
+  def set_defaults
+    self.status ||= "pending"
+    self.owner ||= current_team_owner
+  end
+end
+```
+
+**Why use `before_validation` instead of `before_create`?**
+
+The callback order is: `before_validation` → validations → `before_save` → `before_create` → save
+
+If you need to set default values for required fields, `before_create` runs *after* validations, so the validation will fail before your defaults are applied. Use `before_validation on: :create` instead:
+
+```ruby
+class Task < Parse::Object
+  property :name, :string, required: true
+  property :priority, :integer, required: true
+
+  # This WON'T work - before_create runs AFTER validation
+  before_create do
+    self.priority ||= 1  # Too late! Validation already failed
+  end
+
+  # This WILL work - before_validation runs BEFORE validation
+  before_validation :set_priority_default, on: :create
+
+  def set_priority_default
+    self.priority ||= 1  # Sets default before validation runs
+  end
+end
+
+# Now this works:
+task = Task.new(name: "My Task")
+task.save  # priority is set to 1 before validation
 ```
 
 ### Enhanced Change Tracking

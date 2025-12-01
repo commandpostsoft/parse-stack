@@ -222,6 +222,49 @@ module Parse
     # :destroy - runs before/after/around deleting an object
     define_model_callbacks :validation, :create, :update, :save, :destroy, terminator: ->(target, result_lambda) { result_lambda.call == false }
 
+    # Add support for `on: :create` and `on: :update` options in validation callbacks
+    # This emulates ActiveRecord's callback behavior where you can specify:
+    #   before_validation :method_name, on: :create
+    #   before_validation :method_name, on: :update
+    #
+    # The `on:` option is transformed into an `if:` condition that checks new?
+    module ValidationCallbackOnSupport
+      %i[before_validation after_validation around_validation].each do |callback_method|
+        define_method(callback_method) do |*args, **options, &block|
+          # Extract the :on option and convert to :if condition
+          if options.key?(:on)
+            on_context = options.delete(:on)
+            case on_context
+            when :create
+              # Only run for new objects
+              existing_if = options[:if]
+              options[:if] = if existing_if
+                              -> { new? && instance_exec(&existing_if) }
+                            else
+                              :new?
+                            end
+            when :update
+              # Only run for existing objects
+              existing_if = options[:if]
+              options[:if] = if existing_if
+                              -> { !new? && instance_exec(&existing_if) }
+                            else
+                              -> { !new? }
+                            end
+            end
+          end
+
+          # Call the original callback method via super
+          if options.empty?
+            super(*args, &block)
+          else
+            super(*args, **options, &block)
+          end
+        end
+      end
+    end
+    singleton_class.prepend ValidationCallbackOnSupport
+
     attr_accessor :created_at, :updated_at, :acl
 
     # All Parse Objects have a class-level and instance level `parse_class` method, in which the

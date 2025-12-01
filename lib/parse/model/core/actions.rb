@@ -338,6 +338,19 @@ module Parse
           obj
         end
 
+        # Creates a new object with the given attributes and saves it.
+        # This is equivalent to calling `new(attrs).save!`.
+        # @example
+        #   song = Song.create!(title: "New Song", artist: "Artist")
+        # @param attrs [Hash] the attributes for the new object.
+        # @return [Parse::Object] the newly created and saved object.
+        # @raise {Parse::RecordNotSaved} if the save fails
+        def create!(attrs = {})
+          obj = new(attrs)
+          obj.save!
+          obj
+        end
+
         # Finds the first object matching the query conditions and updates it with the attributes, 
         # or creates a new *saved* object with the attributes. Saves new objects or existing objects with changes.
         # @example
@@ -760,8 +773,10 @@ module Parse
         return true unless changed? || force
 
         # Run validations (validation callbacks are now triggered by valid? method)
+        # Pass context so `on: :create` and `on: :update` options work with callbacks
         if validate
-          validation_passed = valid?
+          validation_context = new? ? :create : :update
+          validation_passed = valid?(validation_context)
 
           unless validation_passed
             if self.class.raise_on_save_failure || autoraise.present?
