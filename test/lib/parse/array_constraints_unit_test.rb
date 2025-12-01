@@ -339,12 +339,14 @@ class ArrayConstraintsUnitTest < Minitest::Test
     assert or_conditions, "Should use $or for empty_or_nil"
     assert_equal 3, or_conditions.length, "Should have 3 conditions (empty, not exists, nil)"
 
-    # Check for empty array condition
-    assert or_conditions.any? { |c| c["tags"] == [] }, "Should match empty array"
+    # Check for empty array condition (now uses $exists + $eq for reliability)
+    assert or_conditions.any? { |c|
+      c["tags"].is_a?(Hash) && c["tags"]["$exists"] == true && c["tags"]["$eq"] == []
+    }, "Should match empty array with $exists and $eq"
     # Check for exists => false condition
     assert or_conditions.any? { |c| c["tags"].is_a?(Hash) && c["tags"]["$exists"] == false }, "Should match non-existent field"
-    # Check for nil condition
-    assert or_conditions.any? { |c| c["tags"].nil? }, "Should match nil value"
+    # Check for nil condition (now uses explicit $eq)
+    assert or_conditions.any? { |c| c["tags"].is_a?(Hash) && c["tags"]["$eq"] == nil }, "Should match nil value with $eq"
 
     puts "✅ empty_or_nil => true correctly builds $or with 3 conditions"
   end
@@ -439,5 +441,60 @@ class ArrayConstraintsUnitTest < Minitest::Test
     assert_match(/must be true or false/, error.message)
 
     puts "✅ not_empty correctly validates boolean input"
+  end
+
+  # ==========================================================================
+  # Test: Combined constraints (pipeline + regular constraints)
+  # ==========================================================================
+
+  def test_combined_constraints_merged_into_single_match
+    puts "\n=== Testing combined constraints merge into single $match ==="
+
+    query = Parse::Query.new("TestClass")
+    query.where(category: "reports")
+    query.where(:tags.empty_or_nil => true)
+
+    # Use build_aggregation_pipeline to test the merging logic
+    pipeline = query.send(:build_aggregation_pipeline)
+
+    # Should have exactly one $match stage (merged)
+    match_stages = pipeline.select { |stage| stage.key?("$match") }
+    assert_equal 1, match_stages.length, "Should have exactly 1 $match stage (merged)"
+
+    match_content = match_stages.first["$match"]
+
+    # The merged $match should use $and to combine constraints
+    assert match_content.key?("$and"), "Should use $and to combine regular and pipeline constraints"
+
+    and_conditions = match_content["$and"]
+    assert_equal 2, and_conditions.length, "Should have 2 conditions in $and (regular + pipeline)"
+
+    # First condition should be the regular constraint
+    assert and_conditions.any? { |c| c["category"] == "reports" }, "Should include regular constraint"
+
+    # Second condition should be the $or from empty_or_nil
+    assert and_conditions.any? { |c| c["$or"].is_a?(Array) }, "Should include $or from empty_or_nil"
+
+    puts "✅ Combined constraints correctly merged into single $match with $and"
+  end
+
+  def test_single_aggregation_constraint_not_wrapped_in_and
+    puts "\n=== Testing single aggregation constraint (no unnecessary $and) ==="
+
+    query = Parse::Query.new("TestClass")
+    query.where(:tags.empty_or_nil => true)
+
+    pipeline = query.send(:build_aggregation_pipeline)
+
+    match_stages = pipeline.select { |stage| stage.key?("$match") }
+    assert_equal 1, match_stages.length, "Should have exactly 1 $match stage"
+
+    match_content = match_stages.first["$match"]
+
+    # Single constraint should NOT be wrapped in $and
+    refute match_content.key?("$and"), "Single constraint should not be wrapped in $and"
+    assert match_content.key?("$or"), "Should directly have $or from empty_or_nil"
+
+    puts "✅ Single aggregation constraint not wrapped in unnecessary $and"
   end
 end

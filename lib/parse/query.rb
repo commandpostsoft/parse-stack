@@ -1455,34 +1455,59 @@ module Parse
     def build_aggregation_pipeline
       pipeline = []
       compiled_where = compile_where
-      
+
+      # Collect all match conditions to merge into a single $match stage
+      match_conditions = []
+      non_match_stages = []
+
       # Extract regular constraints (everything except __aggregation_pipeline)
-      regular_constraints = compiled_where.reject { |field, constraint|
+      regular_constraints = compiled_where.reject { |field, _|
         field == "__aggregation_pipeline"
       }
-      
-      # Add regular constraints as initial $match stage if present
+
+      # Add regular constraints as a match condition if present
       if regular_constraints.any?
         # Convert symbols to strings and handle date objects for MongoDB aggregation
         stringified_constraints = convert_dates_for_aggregation(JSON.parse(regular_constraints.to_json))
-        pipeline << { "$match" => stringified_constraints }
+        match_conditions << stringified_constraints
       end
-      
-      # Extract and add aggregation pipeline stages
+
+      # Extract aggregation pipeline stages and merge $match stages
       if compiled_where.key?("__aggregation_pipeline")
-        pipeline.concat(compiled_where["__aggregation_pipeline"])
+        compiled_where["__aggregation_pipeline"].each do |stage|
+          if stage.is_a?(Hash) && stage.key?("$match")
+            # Extract the $match condition for merging
+            match_conditions << stage["$match"]
+          else
+            # Non-$match stages go directly to pipeline
+            non_match_stages << stage
+          end
+        end
       end
-      
+
+      # Combine all match conditions into a single $match stage
+      if match_conditions.any?
+        if match_conditions.length == 1
+          pipeline << { "$match" => match_conditions.first }
+        else
+          # Use $and to combine multiple match conditions
+          pipeline << { "$match" => { "$and" => match_conditions } }
+        end
+      end
+
+      # Add any non-$match stages from the aggregation pipeline
+      pipeline.concat(non_match_stages)
+
       # Add limit if specified
       if @limit.is_a?(Numeric) && @limit > 0
         pipeline << { "$limit" => @limit }
       end
-      
-      # Add skip if specified  
+
+      # Add skip if specified
       if @skip > 0
         pipeline << { "$skip" => @skip }
       end
-      
+
       pipeline
     end
 
@@ -2991,24 +3016,43 @@ module Parse
       # Add match stage if there are where conditions
       compiled_where = @query.send(:compile_where)
       if compiled_where.present?
-        # Extract __aggregation_pipeline stages if present (these are pre-built $match stages)
-        if compiled_where.key?("__aggregation_pipeline")
-          # Add the pre-built aggregation pipeline stages directly
-          pipeline.concat(compiled_where["__aggregation_pipeline"])
+        # Collect all match conditions to merge into a single $match stage
+        match_conditions = []
+        non_match_stages = []
 
-          # Get remaining constraints (everything except __aggregation_pipeline)
-          regular_constraints = compiled_where.reject { |k, _| k == "__aggregation_pipeline" }
-          if regular_constraints.present?
-            aggregation_where = @query.send(:convert_constraints_for_aggregation, regular_constraints)
-            stringified_where = @query.send(:convert_dates_for_aggregation, aggregation_where)
-            pipeline << { "$match" => stringified_where }
-          end
-        else
-          # No special pipeline stages, convert all constraints normally
-          aggregation_where = @query.send(:convert_constraints_for_aggregation, compiled_where)
+        # Extract regular constraints (everything except __aggregation_pipeline)
+        regular_constraints = compiled_where.reject { |k, _| k == "__aggregation_pipeline" }
+        if regular_constraints.present?
+          aggregation_where = @query.send(:convert_constraints_for_aggregation, regular_constraints)
           stringified_where = @query.send(:convert_dates_for_aggregation, aggregation_where)
-          pipeline << { "$match" => stringified_where }
+          match_conditions << stringified_where
         end
+
+        # Extract aggregation pipeline stages and merge $match stages
+        if compiled_where.key?("__aggregation_pipeline")
+          compiled_where["__aggregation_pipeline"].each do |stage|
+            if stage.is_a?(Hash) && stage.key?("$match")
+              # Extract the $match condition for merging
+              match_conditions << stage["$match"]
+            else
+              # Non-$match stages go directly to pipeline
+              non_match_stages << stage
+            end
+          end
+        end
+
+        # Combine all match conditions into a single $match stage
+        if match_conditions.any?
+          if match_conditions.length == 1
+            pipeline << { "$match" => match_conditions.first }
+          else
+            # Use $and to combine multiple match conditions
+            pipeline << { "$match" => { "$and" => match_conditions } }
+          end
+        end
+
+        # Add any non-$match stages from the aggregation pipeline
+        pipeline.concat(non_match_stages)
       end
 
       # Add unwind stage if flatten_arrays is enabled

@@ -48,6 +48,48 @@ Parse::Push.to_installation([device1, device2]).with_alert("Hello!").send!
 
 All methods support the fluent builder pattern and have both instance and class method versions.
 
+#### Bug Fixes
+
+##### Array Constraint Field Name Formatting
+
+Fixed critical issue where array constraints (`empty_or_nil`, `not_empty`, `set_equals`, `eq_array`, etc.) were not correctly formatting field names for MongoDB aggregation queries. This caused queries to fail when:
+
+- Using property names with snake_case that map to camelCase in Parse (e.g., `topic_list` → `topicList`)
+- Combining array constraints with other query constraints (e.g., `Model.query(category: 'x', :topics.empty_or_nil => true)`)
+
+**Fixes applied:**
+- All 13 array constraints now use `Parse::Query.format_field` for proper field name conversion:
+  - `set_equals` / `eq_set` - Match arrays with same elements (any order)
+  - `eq_array` - Match arrays with exact order
+  - `not_set_equals` / `neq_set` - Match arrays that differ
+  - `neq_array` - Match arrays with different order/elements
+  - `subset_of` - Match arrays that are subsets
+  - `superset_of` - Match arrays that are supersets
+  - `set_intersection` / `intersects` - Match arrays with common elements
+  - `set_disjoint` / `disjoint` - Match arrays with no common elements
+  - `empty_or_nil` - Match empty, nil, or missing arrays
+  - `not_empty` - Match non-empty arrays
+  - `arr_empty` - Match empty arrays
+  - `arr_nempty` - Match non-empty arrays
+  - `size` - Match arrays by size
+- `build_aggregation_pipeline` now merges all `$match` stages into a single stage with `$and`
+- `GroupBy.pipeline` uses the same merging logic for consistency
+- `empty_or_nil` constraint now uses explicit `$eq` operators for more reliable MongoDB matching
+
+**Before (broken):**
+```ruby
+# This returned incorrect results when topics: [] existed
+Report.query(category: 'reports', :topics.empty_or_nil => true).count
+# => over-counted or returned wrong results
+```
+
+**After (fixed):**
+```ruby
+# Now correctly matches documents where topics is [], nil, or missing
+Report.query(category: 'reports', :topics.empty_or_nil => true).count
+# => correct count matching .all.count
+```
+
 ### 3.0.1
 
 #### Agent Enhancements

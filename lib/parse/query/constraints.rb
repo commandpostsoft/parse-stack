@@ -548,7 +548,7 @@ module Parse
       # @return [Hash] the compiled constraint using aggregation pipeline.
       def build
         value = formatted_value
-        field_name = @operation.operand.to_s
+        field_name = Parse::Query.format_field(@operation.operand)
         size_expr = { "$size" => { "$ifNull" => ["$#{field_name}", []] } }
 
         if value.is_a?(Integer)
@@ -628,7 +628,7 @@ module Parse
           raise ArgumentError, "#{self.class}: Value must be true or false"
         end
 
-        field_name = @operation.operand.to_s
+        field_name = Parse::Query.format_field(@operation.operand)
 
         if value
           # Use direct equality for empty array (can use MongoDB index)
@@ -667,7 +667,7 @@ module Parse
           raise ArgumentError, "#{self.class}: Value must be true or false"
         end
 
-        field_name = @operation.operand.to_s
+        field_name = Parse::Query.format_field(@operation.operand)
         size_expr = { "$size" => { "$ifNull" => ["$#{field_name}", []] } }
 
         # If true, match size > 0; if false, match size == 0
@@ -711,18 +711,19 @@ module Parse
           raise ArgumentError, "#{self.class}: Value must be true or false"
         end
 
-        field_name = @operation.operand.to_s
+        # Use formatted field name for proper Parse field mapping
+        field_name = Parse::Query.format_field(@operation.operand)
 
         if value
           # Match empty array OR nil/missing field
-          # Uses $or with index-friendly conditions
+          # Use explicit $eq for empty array check (more reliable through Parse Server)
           pipeline = [
             {
               "$match" => {
                 "$or" => [
-                  { field_name => [] },
+                  { field_name => { "$exists" => true, "$eq" => [] } },
                   { field_name => { "$exists" => false } },
-                  { field_name => nil }
+                  { field_name => { "$eq" => nil } }
                 ]
               }
             }
@@ -772,7 +773,8 @@ module Parse
           raise ArgumentError, "#{self.class}: Value must be true or false"
         end
 
-        field_name = @operation.operand.to_s
+        # Use formatted field name for proper Parse field mapping
+        field_name = Parse::Query.format_field(@operation.operand)
 
         if value
           # Match non-empty arrays (must exist, not nil, and not empty)
@@ -790,13 +792,14 @@ module Parse
           ]
         else
           # Match empty array OR nil/missing field
+          # Use explicit $eq for empty array check (more reliable through Parse Server)
           pipeline = [
             {
               "$match" => {
                 "$or" => [
-                  { field_name => [] },
+                  { field_name => { "$exists" => true, "$eq" => [] } },
                   { field_name => { "$exists" => false } },
-                  { field_name => nil }
+                  { field_name => { "$eq" => nil } }
                 ]
               }
             }
@@ -835,7 +838,7 @@ module Parse
         val = formatted_value
         val = [val].compact unless val.is_a?(Array)
 
-        field_name = @operation.operand.to_s
+        field_name = Parse::Query.format_field(@operation.operand)
 
         # Check if values are pointers (Parse objects or pointer objects)
         is_pointer_array = val.any? do |item|
@@ -920,7 +923,7 @@ module Parse
         val = formatted_value
         val = [val].compact unless val.is_a?(Array)
 
-        field_name = @operation.operand.to_s
+        field_name = Parse::Query.format_field(@operation.operand)
 
         # Check if values are pointers (Parse objects or pointer objects)
         is_pointer_array = val.any? do |item|
@@ -999,7 +1002,7 @@ module Parse
         val = formatted_value
         val = [val].compact unless val.is_a?(Array)
 
-        field_name = @operation.operand.to_s
+        field_name = Parse::Query.format_field(@operation.operand)
 
         # Check if values are pointers (Parse objects or pointer objects)
         is_pointer_array = val.any? do |item|
@@ -1079,7 +1082,7 @@ module Parse
         val = formatted_value
         val = [val].compact unless val.is_a?(Array)
 
-        field_name = @operation.operand.to_s
+        field_name = Parse::Query.format_field(@operation.operand)
 
         # Check if values are pointers (Parse objects or pointer objects)
         is_pointer_array = val.any? do |item|
@@ -1169,7 +1172,7 @@ module Parse
           raise ArgumentError, "#{self.class}: Value must be a hash of criteria for element matching"
         end
 
-        field_name = @operation.operand.to_s
+        field_name = Parse::Query.format_field(@operation.operand)
 
         # Convert any Parse objects to pointers in the criteria
         converted_val = convert_criteria(val)
@@ -1234,7 +1237,7 @@ module Parse
         val = formatted_value
         val = [val].compact unless val.is_a?(Array)
 
-        field_name = @operation.operand.to_s
+        field_name = Parse::Query.format_field(@operation.operand)
 
         # Check if values are pointers
         is_pointer_array = val.any? do |item|
@@ -1307,7 +1310,7 @@ module Parse
       # @return [Hash] the compiled constraint using aggregation pipeline.
       def build
         val = formatted_value
-        field_name = @operation.operand.to_s
+        field_name = Parse::Query.format_field(@operation.operand)
 
         # Handle pointer values
         if val.respond_to?(:id)
@@ -1378,7 +1381,7 @@ module Parse
       # @return [Hash] the compiled constraint using aggregation pipeline.
       def build
         val = formatted_value
-        field_name = @operation.operand.to_s
+        field_name = Parse::Query.format_field(@operation.operand)
 
         # Handle pointer values
         if val.respond_to?(:id)
