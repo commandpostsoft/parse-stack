@@ -2102,20 +2102,27 @@ module Parse
 
       # @return [Hash] the compiled constraint using _rperm field.
       def build
-        value = formatted_value
+        # Use @value directly to preserve type information before formatted_value converts to pointers
+        value = @value
         permissions_to_check = []
 
         # Handle different input types using duck typing
         if value.is_a?(Parse::User) || (value.respond_to?(:is_a?) && value.is_a?(Parse::User))
-          # For a user, include their ID and all their role names
+          # For a user, include their ID and all their role names (with hierarchy)
           permissions_to_check << value.id if value.respond_to?(:id) && value.id.present?
 
-          # Automatically fetch user's roles from Parse
+          # Automatically fetch user's roles from Parse and expand hierarchy
           begin
             if value.respond_to?(:id) && value.id.present? && defined?(Parse::Role)
               user_roles = Parse::Role.all(users: value)
               user_roles.each do |role|
                 permissions_to_check << "role:#{role.name}" if role.respond_to?(:name) && role.name.present?
+                # Expand role hierarchy - include child roles
+                if role.respond_to?(:all_child_roles)
+                  role.all_child_roles(max_depth: 5).each do |child_role|
+                    permissions_to_check << "role:#{child_role.name}" if child_role.respond_to?(:name) && child_role.name.present?
+                  end
+                end
               end
             end
           rescue => e
@@ -2126,17 +2133,34 @@ module Parse
           # For a role object, add the role name with "role:" prefix
           permissions_to_check << "role:#{value.name}" if value.respond_to?(:name) && value.name.present?
 
+          # Expand role hierarchy - include all child roles
+          begin
+            if value.respond_to?(:all_child_roles)
+              value.all_child_roles(max_depth: 5).each do |child_role|
+                permissions_to_check << "role:#{child_role.name}" if child_role.respond_to?(:name) && child_role.name.present?
+              end
+            end
+          rescue => e
+            # If child role fetching fails, continue with just the direct role
+          end
+
         elsif value.is_a?(Parse::Pointer) || (value.respond_to?(:parse_class) && value.respond_to?(:id))
           # Handle pointer to User or Role
           if value.respond_to?(:parse_class) && (value.parse_class == "User" || value.parse_class == "_User")
             permissions_to_check << value.id if value.respond_to?(:id) && value.id.present?
 
-            # Query roles directly using the user pointer
+            # Query roles directly using the user pointer and expand hierarchy
             begin
               if value.respond_to?(:id) && value.id.present? && defined?(Parse::Role)
                 user_roles = Parse::Role.all(users: value)
                 user_roles.each do |role|
                   permissions_to_check << "role:#{role.name}" if role.respond_to?(:name) && role.name.present?
+                  # Expand role hierarchy - include child roles
+                  if role.respond_to?(:all_child_roles)
+                    role.all_child_roles(max_depth: 5).each do |child_role|
+                      permissions_to_check << "role:#{child_role.name}" if child_role.respond_to?(:name) && child_role.name.present?
+                    end
+                  end
                 end
               end
             rescue => e
@@ -2149,8 +2173,34 @@ module Parse
           value.each do |item|
             if item.is_a?(Parse::User) || (item.respond_to?(:is_a?) && item.is_a?(Parse::User))
               permissions_to_check << item.id if item.respond_to?(:id) && item.id.present?
+              # Fetch user's roles and expand hierarchy
+              begin
+                if item.respond_to?(:id) && item.id.present? && defined?(Parse::Role)
+                  user_roles = Parse::Role.all(users: item)
+                  user_roles.each do |role|
+                    permissions_to_check << "role:#{role.name}" if role.respond_to?(:name) && role.name.present?
+                    if role.respond_to?(:all_child_roles)
+                      role.all_child_roles(max_depth: 5).each do |child_role|
+                        permissions_to_check << "role:#{child_role.name}" if child_role.respond_to?(:name) && child_role.name.present?
+                      end
+                    end
+                  end
+                end
+              rescue => e
+                # Continue with just the user ID
+              end
             elsif item.is_a?(Parse::Role) || (item.respond_to?(:is_a?) && item.is_a?(Parse::Role))
               permissions_to_check << "role:#{item.name}" if item.respond_to?(:name) && item.name.present?
+              # Expand role hierarchy
+              begin
+                if item.respond_to?(:all_child_roles)
+                  item.all_child_roles(max_depth: 5).each do |child_role|
+                    permissions_to_check << "role:#{child_role.name}" if child_role.respond_to?(:name) && child_role.name.present?
+                  end
+                end
+              rescue => e
+                # Continue with just the direct role
+              end
             elsif item.is_a?(Parse::Pointer) || (item.respond_to?(:parse_class) && item.respond_to?(:id))
               if item.respond_to?(:parse_class) && (item.parse_class == "User" || item.parse_class == "_User")
                 permissions_to_check << item.id if item.respond_to?(:id) && item.id.present?
@@ -2165,14 +2215,12 @@ module Parse
         elsif value.is_a?(String)
           if value == "none"
             # "none" = objects with empty _rperm (master key only)
-            # Return immediately with a special query for empty array
+            # Only check for empty array - if _rperm is missing/undefined, Parse treats it as public
+            # Parse Server saves empty _rperm as [] when no read permissions are set
             pipeline = [
               {
                 "$match" => {
-                  "$or" => [
-                    { "_rperm" => { "$eq" => [] } },
-                    { "_rperm" => { "$exists" => false } }
-                  ]
+                  "_rperm" => { "$eq" => [] }
                 }
               }
             ]
@@ -2181,6 +2229,7 @@ module Parse
 
           # Use string as-is (exact permission value: user ID, "role:Name", or "*")
           # Also accept "public" as an alias for "*"
+          # Note: For role names without prefix, use readable_by_role or pass a Parse::Role object
           permissions_to_check << (value == "public" ? "*" : value)
 
         else
@@ -2322,20 +2371,27 @@ module Parse
 
       # @return [Hash] the compiled constraint using _wperm field.
       def build
-        value = formatted_value
+        # Use @value directly to preserve type information before formatted_value converts to pointers
+        value = @value
         permissions_to_check = []
 
         # Handle different input types using duck typing
         if value.is_a?(Parse::User) || (value.respond_to?(:is_a?) && value.is_a?(Parse::User))
-          # For a user, include their ID and all their role names
+          # For a user, include their ID and all their role names (with hierarchy)
           permissions_to_check << value.id if value.respond_to?(:id) && value.id.present?
 
-          # Automatically fetch user's roles from Parse
+          # Automatically fetch user's roles from Parse and expand hierarchy
           begin
             if value.respond_to?(:id) && value.id.present? && defined?(Parse::Role)
               user_roles = Parse::Role.all(users: value)
               user_roles.each do |role|
                 permissions_to_check << "role:#{role.name}" if role.respond_to?(:name) && role.name.present?
+                # Expand role hierarchy - include child roles
+                if role.respond_to?(:all_child_roles)
+                  role.all_child_roles(max_depth: 5).each do |child_role|
+                    permissions_to_check << "role:#{child_role.name}" if child_role.respond_to?(:name) && child_role.name.present?
+                  end
+                end
               end
             end
           rescue => e
@@ -2346,17 +2402,34 @@ module Parse
           # For a role object, add the role name with "role:" prefix
           permissions_to_check << "role:#{value.name}" if value.respond_to?(:name) && value.name.present?
 
+          # Expand role hierarchy - include all child roles
+          begin
+            if value.respond_to?(:all_child_roles)
+              value.all_child_roles(max_depth: 5).each do |child_role|
+                permissions_to_check << "role:#{child_role.name}" if child_role.respond_to?(:name) && child_role.name.present?
+              end
+            end
+          rescue => e
+            # If child role fetching fails, continue with just the direct role
+          end
+
         elsif value.is_a?(Parse::Pointer) || (value.respond_to?(:parse_class) && value.respond_to?(:id))
           # Handle pointer to User or Role
           if value.respond_to?(:parse_class) && (value.parse_class == "User" || value.parse_class == "_User")
             permissions_to_check << value.id if value.respond_to?(:id) && value.id.present?
 
-            # Query roles directly using the user pointer
+            # Query roles directly using the user pointer and expand hierarchy
             begin
               if value.respond_to?(:id) && value.id.present? && defined?(Parse::Role)
                 user_roles = Parse::Role.all(users: value)
                 user_roles.each do |role|
                   permissions_to_check << "role:#{role.name}" if role.respond_to?(:name) && role.name.present?
+                  # Expand role hierarchy - include child roles
+                  if role.respond_to?(:all_child_roles)
+                    role.all_child_roles(max_depth: 5).each do |child_role|
+                      permissions_to_check << "role:#{child_role.name}" if child_role.respond_to?(:name) && child_role.name.present?
+                    end
+                  end
                 end
               end
             rescue => e
@@ -2369,8 +2442,34 @@ module Parse
           value.each do |item|
             if item.is_a?(Parse::User) || (item.respond_to?(:is_a?) && item.is_a?(Parse::User))
               permissions_to_check << item.id if item.respond_to?(:id) && item.id.present?
+              # Fetch user's roles and expand hierarchy
+              begin
+                if item.respond_to?(:id) && item.id.present? && defined?(Parse::Role)
+                  user_roles = Parse::Role.all(users: item)
+                  user_roles.each do |role|
+                    permissions_to_check << "role:#{role.name}" if role.respond_to?(:name) && role.name.present?
+                    if role.respond_to?(:all_child_roles)
+                      role.all_child_roles(max_depth: 5).each do |child_role|
+                        permissions_to_check << "role:#{child_role.name}" if child_role.respond_to?(:name) && child_role.name.present?
+                      end
+                    end
+                  end
+                end
+              rescue => e
+                # Continue with just the user ID
+              end
             elsif item.is_a?(Parse::Role) || (item.respond_to?(:is_a?) && item.is_a?(Parse::Role))
               permissions_to_check << "role:#{item.name}" if item.respond_to?(:name) && item.name.present?
+              # Expand role hierarchy
+              begin
+                if item.respond_to?(:all_child_roles)
+                  item.all_child_roles(max_depth: 5).each do |child_role|
+                    permissions_to_check << "role:#{child_role.name}" if child_role.respond_to?(:name) && child_role.name.present?
+                  end
+                end
+              rescue => e
+                # Continue with just the direct role
+              end
             elsif item.is_a?(Parse::Pointer) || (item.respond_to?(:parse_class) && item.respond_to?(:id))
               if item.respond_to?(:parse_class) && (item.parse_class == "User" || item.parse_class == "_User")
                 permissions_to_check << item.id if item.respond_to?(:id) && item.id.present?
@@ -2385,14 +2484,12 @@ module Parse
         elsif value.is_a?(String)
           if value == "none"
             # "none" = objects with empty _wperm (master key only)
-            # Return immediately with a special query for empty array
+            # Only check for empty array - if _wperm is missing/undefined, Parse treats it as public
+            # Parse Server saves empty _wperm as [] when no write permissions are set
             pipeline = [
               {
                 "$match" => {
-                  "$or" => [
-                    { "_wperm" => { "$eq" => [] } },
-                    { "_wperm" => { "$exists" => false } }
-                  ]
+                  "_wperm" => { "$eq" => [] }
                 }
               }
             ]
@@ -2776,7 +2873,8 @@ module Parse
       #  q.where :acl.readable_by => "userId"
       #  q.where :acl.readable_by => ["userId", "role:Admin"]
       # @return [ReadableByConstraint]
-      register :readable_by
+      # NOTE: :readable_by is already registered by ACLReadableByConstraint above.
+      # This class provides simplified empty ACL queries and is used internally.
 
       # @return [Hash] the compiled constraint using aggregation pipeline.
       def build
@@ -2870,8 +2968,9 @@ module Parse
     end
 
     # Alias for writeable_by (American spelling)
+    # NOTE: :writable_by is already registered by ACLWritableByConstraint above.
+    # This class provides simplified empty ACL queries and is used internally.
     class WritableByConstraint < WriteableByConstraint
-      register :writable_by
     end
 
     # ACL NOT Readable By Constraint

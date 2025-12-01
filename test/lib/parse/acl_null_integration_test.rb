@@ -36,7 +36,8 @@ class ACLNullTest < Minitest::Test
       puts "DEBUG: Public readable results: #{public_results.map(&:title)}"
       
       # Test role readable query - should find both documents (ACL doc + no-ACL doc)
-      role_query = TestDoc.query.readable_by(test_role.name)
+      # Pass the actual role object so the constraint adds the role: prefix
+      role_query = TestDoc.query.readable_by(test_role)
       role_results = role_query.results
       puts "DEBUG: Role readable results: #{role_results.map(&:title)}"
       

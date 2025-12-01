@@ -415,6 +415,29 @@ module Parse
           self.session_token = value
         elsif expr_sym == :read_preference
           self.read_preference = value
+        # ACL convenience query options
+        elsif expr_sym == :readable_by
+          readable_by(value)
+        elsif expr_sym == :writable_by
+          writable_by(value)
+        elsif expr_sym == :readable_by_role
+          readable_by_role(value)
+        elsif expr_sym == :writable_by_role
+          writable_by_role(value)
+        elsif expr_sym == :publicly_readable
+          publicly_readable if value
+        elsif expr_sym == :publicly_writable
+          publicly_writable if value
+        elsif expr_sym == :privately_readable || expr_sym == :master_key_read_only
+          privately_readable if value
+        elsif expr_sym == :privately_writable || expr_sym == :master_key_write_only
+          privately_writable if value
+        elsif expr_sym == :private_acl || expr_sym == :master_key_only
+          private_acl if value
+        elsif expr_sym == :not_publicly_readable
+          not_publicly_readable if value
+        elsif expr_sym == :not_publicly_writable
+          not_publicly_writable if value
         else
           add_constraint(expression, value)
         end
@@ -4162,6 +4185,100 @@ module Parse
     def writable_by_role(role_name, mongo_direct: nil)
       @acl_query_mongo_direct = mongo_direct unless mongo_direct.nil?
       where(:ACL.writable_by_role => role_name)
+      self
+    end
+
+    # ============================================================
+    # ACL Convenience Query Methods
+    # ============================================================
+
+    # Find objects that are publicly readable (anyone can read).
+    # Matches objects where _rperm contains "*".
+    #
+    # @param mongo_direct [Boolean] if true, forces MongoDB direct query.
+    # @return [Parse::Query] returns self for method chaining
+    # @example
+    #   Song.query.publicly_readable.results
+    #   Song.query.publicly_readable.where(genre: "Rock").results
+    def publicly_readable(mongo_direct: nil)
+      readable_by("*", mongo_direct: mongo_direct)
+    end
+
+    # Find objects that are publicly writable (anyone can write).
+    # Matches objects where _wperm contains "*".
+    # Useful for security audits to find potentially insecure objects.
+    #
+    # @param mongo_direct [Boolean] if true, forces MongoDB direct query.
+    # @return [Parse::Query] returns self for method chaining
+    # @example
+    #   Song.query.publicly_writable.results  # Security audit!
+    def publicly_writable(mongo_direct: nil)
+      writable_by("*", mongo_direct: mongo_direct)
+    end
+
+    # Find objects with no read permissions (master key only).
+    # Matches objects where _rperm is empty or doesn't exist.
+    #
+    # @param mongo_direct [Boolean] if true, forces MongoDB direct query.
+    # @return [Parse::Query] returns self for method chaining
+    # @example
+    #   Song.query.privately_readable.results
+    #   Song.query.master_key_read_only.results  # Alias
+    def privately_readable(mongo_direct: nil)
+      readable_by("none", mongo_direct: mongo_direct)
+    end
+    alias_method :master_key_read_only, :privately_readable
+
+    # Find objects with no write permissions (master key only).
+    # Matches objects where _wperm is empty or doesn't exist.
+    #
+    # @param mongo_direct [Boolean] if true, forces MongoDB direct query.
+    # @return [Parse::Query] returns self for method chaining
+    # @example
+    #   Song.query.privately_writable.results
+    #   Song.query.master_key_write_only.results  # Alias
+    def privately_writable(mongo_direct: nil)
+      writable_by("none", mongo_direct: mongo_direct)
+    end
+    alias_method :master_key_write_only, :privately_writable
+
+    # Find objects with completely private ACL (no read AND no write permissions).
+    # Only accessible with master key.
+    #
+    # @param mongo_direct [Boolean] if true, forces MongoDB direct query.
+    # @return [Parse::Query] returns self for method chaining
+    # @example
+    #   Song.query.private_acl.results
+    #   Song.query.master_key_only.results  # Alias
+    def private_acl(mongo_direct: nil)
+      privately_readable(mongo_direct: mongo_direct)
+      privately_writable(mongo_direct: mongo_direct)
+    end
+    alias_method :master_key_only, :private_acl
+
+    # Find objects that are NOT publicly readable.
+    # Matches objects where _rperm does NOT contain "*".
+    #
+    # @param mongo_direct [Boolean] if true, forces MongoDB direct query.
+    # @return [Parse::Query] returns self for method chaining
+    # @example
+    #   Song.query.not_publicly_readable.results
+    def not_publicly_readable(mongo_direct: nil)
+      @acl_query_mongo_direct = mongo_direct unless mongo_direct.nil?
+      where(:ACL.not_readable_by => "*")
+      self
+    end
+
+    # Find objects that are NOT publicly writable.
+    # Matches objects where _wperm does NOT contain "*".
+    #
+    # @param mongo_direct [Boolean] if true, forces MongoDB direct query.
+    # @return [Parse::Query] returns self for method chaining
+    # @example
+    #   Song.query.not_publicly_writable.results
+    def not_publicly_writable(mongo_direct: nil)
+      @acl_query_mongo_direct = mongo_direct unless mongo_direct.nil?
+      where(:ACL.not_writable_by => "*")
       self
     end
   end # Query

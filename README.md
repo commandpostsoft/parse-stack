@@ -208,8 +208,54 @@ Song.query.aggregate([
 
 Filter queries based on ACL permissions. These constraints use MongoDB aggregation pipelines because Parse Server restricts direct queries on internal ACL fields (`_rperm`, `_wperm`).
 
+#### Convenience Methods
+
+Quick methods for common ACL queries:
+
 ```ruby
-# Find songs readable by a specific user (auto-fetches user's roles)
+# Find publicly accessible documents
+songs = Song.query.publicly_readable.results
+songs = Song.query.publicly_writable.results  # Security audit!
+
+# Find master-key-only documents (empty permissions)
+songs = Song.query.privately_readable.results
+songs = Song.query.master_key_read_only.results  # Alias
+songs = Song.query.privately_writable.results
+songs = Song.query.master_key_write_only.results  # Alias
+
+# Find completely private documents (no read AND no write)
+songs = Song.query.private_acl.results
+songs = Song.query.master_key_only.results  # Alias
+
+# Find non-public documents
+songs = Song.query.not_publicly_readable.results
+songs = Song.query.not_publicly_writable.results
+
+# Chain with other constraints
+songs = Song.query.publicly_readable.where(genre: "Rock").order(:plays.desc).results
+```
+
+#### Hash Key Support
+
+ACL constraints can be passed as hash keys in `where`, `first`, `all`:
+
+```ruby
+# Use readable_by:/writable_by: as hash keys
+songs = Song.where(readable_by: current_user, genre: "Rock").results
+songs = Song.first(writable_by: admin_role)
+songs = Song.all(publicly_readable: true)
+songs = Song.query(readable_by_role: "Admin", limit: 10).results
+
+# Boolean flags for convenience methods
+songs = Song.all(privately_readable: true)
+songs = Song.all(not_publicly_writable: true)
+songs = Song.all(private_acl: true)  # Finds master-key-only documents
+```
+
+#### User and Role Queries
+
+```ruby
+# Find songs readable by a specific user (auto-fetches user's roles + child roles)
 songs = Song.all(:ACL.readable_by => current_user)
 
 # Find songs readable by exact permission strings
@@ -228,26 +274,49 @@ songs = Song.query.readable_by("public").results            # Public access (*)
 songs = Song.query.readable_by("none").results              # Empty _rperm
 ```
 
+#### Role Hierarchy Expansion
+
+ACL queries automatically expand role hierarchies. When you query with a `Parse::Role` object, the query includes all child roles (permissions flow DOWN the hierarchy):
+
+```ruby
+# Role hierarchy: Admin -> Moderator -> Editor
+admin_role = Parse::Role.find_by_name("Admin")
+
+# This query finds documents readable by Admin, Moderator, AND Editor
+# because Admin has those roles as children
+songs = Song.query.readable_by(admin_role).results
+
+# When querying with a user, we fetch all their roles and expand hierarchies
+user = Parse::User.current
+songs = Song.query.readable_by(user).results
+# Finds documents readable by:
+# - The user's ID directly
+# - All roles the user belongs to
+# - All child roles of those roles
+```
+
 #### Querying for Empty/Private ACLs
 
 Find objects with no permissions (master key only access):
 
 ```ruby
 # Find objects with NO read permissions (master key only)
-songs = Song.query.readable_by([]).results
+songs = Song.query.privately_readable.results
 songs = Song.query.readable_by("none").results
 
 # Find objects with NO write permissions (read-only)
-songs = Song.query.writable_by([]).results
+songs = Song.query.privately_writable.results
 songs = Song.query.writable_by("none").results
 
 # Find objects with completely empty ACL (no read AND no write)
+songs = Song.query.private_acl.results
 songs = Song.query.where(:ACL.private_acl => true).results
-songs = Song.query.where(:ACL.master_key_only => true).results
 
 # Find objects that have SOME permissions (not private)
 songs = Song.query.where(:ACL.private_acl => false).results
 ```
+
+> **Note**: If `_rperm` is missing/undefined in MongoDB, Parse Server treats the document as publicly readable. The `privately_readable` query specifically looks for documents with an empty `_rperm: []` array.
 
 #### Querying for Objects NOT Accessible
 
@@ -258,10 +327,12 @@ Find objects hidden from specific users or roles:
 songs = Song.query.where(:ACL.not_readable_by => current_user).results
 
 # Find objects NOT publicly readable
+songs = Song.query.not_publicly_readable.results
 songs = Song.query.where(:ACL.not_readable_by => "*").results
 songs = Song.query.where(:ACL.not_readable_by => :public).results
 
 # Find objects NOT writable by a role
+songs = Song.query.not_publicly_writable.results
 songs = Song.query.where(:ACL.not_writeable_by => "role:Editor").results
 ```
 
@@ -272,6 +343,7 @@ ACL queries automatically use MongoDB direct access when needed. You can also ex
 ```ruby
 # Force MongoDB direct query (bypasses Parse Server)
 songs = Song.query.readable_by([], mongo_direct: true).results
+songs = Song.query.publicly_readable(mongo_direct: true).results
 
 # Force Parse Server aggregation (disable auto-detection)
 songs = Song.query.readable_by("user123", mongo_direct: false).results

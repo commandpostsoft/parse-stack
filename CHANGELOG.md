@@ -2,6 +2,89 @@
 
 ### 3.1.4
 
+#### ACL Query Convenience Methods
+
+- **NEW**: Added intuitive convenience methods for common ACL queries. These methods make it easy to find documents based on their permission status.
+
+```ruby
+# Find publicly accessible documents
+Song.query.publicly_readable.results
+Song.query.publicly_writable.results  # Security audit!
+
+# Find master-key-only documents (empty permissions)
+Song.query.privately_readable.results
+Song.query.master_key_read_only.results  # Alias
+Song.query.privately_writable.results
+Song.query.master_key_write_only.results  # Alias
+
+# Find completely private documents (no read AND no write)
+Song.query.private_acl.results
+Song.query.master_key_only.results  # Alias
+
+# Find non-public documents
+Song.query.not_publicly_readable.results
+Song.query.not_publicly_writable.results
+```
+
+- **NEW**: ACL query options can now be passed as hash keys in `where`, `first`, `all`, etc.
+
+```ruby
+# Use readable_by:/writable_by: as hash keys
+Song.where(readable_by: current_user, genre: "Rock").results
+Song.first(writable_by: admin_role)
+Song.all(publicly_readable: true)
+Song.query(readable_by_role: "Admin", limit: 10).results
+
+# Boolean flags for convenience methods
+Song.all(privately_readable: true)
+Song.all(not_publicly_writable: true)
+Song.all(private_acl: true)  # Finds master-key-only documents
+```
+
+#### Role Hierarchy Expansion
+
+- **NEW**: ACL queries now automatically expand role hierarchies. When you query with a `Parse::Role` object, the query includes all child roles (permissions flow DOWN the hierarchy).
+
+```ruby
+# Role hierarchy: Admin -> Moderator -> Editor
+admin_role = Parse::Role.find_by_name("Admin")
+
+# This query finds documents readable by Admin, Moderator, AND Editor
+# because Admin has those roles as children
+Song.query.readable_by(admin_role).results
+```
+
+- **NEW**: When querying with a `Parse::User`, the query automatically fetches all the user's roles AND expands their role hierarchies.
+
+```ruby
+user = Parse::User.current
+
+# Finds documents readable by:
+# - The user's ID directly
+# - All roles the user belongs to
+# - All child roles of those roles
+Song.query.readable_by(user).results
+```
+
+#### ACL Constraint Consolidation
+
+- **IMPROVED**: Consolidated `readable_by` and `writable_by` constraint registration. `ACLReadableByConstraint` and `ACLWritableByConstraint` are now the primary handlers, providing smart type handling with automatic role prefix addition and role hierarchy expansion.
+
+```ruby
+# Pass role objects - automatically adds "role:" prefix
+Song.query.readable_by(admin_role)  # role:Admin
+
+# Pass users - automatically includes all their roles
+Song.query.readable_by(current_user)  # userId, role:Admin, role:Editor, ...
+
+# Pass strings for raw permission values
+Song.query.readable_by("role:Admin")  # Explicit role prefix
+Song.query.readable_by("userId123")   # User ID
+Song.query.readable_by("*")           # Public access
+```
+
+- **CLARIFIED**: The `privately_readable`/`privately_writable` queries now correctly look for documents with empty `_rperm`/`_wperm` arrays only. If `_rperm` is missing/undefined, Parse Server treats it as publicly readable (not private).
+
 #### Code Quality Improvements
 
 - **IMPROVED**: Extracted shared `AclConstraintHelpers` module for ACL query constraint classes (`ReadableByConstraint`, `WriteableByConstraint`, `NotReadableByConstraint`, `NotWriteableByConstraint`). This eliminates ~120 lines of duplicated `normalize_acl_keys` code and makes it easier to maintain ACL permission normalization logic.
