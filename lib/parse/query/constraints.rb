@@ -2688,7 +2688,7 @@ module Parse
       end
       
       private
-      
+
       # Converts field names from snake_case to camelCase for Parse Server compatibility
       # and adds _p_ prefix for pointer fields in MongoDB
       # @param field [Symbol, String] the field name to format
@@ -2698,6 +2698,386 @@ module Parse
         formatted = field.to_s.camelize(:lower)
         # Add _p_ prefix for pointer fields as they're stored that way in MongoDB
         is_pointer ? "_p_#{formatted}" : formatted
+      end
+    end
+
+    # ACL Read Permission Query Constraint
+    # Query objects based on read permissions using MongoDB's internal _rperm field.
+    # Parse Server restricts direct queries on _rperm, so this uses aggregation pipeline.
+    #
+    # @example Find objects with NO read permissions (master key only / private)
+    #   Song.query.where(:acl.readable_by => [])
+    #
+    # @example Find objects readable by a specific user ID
+    #   Song.query.where(:acl.readable_by => "userId123")
+    #   Song.query.where(:acl.readable_by => current_user)
+    #
+    # @example Find objects readable by a role
+    #   Song.query.where(:acl.readable_by => "role:Admin")
+    #
+    # @example Find objects with public read access
+    #   Song.query.where(:acl.readable_by => "*")
+    #   Song.query.where(:acl.readable_by => :public)
+    #
+    # @example Find objects readable by ANY of the specified users/roles
+    #   Song.query.where(:acl.readable_by => [user1.id, "role:Admin", "*"])
+    #
+    # @note This constraint uses aggregation pipeline because Parse Server
+    #   restricts direct queries on the internal _rperm field.
+    class ReadableByConstraint < Constraint
+      # @!method readable_by
+      # A registered method on a symbol to create the constraint.
+      # @example
+      #  q.where :acl.readable_by => []
+      #  q.where :acl.readable_by => "userId"
+      #  q.where :acl.readable_by => ["userId", "role:Admin"]
+      # @return [ReadableByConstraint]
+      register :readable_by
+
+      # @return [Hash] the compiled constraint using aggregation pipeline.
+      def build
+        keys = normalize_acl_keys(@value)
+
+        if keys.empty?
+          # Empty array = no read permissions (master key only)
+          # Match documents where _rperm is an empty array
+          pipeline = [
+            {
+              "$match" => {
+                "$or" => [
+                  { "_rperm" => { "$exists" => true, "$eq" => [] } },
+                  { "_rperm" => { "$exists" => false } }
+                ]
+              }
+            }
+          ]
+        else
+          # Find objects readable by ANY of the specified keys
+          # Use $in to match if _rperm contains any of the keys
+          pipeline = [
+            {
+              "$match" => {
+                "_rperm" => { "$in" => keys }
+              }
+            }
+          ]
+        end
+
+        { "__aggregation_pipeline" => pipeline }
+      end
+
+      private
+
+      # Normalize various input types to ACL permission keys.
+      # @param value [Array, String, Symbol, Parse::User, Parse::Role, nil]
+      # @return [Array<String>] normalized permission keys
+      # @note Returns empty array for nil, [], "none", or :none (indicating no permissions)
+      def normalize_acl_keys(value)
+        # Handle special "none" case for no permissions
+        return [] if value.nil?
+        return [] if value == "none" || value == :none
+        return [] if value.is_a?(Array) && value.empty?
+
+        Array(value).map do |item|
+          case item
+          when Parse::User
+            item.id
+          when Parse::Role
+            "role:#{item.name}"
+          when Parse::Pointer
+            item.id
+          when :public, :everyone, :world
+            "*"
+          when "public", "*"
+            "*"
+          when "none", :none
+            nil # Will be compacted out, but array will be non-empty so won't match "no permissions"
+          when String
+            item
+          when Symbol
+            item == :public ? "*" : item.to_s
+          else
+            item.respond_to?(:id) ? item.id : item.to_s
+          end
+        end.compact.uniq
+      end
+    end
+
+    # ACL Write Permission Query Constraint
+    # Query objects based on write permissions using MongoDB's internal _wperm field.
+    # Parse Server restricts direct queries on _wperm, so this uses aggregation pipeline.
+    #
+    # @example Find objects with NO write permissions (master key only / read-only)
+    #   Song.query.where(:acl.writeable_by => [])
+    #
+    # @example Find objects writable by a specific user ID
+    #   Song.query.where(:acl.writeable_by => "userId123")
+    #   Song.query.where(:acl.writeable_by => current_user)
+    #
+    # @example Find objects writable by a role
+    #   Song.query.where(:acl.writeable_by => "role:Admin")
+    #
+    # @note This constraint uses aggregation pipeline because Parse Server
+    #   restricts direct queries on the internal _wperm field.
+    class WriteableByConstraint < Constraint
+      # @!method writeable_by
+      # A registered method on a symbol to create the constraint.
+      # @example
+      #  q.where :acl.writeable_by => []
+      #  q.where :acl.writeable_by => "userId"
+      # @return [WriteableByConstraint]
+      register :writeable_by
+
+      # @return [Hash] the compiled constraint using aggregation pipeline.
+      def build
+        keys = normalize_acl_keys(@value)
+
+        if keys.empty?
+          # Empty array = no write permissions (master key only)
+          pipeline = [
+            {
+              "$match" => {
+                "$or" => [
+                  { "_wperm" => { "$exists" => true, "$eq" => [] } },
+                  { "_wperm" => { "$exists" => false } }
+                ]
+              }
+            }
+          ]
+        else
+          # Find objects writable by ANY of the specified keys
+          pipeline = [
+            {
+              "$match" => {
+                "_wperm" => { "$in" => keys }
+              }
+            }
+          ]
+        end
+
+        { "__aggregation_pipeline" => pipeline }
+      end
+
+      private
+
+      def normalize_acl_keys(value)
+        return [] if value.nil?
+        return [] if value == "none" || value == :none
+        return [] if value.is_a?(Array) && value.empty?
+
+        Array(value).map do |item|
+          case item
+          when Parse::User
+            item.id
+          when Parse::Role
+            "role:#{item.name}"
+          when Parse::Pointer
+            item.id
+          when :public, :everyone, :world
+            "*"
+          when "public", "*"
+            "*"
+          when "none", :none
+            nil
+          when String
+            item
+          when Symbol
+            item == :public ? "*" : item.to_s
+          else
+            item.respond_to?(:id) ? item.id : item.to_s
+          end
+        end.compact.uniq
+      end
+    end
+
+    # Alias for writeable_by (American spelling)
+    class WritableByConstraint < WriteableByConstraint
+      register :writable_by
+    end
+
+    # ACL NOT Readable By Constraint
+    # Query objects that are NOT readable by the specified users/roles.
+    # Useful for finding objects hidden from specific users.
+    #
+    # @example Find objects NOT readable by a user (hidden from them)
+    #   Song.query.where(:acl.not_readable_by => current_user)
+    #
+    # @example Find objects NOT publicly readable
+    #   Song.query.where(:acl.not_readable_by => "*")
+    #   Song.query.where(:acl.not_readable_by => :public)
+    #
+    # @note This constraint uses aggregation pipeline because Parse Server
+    #   restricts direct queries on the internal _rperm field.
+    class NotReadableByConstraint < Constraint
+      register :not_readable_by
+
+      def build
+        keys = normalize_acl_keys(@value)
+        return { "__aggregation_pipeline" => [] } if keys.empty?
+
+        # Find objects where _rperm does NOT contain any of the keys
+        pipeline = [
+          {
+            "$match" => {
+              "_rperm" => { "$nin" => keys }
+            }
+          }
+        ]
+
+        { "__aggregation_pipeline" => pipeline }
+      end
+
+      private
+
+      def normalize_acl_keys(value)
+        return [] if value.nil?
+        return [] if value == "none" || value == :none
+        return [] if value.is_a?(Array) && value.empty?
+
+        Array(value).map do |item|
+          case item
+          when Parse::User
+            item.id
+          when Parse::Role
+            "role:#{item.name}"
+          when Parse::Pointer
+            item.id
+          when :public, :everyone, :world
+            "*"
+          when "public", "*"
+            "*"
+          when "none", :none
+            nil
+          when String
+            item
+          when Symbol
+            item == :public ? "*" : item.to_s
+          else
+            item.respond_to?(:id) ? item.id : item.to_s
+          end
+        end.compact.uniq
+      end
+    end
+
+    # ACL NOT Writable By Constraint
+    # Query objects that are NOT writable by the specified users/roles.
+    #
+    # @example Find objects NOT writable by a user
+    #   Song.query.where(:acl.not_writeable_by => current_user)
+    #
+    # @note This constraint uses aggregation pipeline because Parse Server
+    #   restricts direct queries on the internal _wperm field.
+    class NotWriteableByConstraint < Constraint
+      register :not_writeable_by
+
+      def build
+        keys = normalize_acl_keys(@value)
+        return { "__aggregation_pipeline" => [] } if keys.empty?
+
+        pipeline = [
+          {
+            "$match" => {
+              "_wperm" => { "$nin" => keys }
+            }
+          }
+        ]
+
+        { "__aggregation_pipeline" => pipeline }
+      end
+
+      private
+
+      def normalize_acl_keys(value)
+        return [] if value.nil?
+        return [] if value == "none" || value == :none
+        return [] if value.is_a?(Array) && value.empty?
+
+        Array(value).map do |item|
+          case item
+          when Parse::User
+            item.id
+          when Parse::Role
+            "role:#{item.name}"
+          when Parse::Pointer
+            item.id
+          when :public, :everyone, :world
+            "*"
+          when "public", "*"
+            "*"
+          when "none", :none
+            nil
+          when String
+            item
+          when Symbol
+            item == :public ? "*" : item.to_s
+          else
+            item.respond_to?(:id) ? item.id : item.to_s
+          end
+        end.compact.uniq
+      end
+    end
+
+    # Alias for not_writeable_by (American spelling)
+    class NotWritableByConstraint < NotWriteableByConstraint
+      register :not_writable_by
+    end
+
+    # ACL Private/Master-Key-Only Constraint
+    # Query objects with completely empty ACL (no read or write permissions).
+    # These objects can only be accessed with the master key.
+    #
+    # @example Find all private objects
+    #   Song.query.where(:acl.private_acl => true)
+    #
+    # @example Find all non-private objects (have some permissions)
+    #   Song.query.where(:acl.private_acl => false)
+    #
+    # @note This constraint uses aggregation pipeline because Parse Server
+    #   restricts direct queries on internal ACL fields.
+    class PrivateAclConstraint < Constraint
+      register :private_acl
+      register :master_key_only
+
+      def build
+        is_private = @value == true
+
+        if is_private
+          # Match objects with empty or missing _rperm AND _wperm
+          pipeline = [
+            {
+              "$match" => {
+                "$and" => [
+                  {
+                    "$or" => [
+                      { "_rperm" => { "$exists" => true, "$eq" => [] } },
+                      { "_rperm" => { "$exists" => false } }
+                    ]
+                  },
+                  {
+                    "$or" => [
+                      { "_wperm" => { "$exists" => true, "$eq" => [] } },
+                      { "_wperm" => { "$exists" => false } }
+                    ]
+                  }
+                ]
+              }
+            }
+          ]
+        else
+          # Match objects that have SOME permissions (either read or write)
+          pipeline = [
+            {
+              "$match" => {
+                "$or" => [
+                  { "_rperm" => { "$exists" => true, "$ne" => [] } },
+                  { "_wperm" => { "$exists" => true, "$ne" => [] } }
+                ]
+              }
+            }
+          ]
+        end
+
+        { "__aggregation_pipeline" => pipeline }
       end
     end
   end

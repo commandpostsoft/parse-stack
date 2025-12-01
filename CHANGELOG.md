@@ -2,6 +2,27 @@
 
 ### 3.1.3
 
+#### Private ACL by Default
+
+- **NEW**: Added `default_acl_private` class setting and `private_acl!` convenience method to make new objects private by default (no public access, master key only).
+
+```ruby
+class PrivateDocument < Parse::Object
+  private_acl!  # or: self.default_acl_private = true
+end
+
+doc = PrivateDocument.new(title: "Secret")
+doc.acl.as_json  # => {} (no permissions, master key only)
+doc.save  # Only accessible with master key
+```
+
+- **NEW**: Added `Parse::ACL.private` class method to create an empty ACL with no permissions.
+
+```ruby
+acl = Parse::ACL.private
+acl.as_json  # => {}
+```
+
 #### ACL Query Improvements
 
 - **FIXED**: `readable_by("*")` and `readable_by("public")` queries now work correctly. The aggregation pipeline automatically uses MongoDB direct access when querying internal ACL fields (`_rperm`, `_wperm`) that Parse Server blocks through its REST API.
@@ -15,6 +36,88 @@ Post.query.readable_by("public").results
 Post.query.writable_by("*").results
 Post.query.writable_by("public").results
 ```
+
+- **NEW**: Added support for querying objects with empty/no ACL permissions using `[]` or `"none"`. This finds objects that can only be accessed with the master key.
+
+```ruby
+# Find objects with NO read permissions (master key only)
+Post.query.readable_by([]).results
+Post.query.readable_by("none").results
+
+# Find objects with NO write permissions (read-only, master key to write)
+Post.query.writable_by([]).results
+Post.query.writable_by("none").results
+```
+
+- **NEW**: Added `not_readable_by` and `not_writeable_by` constraints to find objects NOT accessible by specific users/roles.
+
+```ruby
+# Find objects hidden from a specific user
+Post.query.where(:ACL.not_readable_by => current_user).results
+
+# Find objects NOT publicly readable
+Post.query.where(:ACL.not_readable_by => "*").results
+Post.query.where(:ACL.not_readable_by => :public).results
+
+# Find objects NOT writable by a role
+Post.query.where(:ACL.not_writeable_by => "role:Editor").results
+```
+
+- **NEW**: Added `private_acl` / `master_key_only` constraint to find objects with completely empty ACLs.
+
+```ruby
+# Find all private objects (empty ACL, master key only)
+Post.query.where(:ACL.private_acl => true).results
+Post.query.where(:ACL.master_key_only => true).results
+
+# Find all non-private objects (have some permissions)
+Post.query.where(:ACL.private_acl => false).results
+```
+
+- **NEW**: Added `mongo_direct` option to ACL query methods for explicit control over query execution path.
+
+```ruby
+# Force MongoDB direct query (bypasses Parse Server)
+Post.query.readable_by([], mongo_direct: true).results
+
+# Force Parse Server aggregation (disable auto-detection)
+Post.query.readable_by("user123", mongo_direct: false).results
+```
+
+#### ACL Dirty Tracking Improvements
+
+- **FIXED**: `acl_was` now correctly captures the ACL state before in-place modifications. Previously, modifying an ACL in place (via `apply`, `apply_role`, etc.) caused `acl_was` to return the same mutated object as `acl`, making them appear identical.
+
+```ruby
+# Before fix: acl_was showed mutated state (wrong)
+obj.acl = Parse::ACL.new
+obj.clear_changes!
+obj.acl.apply(:public, true, false)
+obj.acl_was.as_json  # Was: {"*"=>{"read"=>true}} (same as acl!)
+
+# After fix: acl_was shows original state (correct)
+obj.acl_was.as_json  # Now: {} (original empty state)
+```
+
+- **NEW**: `acl_changed?` now compares actual ACL content, not just object references. Setting an ACL to identical values no longer marks the object as dirty.
+
+```ruby
+# Fetch object with existing ACL
+membership = Membership.find(id)
+original_acl = membership.acl.as_json  # {"*"=>{"read"=>true}, ...}
+membership.clear_changes!
+
+# Rebuild ACL to same values (e.g., in before_save hook)
+membership.acl = Parse::ACL.new
+membership.acl.apply(:public, true, false)
+# ... rebuild to same permissions ...
+
+# Object is NOT dirty if ACL content is identical
+membership.acl_changed?  # => false (content is the same)
+membership.dirty?        # => false (no actual changes)
+```
+
+- **NEW**: New objects always include ACL in changes (required for first save to server), even if content matches default.
 
 #### Active Model Consistency
 

@@ -276,6 +276,31 @@ module Parse
       attr_accessor :parse_class
       attr_reader :default_acls
 
+      # @!attribute [rw] default_acl_private
+      # When set to true, new instances of this class will have a private ACL
+      # (no public access, master key only) instead of the default public read/write.
+      # @return [Boolean] whether new objects default to private ACLs.
+      # @version 3.1.3
+      # @example
+      #  class PrivateDocument < Parse::Object
+      #    self.default_acl_private = true
+      #  end
+      #
+      #  doc = PrivateDocument.new
+      #  doc.acl.as_json # => {} (no permissions, master key only)
+      attr_accessor :default_acl_private
+
+      # Convenience method to set default ACL to private (no public access).
+      # Equivalent to `self.default_acl_private = true`.
+      # @version 3.1.3
+      # @example
+      #  class PrivateDocument < Parse::Object
+      #    private_acl!
+      #  end
+      def private_acl!
+        self.default_acl_private = true
+      end
+
       # The class method to override the implicitly assumed Parse collection name
       # in your Parse database. The default Parse collection name is the singular form
       # of the ruby Parse::Object subclass name. The Parse class value should match to
@@ -300,11 +325,12 @@ module Parse
       end
 
       # The set of default ACLs to be applied on newly created instances of this class.
-      # By default, public read and write are enabled.
+      # By default, public read and write are enabled unless {default_acl_private} is true.
       # @see Parse::ACL.everyone
+      # @see Parse::ACL.private
       # @return [Parse::ACL] the current default ACLs for this class.
       def default_acls
-        @default_acls ||= Parse::ACL.everyone # default public read/write
+        @default_acls ||= default_acl_private ? Parse::ACL.private : Parse::ACL.everyone
       end
 
       # A method to set default ACLs to be applied for newly created
@@ -506,6 +532,8 @@ module Parse
     # clears all dirty tracking information
     def clear_changes!
       clear_changes_information
+      # Clear the ACL snapshot used for proper acl_was tracking
+      @_acl_snapshot_before_change = nil
     end
 
     # An object is considered new if it has no id. This is the method to use
@@ -834,6 +862,66 @@ module Parse
     # @!attribute acl
     #  @return [ACL] the access control list (permissions) object for this record.
     property :acl, :acl, field: :ACL
+
+    # Override acl_will_change! to capture a snapshot of the ACL before modification.
+    # This is necessary because ACL is a mutable object that can be modified in place
+    # (via apply, apply_role, etc.). Without this, acl_was would return a reference
+    # to the same object as acl, making them appear identical after in-place changes.
+    # @api private
+    def acl_will_change!
+      # Only capture snapshot on the first change (before any modifications)
+      unless defined?(@_acl_snapshot_before_change) && @_acl_snapshot_before_change
+        # Deep copy the ACL by creating a new one from its JSON representation
+        @_acl_snapshot_before_change = @acl ? Parse::ACL.new(@acl.as_json) : Parse::ACL.new
+      end
+      super
+    end
+
+    # Override acl_was to return the captured snapshot instead of the reference
+    # stored by ActiveModel's dirty tracking.
+    # @return [Parse::ACL] the ACL value before any changes were made.
+    def acl_was
+      # If we have a snapshot, return it; otherwise fall back to ActiveModel's behavior
+      if defined?(@_acl_snapshot_before_change) && @_acl_snapshot_before_change
+        @_acl_snapshot_before_change
+      else
+        super
+      end
+    end
+
+    # Override acl_changed? to compare actual ACL content, not just object references.
+    # This ensures that setting an ACL to identical values doesn't mark it as changed.
+    # @return [Boolean] true only if the ACL content has actually changed.
+    def acl_changed?
+      # First check if ActiveModel thinks it changed
+      return false unless super
+      # Then verify the content actually changed by comparing JSON representations
+      acl_was_json = acl_was.respond_to?(:as_json) ? acl_was.as_json : acl_was
+      acl_current_json = @acl.respond_to?(:as_json) ? @acl.as_json : @acl
+      acl_was_json != acl_current_json
+    end
+
+    # Override changed to filter out ACL when its content hasn't actually changed.
+    # This ensures dirty? returns false when ACL is rebuilt to identical values.
+    # For new objects, ACL is always included since it needs to be sent to the server.
+    # @return [Array<String>] list of changed attribute names.
+    def changed
+      result = super
+      # If ACL is in the changed list but content is identical, remove it
+      # BUT keep it if the object is new (needs to be sent to server)
+      if result.include?("acl") && !new? && !acl_changed?
+        result = result - ["acl"]
+      end
+      result
+    end
+
+    # Override changed? to use our filtered changed list.
+    # ActiveModel's changed? uses internal tracking that doesn't account for
+    # ACL content comparison.
+    # @return [Boolean] true if any attributes have changed.
+    def changed?
+      changed.any?
+    end
 
     # Access the value for a defined property through hash accessor. This method
     # returns nil if the key is not one of the defined properties for this Parse::Object

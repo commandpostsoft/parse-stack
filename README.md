@@ -206,7 +206,7 @@ Song.query.aggregate([
 
 ### ACL Query Constraints
 
-Filter queries based on ACL permissions:
+Filter queries based on ACL permissions. These constraints use MongoDB aggregation pipelines because Parse Server restricts direct queries on internal ACL fields (`_rperm`, `_wperm`).
 
 ```ruby
 # Find songs readable by a specific user (auto-fetches user's roles)
@@ -228,7 +228,56 @@ songs = Song.query.readable_by("public").results            # Public access (*)
 songs = Song.query.readable_by("none").results              # Empty _rperm
 ```
 
-See [ACL Filtering with mongo_direct](#acl-filtering) for high-performance ACL queries.
+#### Querying for Empty/Private ACLs
+
+Find objects with no permissions (master key only access):
+
+```ruby
+# Find objects with NO read permissions (master key only)
+songs = Song.query.readable_by([]).results
+songs = Song.query.readable_by("none").results
+
+# Find objects with NO write permissions (read-only)
+songs = Song.query.writable_by([]).results
+songs = Song.query.writable_by("none").results
+
+# Find objects with completely empty ACL (no read AND no write)
+songs = Song.query.where(:ACL.private_acl => true).results
+songs = Song.query.where(:ACL.master_key_only => true).results
+
+# Find objects that have SOME permissions (not private)
+songs = Song.query.where(:ACL.private_acl => false).results
+```
+
+#### Querying for Objects NOT Accessible
+
+Find objects hidden from specific users or roles:
+
+```ruby
+# Find objects NOT readable by a specific user
+songs = Song.query.where(:ACL.not_readable_by => current_user).results
+
+# Find objects NOT publicly readable
+songs = Song.query.where(:ACL.not_readable_by => "*").results
+songs = Song.query.where(:ACL.not_readable_by => :public).results
+
+# Find objects NOT writable by a role
+songs = Song.query.where(:ACL.not_writeable_by => "role:Editor").results
+```
+
+#### MongoDB Direct Option
+
+ACL queries automatically use MongoDB direct access when needed. You can also explicitly control this:
+
+```ruby
+# Force MongoDB direct query (bypasses Parse Server)
+songs = Song.query.readable_by([], mongo_direct: true).results
+
+# Force Parse Server aggregation (disable auto-detection)
+songs = Song.query.readable_by("user123", mongo_direct: false).results
+```
+
+See [ACL Filtering with mongo_direct](#acl-filtering) for more details on high-performance ACL queries.
 
 ### Enhanced Change Tracking
 
@@ -4714,6 +4763,64 @@ Song.query.writable_by_role(["Admin", "Editor"]).results(mongo_direct: true)  # 
 ```
 
 **Note:** Requires the `mongo` gem. Add `gem 'mongo'` to your Gemfile.
+
+### ACL Dirty Tracking
+
+Parse-Stack provides intelligent dirty tracking for ACL objects, correctly handling in-place modifications and content comparison.
+
+**`acl_was` Captures Original State:**
+
+When modifying an ACL in place (via `apply`, `apply_role`, etc.), `acl_was` correctly returns the state *before* any modifications:
+
+```ruby
+obj = MyObject.find(id)
+obj.clear_changes!
+
+# Original ACL is empty
+obj.acl.as_json  # => {}
+
+# Modify ACL in place
+obj.acl.apply(:public, true, false)
+obj.acl.apply_role("Admin", true, true)
+
+# acl_was correctly shows original state
+obj.acl_was.as_json  # => {} (not the mutated state)
+obj.acl.as_json      # => {"*"=>{"read"=>true}, "role:Admin"=>{"read"=>true, "write"=>true}}
+obj.acl_changed?     # => true
+```
+
+**Content-Based Comparison:**
+
+Setting an ACL to identical values does not mark the object as dirty:
+
+```ruby
+membership = Membership.find(id)
+membership.clear_changes!
+
+# Rebuild ACL to the same values (common in before_save hooks)
+membership.acl = Parse::ACL.new
+membership.acl.apply(:public, true, false)
+membership.acl.apply_role("Admin", true, true)
+# ... same permissions as before ...
+
+# If content is identical, object is NOT dirty
+membership.acl_changed?  # => false
+membership.dirty?        # => false
+membership.save          # No unnecessary server request
+```
+
+**New Objects:**
+
+New objects always include ACL in changes to ensure it's sent on first save:
+
+```ruby
+obj = MyObject.new(title: "Test")
+obj.acl = Parse::ACL.new
+obj.acl.apply(:public, true, false)
+
+obj.new?                      # => true
+obj.changed.include?("acl")   # => true (always included for new objects)
+```
 
 ## Atlas Search
 

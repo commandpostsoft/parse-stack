@@ -2474,13 +2474,19 @@ module Parse
     def execute_aggregation_pipeline
       pipeline, has_lookup_stages = build_aggregation_pipeline
 
-      # Auto-detect if MongoDB direct is needed:
-      # 1. When lookup stages use $split with $literal (to parse pointer format),
+      # Determine if MongoDB direct should be used:
+      # 1. Explicit opt-in via @acl_query_mongo_direct = true
+      # 2. Auto-detect when lookup stages use $split with $literal (to parse pointer format),
       #    Parse Server's REST API can't handle it correctly
-      # 2. When querying internal fields like _rperm or _wperm (ACL fields),
+      # 3. Auto-detect when querying internal fields like _rperm or _wperm (ACL fields),
       #    Parse Server blocks these for security - must use MongoDB direct
       use_mongo_direct = false
-      if defined?(Parse::MongoDB) && Parse::MongoDB.enabled?
+
+      # Check for explicit mongo_direct preference first
+      if defined?(@acl_query_mongo_direct) && !@acl_query_mongo_direct.nil?
+        use_mongo_direct = @acl_query_mongo_direct
+      elsif defined?(Parse::MongoDB) && Parse::MongoDB.enabled?
+        # Auto-detect based on pipeline contents
         if has_lookup_stages || pipeline_uses_internal_fields?(pipeline)
           use_mongo_direct = true
         end
@@ -4083,17 +4089,24 @@ module Parse
 
     # Filter by ACL read permissions using exact permission strings.
     # Strings are used as-is (user IDs or "role:RoleName" format).
-    # Use "public" for public access, "none" for no read permissions.
+    # Use "public" for public access, "none" or [] for no read permissions.
     #
     # @param permission [Parse::User, Parse::Role, String, Array] the permission to check
+    # @param mongo_direct [Boolean] if true, forces MongoDB direct query. If nil (default),
+    #   auto-detects based on query complexity. Set to false to force Parse Server aggregation.
     # @return [Parse::Query] returns self for method chaining
+    # @note This uses MongoDB aggregation pipeline because Parse Server restricts
+    #   direct queries on internal ACL fields (_rperm/_wperm).
     # @example
     #   Song.query.readable_by("user123")           # Objects readable by user ID
     #   Song.query.readable_by("role:Admin")        # Objects readable by Admin role
     #   Song.query.readable_by(current_user)        # Objects readable by user object
     #   Song.query.readable_by("public")            # Publicly readable objects
     #   Song.query.readable_by("none")              # Objects with no read permissions
-    def readable_by(permission)
+    #   Song.query.readable_by([])                  # Objects with no read permissions (empty ACL)
+    #   Song.query.readable_by([], mongo_direct: true)  # Force MongoDB direct query
+    def readable_by(permission, mongo_direct: nil)
+      @acl_query_mongo_direct = mongo_direct unless mongo_direct.nil?
       where(:ACL.readable_by => permission)
       self
     end
@@ -4101,29 +4114,38 @@ module Parse
     # Filter by ACL read permissions using role names (adds "role:" prefix).
     #
     # @param role_name [Parse::Role, String, Array] the role name(s) to check
+    # @param mongo_direct [Boolean] if true, forces MongoDB direct query.
     # @return [Parse::Query] returns self for method chaining
     # @example
     #   Song.query.readable_by_role("Admin")              # Objects readable by Admin role
     #   Song.query.readable_by_role(["Admin", "Editor"])  # Objects readable by Admin or Editor
     #   Song.query.readable_by_role(admin_role)           # Objects readable by Role object
-    def readable_by_role(role_name)
+    def readable_by_role(role_name, mongo_direct: nil)
+      @acl_query_mongo_direct = mongo_direct unless mongo_direct.nil?
       where(:ACL.readable_by_role => role_name)
       self
     end
 
     # Filter by ACL write permissions using exact permission strings.
     # Strings are used as-is (user IDs or "role:RoleName" format).
-    # Use "public" for public access, "none" for no write permissions.
+    # Use "public" for public access, "none" or [] for no write permissions.
     #
     # @param permission [Parse::User, Parse::Role, String, Array] the permission to check
+    # @param mongo_direct [Boolean] if true, forces MongoDB direct query. If nil (default),
+    #   auto-detects based on query complexity. Set to false to force Parse Server aggregation.
     # @return [Parse::Query] returns self for method chaining
+    # @note This uses MongoDB aggregation pipeline because Parse Server restricts
+    #   direct queries on internal ACL fields (_rperm/_wperm).
     # @example
     #   Song.query.writable_by("user123")           # Objects writable by user ID
     #   Song.query.writable_by("role:Admin")        # Objects writable by Admin role
     #   Song.query.writable_by(current_user)        # Objects writable by user object
     #   Song.query.writable_by("public")            # Publicly writable objects
     #   Song.query.writable_by("none")              # Objects with no write permissions
-    def writable_by(permission)
+    #   Song.query.writable_by([])                  # Objects with no write permissions (empty ACL)
+    #   Song.query.writable_by([], mongo_direct: true)  # Force MongoDB direct query
+    def writable_by(permission, mongo_direct: nil)
+      @acl_query_mongo_direct = mongo_direct unless mongo_direct.nil?
       where(:ACL.writable_by => permission)
       self
     end
@@ -4131,12 +4153,14 @@ module Parse
     # Filter by ACL write permissions using role names (adds "role:" prefix).
     #
     # @param role_name [Parse::Role, String, Array] the role name(s) to check
+    # @param mongo_direct [Boolean] if true, forces MongoDB direct query.
     # @return [Parse::Query] returns self for method chaining
     # @example
     #   Song.query.writable_by_role("Admin")              # Objects writable by Admin role
     #   Song.query.writable_by_role(["Admin", "Editor"])  # Objects writable by Admin or Editor
     #   Song.query.writable_by_role(admin_role)           # Objects writable by Role object
-    def writable_by_role(role_name)
+    def writable_by_role(role_name, mongo_direct: nil)
+      @acl_query_mongo_direct = mongo_direct unless mongo_direct.nil?
       where(:ACL.writable_by_role => role_name)
       self
     end
