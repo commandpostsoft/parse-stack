@@ -155,6 +155,17 @@ module Parse
       acl
     end
 
+    # Create a new private ACL with no public access.
+    # Objects with this ACL can only be accessed with the master key.
+    # @return [Parse::ACL] an empty ACL with no permissions.
+    # @version 3.1.3
+    # @example
+    #  acl = Parse::ACL.private
+    #  acl.as_json # => {}
+    def self.private
+      Parse::ACL.new
+    end
+
     # Create a new ACL::Permission instance with the supplied read and write values.
     # @param read [Boolean] the read permission value
     # @param write [Boolean] the write permission value.
