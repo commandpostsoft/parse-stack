@@ -227,6 +227,27 @@ module Parse
     # @return [Integer] total tokens used across all requests
     attr_reader :total_tokens
 
+    # @return [Hash, nil] the last request sent to the LLM
+    attr_reader :last_request
+
+    # @return [Hash, nil] the last response received from the LLM
+    attr_reader :last_response
+
+    # @return [Hash] pricing configuration for cost estimation (per 1K tokens)
+    attr_reader :pricing
+
+    # @return [String, nil] custom system prompt (replaces default)
+    attr_reader :custom_system_prompt
+
+    # @return [String, nil] suffix to append to default system prompt
+    attr_reader :system_prompt_suffix
+
+    # @return [Hash<Symbol, Array<Proc>>] registered callbacks by event type
+    attr_reader :callbacks
+
+    # Default pricing (zero - user should configure)
+    DEFAULT_PRICING = { prompt: 0.0, completion: 0.0 }.freeze
+
     # Create a new Parse Agent instance.
     #
     # @param permissions [Symbol] the permission level (:readonly, :write, or :admin)
@@ -235,6 +256,9 @@ module Parse
     # @param rate_limit [Integer] maximum requests per window (default: 60)
     # @param rate_window [Integer] rate limit window in seconds (default: 60)
     # @param max_log_size [Integer] maximum operation log entries (default: 1000, uses circular buffer)
+    # @param system_prompt [String, nil] custom system prompt (replaces default)
+    # @param system_prompt_suffix [String, nil] suffix to append to default system prompt
+    # @param pricing [Hash, nil] pricing per 1K tokens { prompt: rate, completion: rate }
     #
     # @example Readonly agent with master key
     #   agent = Parse::Agent.new
@@ -248,9 +272,21 @@ module Parse
     # @example Agent with larger operation log
     #   agent = Parse::Agent.new(max_log_size: 5000)
     #
+    # @example Agent with custom system prompt
+    #   agent = Parse::Agent.new(system_prompt: "You are a music database expert...")
+    #
+    # @example Agent with system prompt suffix
+    #   agent = Parse::Agent.new(system_prompt_suffix: "Focus on performance data.")
+    #
+    # @example Agent with cost tracking
+    #   agent = Parse::Agent.new(pricing: { prompt: 0.01, completion: 0.03 })
+    #   agent.ask("How many users?")
+    #   puts agent.estimated_cost  # => 0.0234
+    #
     def initialize(permissions: :readonly, session_token: nil, client: :default,
                    rate_limit: DEFAULT_RATE_LIMIT, rate_window: DEFAULT_RATE_WINDOW,
-                   max_log_size: DEFAULT_MAX_LOG_SIZE)
+                   max_log_size: DEFAULT_MAX_LOG_SIZE,
+                   system_prompt: nil, system_prompt_suffix: nil, pricing: nil)
       @permissions = permissions
       @session_token = session_token
       @client = client.is_a?(Parse::Client) ? client : Parse::Client.client(client)
@@ -261,6 +297,19 @@ module Parse
       @total_prompt_tokens = 0
       @total_completion_tokens = 0
       @total_tokens = 0
+
+      # New features
+      @last_request = nil
+      @last_response = nil
+      @custom_system_prompt = system_prompt
+      @system_prompt_suffix = system_prompt_suffix
+      @pricing = pricing || DEFAULT_PRICING.dup
+      @callbacks = {
+        before_tool_call: [],
+        after_tool_call: [],
+        on_error: [],
+        on_llm_response: []
+      }
     end
 
     # Check if a tool is allowed under current permissions
@@ -324,41 +373,56 @@ module Parse
         )
       end
 
+      # Trigger before_tool_call callbacks
+      trigger_callbacks(:before_tool_call, tool_name, kwargs)
+
       begin
         result = Parse::Agent::Tools.send(tool_name, self, **kwargs)
         log_operation(tool_name, kwargs, result)
-        success_response(result)
+        response = success_response(result)
+
+        # Trigger after_tool_call callbacks
+        trigger_callbacks(:after_tool_call, tool_name, kwargs, response)
+
+        response
 
       # Security errors - NEVER swallow, always re-raise
       rescue PipelineValidator::PipelineSecurityError,
              ConstraintTranslator::ConstraintSecurityError => e
         log_security_event(tool_name, kwargs, e)
+        trigger_callbacks(:on_error, e, { tool: tool_name, args: kwargs })
         raise  # Re-raise security errors to caller
 
       # Validation errors - return structured error response
       rescue ConstraintTranslator::InvalidOperatorError => e
+        trigger_callbacks(:on_error, e, { tool: tool_name, args: kwargs })
         error_response(e.message, error_code: :invalid_query)
 
       # Timeout errors
       rescue ToolTimeoutError => e
+        trigger_callbacks(:on_error, e, { tool: tool_name, args: kwargs })
         error_response(e.message, error_code: :timeout)
 
       # Rate limit errors (should be caught above, but handle just in case)
       rescue RateLimiter::RateLimitExceeded => e
+        trigger_callbacks(:on_error, e, { tool: tool_name, args: kwargs })
         error_response(e.message, error_code: :rate_limited, retry_after: e.retry_after)
 
       # Invalid arguments
       rescue ArgumentError => e
+        trigger_callbacks(:on_error, e, { tool: tool_name, args: kwargs })
         error_response("Invalid arguments: #{e.message}", error_code: :invalid_argument)
 
       # Parse API errors
       rescue Parse::Error => e
+        trigger_callbacks(:on_error, e, { tool: tool_name, args: kwargs })
         error_response("Parse error: #{e.message}", error_code: :parse_error)
 
       # Unexpected errors - log with stack trace for debugging
       rescue StandardError => e
         warn "[Parse::Agent] Unexpected error in #{tool_name}: #{e.class} - #{e.message}"
         warn e.backtrace.first(5).join("\n") if e.backtrace
+        trigger_callbacks(:on_error, e, { tool: tool_name, args: kwargs })
         error_response("#{tool_name} failed: #{e.message}", error_code: :internal_error)
       end
     end
@@ -420,15 +484,30 @@ module Parse
       model_name = model || ENV["LLM_MODEL"] || "default"
 
       # Build messages with system prompt, conversation history, and new prompt
-      messages = [{ role: "system", content: system_prompt }]
+      messages = [{ role: "system", content: computed_system_prompt }]
       messages += @conversation_history
       messages << { role: "user", content: prompt }
+
+      # Store last request
+      @last_request = {
+        messages: messages.dup,
+        model: model_name,
+        endpoint: endpoint,
+        streaming: false
+      }
 
       tool_calls_made = []
 
       max_iterations.times do |iteration|
         response = chat_completion(endpoint, model_name, messages)
-        return { answer: nil, error: response[:error], tool_calls: tool_calls_made } if response[:error]
+
+        if response[:error]
+          trigger_callbacks(:on_error, StandardError.new(response[:error]), { source: :llm })
+          return { answer: nil, error: response[:error], tool_calls: tool_calls_made }
+        end
+
+        # Trigger on_llm_response callback
+        trigger_callbacks(:on_llm_response, response)
 
         # Accumulate token usage
         if response[:usage]
@@ -443,6 +522,9 @@ module Parse
         # If no tool calls, we have the final answer
         unless tool_calls&.any?
           answer = message["content"]
+
+          # Store last response
+          @last_response = response.merge(answer: answer)
 
           # Save successful exchange to conversation history
           @conversation_history << { role: "user", content: prompt }
@@ -546,10 +628,233 @@ module Parse
       }
     end
 
+    # ===== Callback/Hooks System =====
+
+    # Register a callback to be invoked before each tool call.
+    #
+    # @yield [tool_name, args] called before executing each tool
+    # @yieldparam tool_name [Symbol] the name of the tool being called
+    # @yieldparam args [Hash] the arguments passed to the tool
+    # @return [self] for chaining
+    #
+    # @example
+    #   agent.on_tool_call { |tool, args| puts "Calling: #{tool}" }
+    #
+    def on_tool_call(&block)
+      @callbacks[:before_tool_call] << block if block_given?
+      self
+    end
+
+    # Register a callback to be invoked after each tool call completes.
+    #
+    # @yield [tool_name, args, result] called after tool execution
+    # @yieldparam tool_name [Symbol] the name of the tool that was called
+    # @yieldparam args [Hash] the arguments passed to the tool
+    # @yieldparam result [Hash] the tool execution result
+    # @return [self] for chaining
+    #
+    # @example
+    #   agent.on_tool_result { |tool, args, result| log_result(tool, result) }
+    #
+    def on_tool_result(&block)
+      @callbacks[:after_tool_call] << block if block_given?
+      self
+    end
+
+    # Register a callback to be invoked when an error occurs.
+    #
+    # @yield [error, context] called when an error occurs
+    # @yieldparam error [Exception] the error that occurred
+    # @yieldparam context [Hash] context about where the error occurred
+    # @return [self] for chaining
+    #
+    # @example
+    #   agent.on_error { |error, ctx| notify_slack(error) }
+    #
+    def on_error(&block)
+      @callbacks[:on_error] << block if block_given?
+      self
+    end
+
+    # Register a callback to be invoked after each LLM response.
+    #
+    # @yield [response] called after receiving LLM response
+    # @yieldparam response [Hash] the parsed LLM response
+    # @return [self] for chaining
+    #
+    # @example
+    #   agent.on_llm_response { |resp| log_llm_usage(resp) }
+    #
+    def on_llm_response(&block)
+      @callbacks[:on_llm_response] << block if block_given?
+      self
+    end
+
+    # ===== Cost Estimation =====
+
+    # Configure pricing for cost estimation.
+    #
+    # @param prompt [Float] cost per 1K prompt tokens
+    # @param completion [Float] cost per 1K completion tokens
+    # @return [Hash] the updated pricing configuration
+    #
+    # @example
+    #   agent.configure_pricing(prompt: 0.01, completion: 0.03)
+    #
+    def configure_pricing(prompt:, completion:)
+      @pricing = { prompt: prompt, completion: completion }
+    end
+
+    # Calculate the estimated cost based on token usage and configured pricing.
+    #
+    # @return [Float] estimated cost in configured currency units
+    #
+    # @example
+    #   agent = Parse::Agent.new(pricing: { prompt: 0.01, completion: 0.03 })
+    #   agent.ask("How many users?")
+    #   puts agent.estimated_cost  # => 0.0234
+    #
+    def estimated_cost
+      (@total_prompt_tokens / 1000.0 * @pricing[:prompt]) +
+        (@total_completion_tokens / 1000.0 * @pricing[:completion])
+    end
+
+    # ===== Conversation Export/Import =====
+
+    # Export the current conversation state for later restoration.
+    # Includes conversation history, token usage, and permissions.
+    #
+    # @return [String] JSON string of conversation state
+    #
+    # @example
+    #   state = agent.export_conversation
+    #   File.write("conversation.json", state)
+    #   # Later...
+    #   agent.import_conversation(File.read("conversation.json"))
+    #
+    def export_conversation
+      JSON.generate({
+        conversation_history: @conversation_history,
+        token_usage: token_usage,
+        permissions: @permissions,
+        exported_at: Time.now.iso8601
+      })
+    end
+
+    # Import a previously exported conversation state.
+    # Restores conversation history, token usage, and optionally permissions.
+    #
+    # @param json_string [String] JSON string from export_conversation
+    # @param restore_permissions [Boolean] whether to restore permissions (default: false)
+    # @return [Boolean] true if import succeeded
+    #
+    # @example
+    #   agent.import_conversation(saved_state)
+    #   agent.ask_followup("Continue from where we left off")
+    #
+    def import_conversation(json_string, restore_permissions: false)
+      require "json"
+      data = JSON.parse(json_string, symbolize_names: true)
+
+      @conversation_history = data[:conversation_history] || []
+      if data[:token_usage]
+        @total_prompt_tokens = data[:token_usage][:prompt_tokens] || 0
+        @total_completion_tokens = data[:token_usage][:completion_tokens] || 0
+        @total_tokens = data[:token_usage][:total_tokens] || 0
+      end
+
+      @permissions = data[:permissions].to_sym if restore_permissions && data[:permissions]
+
+      true
+    rescue JSON::ParserError => e
+      warn "[Parse::Agent] Failed to import conversation: #{e.message}"
+      false
+    end
+
+    # ===== Streaming Support =====
+
+    # Ask a question with streaming response.
+    # Yields chunks of the response as they arrive.
+    #
+    # @param prompt [String] the natural language question to ask
+    # @param continue_conversation [Boolean] whether to include conversation history
+    # @param llm_endpoint [String] OpenAI-compatible API endpoint
+    # @param model [String] the model to use
+    # @yield [chunk] called for each chunk of the response
+    # @yieldparam chunk [String] a chunk of text from the response
+    # @return [Hash] final response with :answer and :tool_calls keys
+    #
+    # @example Stream response to console
+    #   agent.ask_streaming("Analyze user growth") do |chunk|
+    #     print chunk
+    #   end
+    #
+    # @example Stream response to WebSocket
+    #   agent.ask_streaming("Summary of recent activity") do |chunk|
+    #     websocket.send(chunk)
+    #   end
+    #
+    def ask_streaming(prompt, continue_conversation: false, llm_endpoint: nil, model: nil, &block)
+      raise ArgumentError, "Block required for streaming" unless block_given?
+
+      require "net/http"
+      require "json"
+
+      # Clear history if not continuing conversation
+      @conversation_history = [] unless continue_conversation
+
+      endpoint = llm_endpoint || ENV["LLM_ENDPOINT"] || "http://127.0.0.1:1234/v1"
+      model_name = model || ENV["LLM_MODEL"] || "default"
+
+      # Build messages
+      messages = [{ role: "system", content: computed_system_prompt }]
+      messages += @conversation_history
+      messages << { role: "user", content: prompt }
+
+      # Store last request
+      @last_request = {
+        messages: messages.dup,
+        model: model_name,
+        endpoint: endpoint,
+        streaming: true
+      }
+
+      # Make streaming request
+      full_response = stream_chat_completion(endpoint, model_name, messages, &block)
+
+      # Store last response
+      @last_response = full_response.merge(answer: full_response[:content])
+
+      # Save to conversation history
+      if full_response[:content]
+        @conversation_history << { role: "user", content: prompt }
+        @conversation_history << { role: "assistant", content: full_response[:content] }
+      end
+
+      {
+        answer: full_response[:content],
+        tool_calls: [],  # Streaming mode doesn't support tool calls currently
+        error: full_response[:error]
+      }
+    end
+
     private
 
-    # System prompt for the agent - optimized for token efficiency
-    def system_prompt
+    # Compute the effective system prompt based on configuration.
+    # Uses custom_system_prompt if set, otherwise default with optional suffix.
+    # @return [String] the system prompt to use
+    def computed_system_prompt
+      return @custom_system_prompt if @custom_system_prompt
+
+      base = default_system_prompt
+      @system_prompt_suffix ? "#{base}\n#{@system_prompt_suffix}" : base
+    end
+
+    # Alias for backward compatibility
+    alias_method :system_prompt, :computed_system_prompt
+
+    # Default system prompt - optimized for token efficiency
+    def default_system_prompt
       <<~PROMPT
         Parse database assistant. Tools: get_all_schemas (list classes), get_schema (class fields), query_class (find objects), count_objects, get_object (by ID), aggregate (analytics), call_method (model methods). Use get_all_schemas first. Be concise.
       PROMPT
@@ -594,6 +899,96 @@ module Parse
         end
       rescue StandardError => e
         { error: e.message }
+      end
+    end
+
+    # Make a streaming chat completion request to the LLM
+    # @param endpoint [String] the API endpoint
+    # @param model [String] the model name
+    # @param messages [Array] the message history
+    # @yield [chunk] called for each text chunk
+    # @return [Hash] final response with content and error
+    def stream_chat_completion(endpoint, model, messages, &block)
+      uri = URI("#{endpoint}/chat/completions")
+      http = Net::HTTP.new(uri.host, uri.port)
+      http.use_ssl = uri.scheme == "https"
+      http.read_timeout = 120
+
+      request = Net::HTTP::Post.new(uri)
+      request["Content-Type"] = "application/json"
+      request["Accept"] = "text/event-stream"
+
+      body = {
+        model: model,
+        messages: messages,
+        stream: true,
+        temperature: 0.1
+      }
+
+      request.body = JSON.generate(body)
+
+      full_content = ""
+      error = nil
+
+      begin
+        http.request(request) do |response|
+          unless response.is_a?(Net::HTTPSuccess)
+            error = "HTTP #{response.code}: #{response.message}"
+            break
+          end
+
+          buffer = ""
+          response.read_body do |chunk|
+            buffer += chunk
+            # Process complete SSE events
+            while (line_end = buffer.index("\n"))
+              line = buffer.slice!(0, line_end + 1).strip
+              next if line.empty?
+
+              if line.start_with?("data: ")
+                data = line[6..]
+                next if data == "[DONE]"
+
+                begin
+                  parsed = JSON.parse(data)
+                  delta = parsed.dig("choices", 0, "delta", "content")
+                  if delta
+                    full_content += delta
+                    block.call(delta)
+                  end
+
+                  # Check for finish reason
+                  if parsed.dig("choices", 0, "finish_reason")
+                    # Trigger on_llm_response callback
+                    trigger_callbacks(:on_llm_response, { content: full_content, streaming: true })
+                  end
+                rescue JSON::ParserError
+                  # Skip malformed JSON chunks
+                end
+              end
+            end
+          end
+        end
+      rescue StandardError => e
+        error = e.message
+        trigger_callbacks(:on_error, e, { source: :streaming, content_so_far: full_content })
+      end
+
+      { content: full_content, error: error }
+    end
+
+    # Trigger registered callbacks for an event
+    # @param event [Symbol] the event type
+    # @param args [Array] arguments to pass to callbacks
+    def trigger_callbacks(event, *args)
+      return unless @callbacks&.key?(event)
+
+      @callbacks[event].each do |callback|
+        begin
+          callback.call(*args)
+        rescue StandardError => e
+          warn "[Parse::Agent] Callback error for #{event}: #{e.message}"
+        end
       end
     end
 

@@ -73,6 +73,124 @@ agent.reset_token_counts!
 - `total_completion_tokens` - Total completion tokens used
 - `total_tokens` - Total tokens used
 
+##### Callback/Hooks System
+
+Register callbacks for events to enable debugging, logging, and custom behavior:
+
+```ruby
+agent = Parse::Agent.new
+
+# Before tool execution
+agent.on_tool_call { |tool, args| puts "Calling: #{tool}" }
+
+# After tool execution
+agent.on_tool_result { |tool, args, result| log_result(tool, result) }
+
+# On any error
+agent.on_error { |error, context| notify_slack(error) }
+
+# After LLM response
+agent.on_llm_response { |response| log_llm_usage(response) }
+```
+
+**New Methods:**
+- `on_tool_call(&block)` - Register callback before tool execution
+- `on_tool_result(&block)` - Register callback after tool execution
+- `on_error(&block)` - Register callback for errors
+- `on_llm_response(&block)` - Register callback for LLM responses
+
+##### Configurable System Prompt
+
+Customize the system prompt for different use cases:
+
+```ruby
+# Replace the default system prompt entirely
+agent = Parse::Agent.new(system_prompt: "You are a music database expert...")
+
+# Or append to the default prompt
+agent = Parse::Agent.new(system_prompt_suffix: "Focus on performance data.")
+```
+
+##### Cost Estimation
+
+Estimate costs based on token usage with configurable rates:
+
+```ruby
+# Configure pricing (per 1K tokens)
+agent = Parse::Agent.new(pricing: { prompt: 0.01, completion: 0.03 })
+
+agent.ask("How many users?")
+agent.ask_followup("What about admins?")
+
+# Get estimated cost
+puts agent.estimated_cost  # => 0.0234
+
+# Or configure later
+agent.configure_pricing(prompt: 0.015, completion: 0.06)
+```
+
+**New Methods:**
+- `configure_pricing(prompt:, completion:)` - Set pricing per 1K tokens
+- `estimated_cost` - Calculate estimated cost based on usage
+- `pricing` - Access current pricing configuration
+
+##### Last Request/Response Accessors
+
+Access the last LLM exchange for debugging:
+
+```ruby
+agent.ask("How many users?")
+
+# Inspect last request
+agent.last_request
+# => { messages: [...], model: "...", endpoint: "...", streaming: false }
+
+# Inspect last response
+agent.last_response
+# => { message: {...}, usage: {...}, answer: "..." }
+```
+
+##### Export/Import Conversation
+
+Serialize and restore conversation state for persistence:
+
+```ruby
+agent = Parse::Agent.new
+agent.ask("How many users?")
+agent.ask_followup("What about admins?")
+
+# Export state
+state = agent.export_conversation
+File.write("conversation.json", state)
+
+# Later, in a new session...
+new_agent = Parse::Agent.new
+new_agent.import_conversation(File.read("conversation.json"))
+new_agent.ask_followup("Show me the most recent ones")
+```
+
+**New Methods:**
+- `export_conversation` - Serialize conversation state to JSON
+- `import_conversation(json_string, restore_permissions: false)` - Restore state
+
+##### Streaming Support
+
+Stream responses as they arrive from the LLM:
+
+```ruby
+# Stream to console
+agent.ask_streaming("Analyze user growth trends") do |chunk|
+  print chunk
+end
+
+# Stream to WebSocket
+agent.ask_streaming("Generate a report") do |chunk|
+  websocket.send(chunk)
+end
+```
+
+**Note:** Streaming mode does not currently support tool calls. Use `ask` for queries requiring database access.
+
 ##### Configurable Operation Log Size
 
 The agent operation log now uses a circular buffer with configurable size to prevent unbounded memory growth:
