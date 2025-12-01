@@ -615,8 +615,15 @@ module Parse
       if _retry_count > 0
         warn "[Parse:Retry] Retries remaining #{_retry_count} : #{response.request}"
         _retry_count -= 1
-        backoff_delay = RETRY_DELAY * (self.retry_limit - _retry_count)
-        _retry_delay = [0, RETRY_DELAY, backoff_delay].sample
+        # Use Retry-After header if available, otherwise use exponential backoff
+        retry_after = response.retry_after if response.respond_to?(:retry_after)
+        if retry_after && retry_after > 0
+          _retry_delay = retry_after
+          warn "[Parse:Retry] Using Retry-After header: #{_retry_delay}s"
+        else
+          backoff_delay = RETRY_DELAY * (self.retry_limit - _retry_count)
+          _retry_delay = [0, RETRY_DELAY, backoff_delay].sample
+        end
         sleep _retry_delay if _retry_delay > 0
         retry
       end

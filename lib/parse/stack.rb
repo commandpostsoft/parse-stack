@@ -12,6 +12,7 @@ require_relative "webhooks"
 require_relative "agent"
 require_relative "two_factor_auth"
 require_relative "two_factor_auth/user_extension"
+require_relative "schema"
 
 module Parse
   class Error < StandardError; end

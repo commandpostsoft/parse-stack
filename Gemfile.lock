@@ -1,7 +1,7 @@
 PATH
   remote: .
   specs:
-    parse-stack (3.0.0)
+    parse-stack (3.1.0)
       activemodel (>= 5, < 9)
       activesupport (>= 5, < 9)
       faraday (~> 2.0)
@@ -34,6 +34,7 @@ GEM
     bigdecimal (3.3.0)
     binding_of_caller (1.0.1)
       debug_inspector (>= 1.2.0)
+    bson (5.2.0)
     builder (3.3.0)
     byebug (12.0.0)
     coderay (1.1.3)
@@ -63,6 +64,9 @@ GEM
       minitest (>= 5.0)
       ruby-progressbar
     moneta (1.6.0)
+    mongo (2.22.0)
+      base64
+      bson (>= 4.14.1, < 6.0.0)
     net-http (0.6.0)
       uri
     net-http-persistent (4.0.6)
@@ -107,6 +111,7 @@ DEPENDENCIES
   dotenv
   minitest
   minitest-reporters
+  mongo
   parse-stack!
   pry
   pry-nav

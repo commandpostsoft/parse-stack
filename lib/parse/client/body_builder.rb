@@ -93,6 +93,7 @@ module Parse
             r.error = "Invalid response for #{env[:method]} #{env[:url]}: #{e}"
           end
           r.http_status = response_env[:status]
+          r.headers = response_env[:response_headers]
           r.code ||= response_env[:status] if r.error.present?
           response_env[:body] = r
         end

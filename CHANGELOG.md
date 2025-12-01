@@ -1,5 +1,626 @@
 ## Parse-Stack Changelog
 
+### 3.1.0
+
+#### Enhanced Role Management
+
+New helper methods for managing Parse roles and role hierarchies:
+
+**Class Methods:**
+```ruby
+# Find a role by name
+admin = Parse::Role.find_by_name("Admin")
+
+# Find or create a role
+moderator = Parse::Role.find_or_create("Moderator")
+
+# Get all role names
+Parse::Role.all_names  # => ["Admin", "Moderator", "User"]
+
+# Check if role exists
+Parse::Role.exists?("Admin")  # => true
+```
+
+**User Management:**
+```ruby
+role = Parse::Role.find_by_name("Admin")
+
+# Add/remove single user
+role.add_user(user).save
+role.remove_user(user).save
+
+# Add/remove multiple users
+role.add_users(user1, user2, user3).save
+role.remove_users(user1, user2).save
+
+# Check membership
+role.has_user?(user)  # => true
+```
+
+**Role Hierarchy:**
+```ruby
+admin = Parse::Role.find_by_name("Admin")
+moderator = Parse::Role.find_by_name("Moderator")
+
+# Create hierarchy (Admins inherit Moderator permissions)
+admin.add_child_role(moderator).save
+
+# Query hierarchy
+admin.has_child_role?(moderator)  # => true
+admin.all_child_roles             # => [moderator, ...]
+admin.all_users                   # => Users from this role AND child roles
+
+# Count methods
+role.users_count         # Direct users count
+role.child_roles_count   # Direct child roles count
+role.total_users_count   # All users including child roles
+```
+
+#### HTTP 429 Retry-After Header Support
+
+The client now respects the `Retry-After` HTTP header when handling rate limit (429) responses. This allows the server to specify exactly how long to wait before retrying:
+
+```ruby
+# Automatic - client will wait for the duration specified in Retry-After header
+# before retrying, instead of using default exponential backoff
+
+# The Response object now exposes:
+response.headers              # => HTTP response headers
+response.retry_after          # => Seconds to wait (parsed from Retry-After header)
+```
+
+Supports both formats:
+- Integer seconds: `Retry-After: 30`
+- HTTP-date: `Retry-After: Wed, 21 Oct 2025 07:28:00 GMT`
+
+#### MongoDB Read Preference Support
+
+Direct read queries to secondary replicas for load balancing:
+
+```ruby
+# Fluent API
+songs = Song.query.read_pref(:secondary).where(genre: "Rock").results
+
+# In conditions hash
+songs = Song.query(genre: "Rock", read_preference: :secondary_preferred).results
+
+# Valid values: :primary, :primary_preferred, :secondary, :secondary_preferred, :nearest
+```
+
+The read preference is sent via the `X-Parse-Read-Preference` header and is useful for:
+- Load balancing read operations across replica set members
+- Reading from geographically closer secondaries
+- Reducing load on the primary for read-heavy applications
+
+#### Schema Introspection and Migration Tools
+
+New `Parse::Schema` module for inspecting and migrating Parse schemas:
+
+**Schema Introspection:**
+```ruby
+# Fetch all schemas
+schemas = Parse::Schema.all
+schemas.each { |s| puts s.class_name }
+
+# Fetch specific schema
+schema = Parse::Schema.fetch("Song")
+schema.field_names      # => ["objectId", "title", "duration", ...]
+schema.field_type(:title)  # => :string
+schema.pointer_target(:artist)  # => "Artist"
+schema.has_field?(:title)  # => true
+schema.builtin?            # => false (true for _User, _Role, etc.)
+```
+
+**Schema Comparison:**
+```ruby
+# Compare local model with server schema
+diff = Parse::Schema.diff(Song)
+diff.server_exists?        # => true
+diff.in_sync?              # => false
+diff.missing_on_server     # => { duration: :integer }
+diff.missing_locally       # => { legacy_field: :string }
+diff.type_mismatches       # => { count: { local: :integer, server: :string } }
+diff.summary               # => Human-readable diff summary
+```
+
+**Schema Migration:**
+```ruby
+# Generate migration
+migration = Parse::Schema.migration(Song)
+migration.needed?          # => true
+migration.preview          # => Human-readable migration plan
+migration.operations       # => [{ action: :add_field, field: "duration", type: "Number" }]
+
+# Apply migration (dry run first!)
+result = migration.apply!(dry_run: true)
+
+# Apply for real
+result = migration.apply!
+result[:status]   # => :success
+result[:applied]  # => [{ action: :add_field, field: "duration", type: :integer }]
+result[:errors]   # => []
+```
+
+#### MongoDB Atlas Search Integration
+
+Full-text search, autocomplete, and faceted search capabilities via MongoDB Atlas Search. This feature bypasses Parse Server to query MongoDB directly for high-performance search operations.
+
+##### Core Features
+
+**Full-Text Search** with relevance scoring:
+```ruby
+# Configure
+Parse::MongoDB.configure(uri: "mongodb+srv://...", enabled: true)
+Parse::AtlasSearch.configure(enabled: true, default_index: "default")
+
+# Search with scoring
+result = Parse::AtlasSearch.search("Song", "love ballad")
+result.each { |song| puts "#{song.title} (score: #{song.search_score})" }
+
+# Advanced options
+result = Parse::AtlasSearch.search("Song", "love",
+  fields: [:title, :lyrics],
+  fuzzy: true,
+  limit: 20,
+  highlight_field: :title
+)
+```
+
+**Autocomplete** for search-as-you-type:
+```ruby
+result = Parse::AtlasSearch.autocomplete("Song", "Lov", field: :title)
+result.suggestions  # => ["Love Story", "Lovely Day", "Love Me Do"]
+```
+
+**Faceted Search** with category counts:
+```ruby
+facets = {
+  genre: { type: :string, path: :genre, num_buckets: 10 },
+  decade: { type: :number, path: :year, boundaries: [1970, 1980, 1990, 2000, 2010, 2020] }
+}
+result = Parse::AtlasSearch.faceted_search("Song", "rock", facets)
+result.facets[:genre]  # => [{ value: "Rock", count: 150 }, ...]
+result.total_count     # => 195
+```
+
+##### Search Builder (Fluent API)
+
+Build complex search queries with the chainable SearchBuilder:
+```ruby
+builder = Parse::AtlasSearch::SearchBuilder.new(index_name: "default")
+builder
+  .text(query: "love", path: :title, fuzzy: true)
+  .phrase(query: "broken heart", path: :lyrics, slop: 2)
+  .range(path: :plays, gte: 1000)
+  .with_highlight(path: :title)
+  .with_count
+
+search_stage = builder.build
+```
+
+**Supported operators:** `text`, `phrase`, `autocomplete`, `wildcard`, `regex`, `range`, `exists`
+**Compound queries:** Multiple operators automatically combined with compound/must
+
+##### Query Integration
+
+Atlas Search methods added to `Parse::Query`:
+```ruby
+# Full-text search
+songs = Song.query.atlas_search("love ballad", fields: [:title], limit: 10)
+
+# Autocomplete
+suggestions = Song.query.atlas_autocomplete("Lov", field: :title)
+
+# Faceted search
+result = Song.query.atlas_facets("rock", { genre: { type: :string, path: :genre } })
+```
+
+##### Index Management
+
+Automatic index discovery and caching:
+```ruby
+# List indexes (cached)
+indexes = Parse::AtlasSearch.indexes("Song")
+
+# Check if index is ready
+Parse::AtlasSearch.index_ready?("Song", "default")
+
+# Force refresh
+Parse::AtlasSearch.refresh_indexes("Song")
+```
+
+##### Creating Atlas Search Indexes
+
+Atlas Search requires indexes to be created on your MongoDB Atlas cluster (or Atlas Local for development). Indexes define which fields are searchable and how they should be analyzed.
+
+**Via MongoDB Atlas UI:**
+
+1. Navigate to your Atlas cluster → **Atlas Search** tab
+2. Click **Create Search Index**
+3. Select your database and collection (Parse uses the database name from your connection string)
+4. Choose **JSON Editor** for full control, or **Visual Editor** for guided setup
+5. Define your index (see examples below)
+
+**Via MongoDB Shell (mongosh):**
+
+```javascript
+// Connect to your Atlas cluster
+mongosh "mongodb+srv://cluster.mongodb.net/your_database"
+
+// Create a basic search index
+db.Song.createSearchIndex("default", {
+  mappings: {
+    dynamic: true  // Index all fields automatically
+  }
+});
+
+// Check index status (wait for "queryable: true")
+db.Song.getSearchIndexes();
+```
+
+**Common Index Definitions:**
+
+*Basic full-text search on specific fields:*
+```javascript
+{
+  "mappings": {
+    "dynamic": false,
+    "fields": {
+      "title": { "type": "string", "analyzer": "lucene.standard" },
+      "description": { "type": "string", "analyzer": "lucene.standard" },
+      "tags": { "type": "string", "analyzer": "lucene.standard" }
+    }
+  }
+}
+```
+
+*Autocomplete support (search-as-you-type):*
+```javascript
+{
+  "mappings": {
+    "fields": {
+      "title": [
+        { "type": "string", "analyzer": "lucene.standard" },
+        {
+          "type": "autocomplete",
+          "analyzer": "lucene.standard",
+          "tokenization": "edgeGram",
+          "minGrams": 2,
+          "maxGrams": 15
+        }
+      ]
+    }
+  }
+}
+```
+
+*Faceted search with string and numeric facets:*
+```javascript
+{
+  "mappings": {
+    "dynamic": true,
+    "fields": {
+      "genre": [
+        { "type": "string" },
+        { "type": "stringFacet" }
+      ],
+      "year": [
+        { "type": "number" },
+        { "type": "numberFacet" }
+      ],
+      "rating": [
+        { "type": "number" },
+        { "type": "numberFacet" }
+      ]
+    }
+  }
+}
+```
+
+*Complete example with all features:*
+```javascript
+{
+  "mappings": {
+    "dynamic": true,
+    "fields": {
+      "title": [
+        { "type": "string", "analyzer": "lucene.standard" },
+        { "type": "autocomplete", "tokenization": "edgeGram", "minGrams": 2, "maxGrams": 15 }
+      ],
+      "artist": { "type": "string", "analyzer": "lucene.standard" },
+      "lyrics": { "type": "string", "analyzer": "lucene.english" },
+      "genre": [
+        { "type": "string" },
+        { "type": "stringFacet" }
+      ],
+      "plays": [
+        { "type": "number" },
+        { "type": "numberFacet" }
+      ],
+      "releaseDate": { "type": "date" }
+    }
+  }
+}
+```
+
+**Parse Collection Names:**
+
+Parse Server stores collections with their class names. Built-in classes have underscore prefixes:
+- `_User` → User accounts
+- `_Role` → Roles
+- `_Session` → Sessions
+- `Song` → Custom class "Song" (no prefix)
+
+**Verifying Index Status:**
+
+```ruby
+# Check if index is ready before searching
+if Parse::AtlasSearch.index_ready?("Song", "default")
+  result = Parse::AtlasSearch.search("Song", "query")
+else
+  puts "Index still building..."
+end
+
+# List all indexes with their status
+indexes = Parse::AtlasSearch.indexes("Song")
+indexes.each do |idx|
+  puts "#{idx['name']}: queryable=#{idx['queryable']}"
+end
+```
+
+**Local Development with Atlas Local:**
+
+For local development without an Atlas cluster, use MongoDB Atlas Local:
+
+```bash
+# Start Atlas Local via Docker
+docker run -d -p 27017:27017 mongodb/mongodb-atlas-local:latest
+
+# Or use the provided docker-compose
+docker-compose -f scripts/docker/docker-compose.atlas.yml up -d
+```
+
+See `scripts/docker/atlas-init.js` for a complete example of seeding data and creating indexes programmatically.
+
+##### Result Classes
+
+- `Parse::AtlasSearch::SearchResult` - Enumerable results with scores
+- `Parse::AtlasSearch::AutocompleteResult` - Suggestions with optional full objects
+- `Parse::AtlasSearch::FacetedResult` - Results, facets, and total count
+
+##### Error Classes
+
+- `Parse::AtlasSearch::NotAvailable` - Atlas Search not configured
+- `Parse::AtlasSearch::IndexNotFound` - Search index doesn't exist
+- `Parse::AtlasSearch::InvalidSearchParameters` - Invalid search parameters
+
+#### Direct MongoDB Query Methods
+
+New query methods for executing queries directly against MongoDB, bypassing Parse Server for improved performance:
+
+**Basic Usage:**
+```ruby
+# Configure MongoDB direct access
+Parse::MongoDB.configure(uri: "mongodb://localhost:27017/parse", enabled: true)
+
+# Execute query directly against MongoDB - returns Parse objects
+songs = Song.query(:plays.gt => 1000).results_direct
+
+# Get first result directly
+song = Song.query(:plays.gt => 1000).order(:plays.desc).first_direct
+
+# Get count directly
+count = Song.query(:plays.gt => 1000).count_direct
+
+# Get first N results
+top_songs = Song.query(:plays.gt => 1000).order(:plays.desc).first_direct(5)
+```
+
+**Supported Operators:**
+All standard query operators work with MongoDB direct:
+- Comparison: `gt`, `gte`, `lt`, `lte`, `ne`
+- Array: `in`, `nin`, `contains_all`, `size`, `empty_or_nil`, `not_empty`
+- String: `like`, `starts_with`, `ends_with`, regex patterns
+- Date: Range queries, comparisons with Time/DateTime objects
+- Logical: `$and`, `$or`, `$nor`
+- Relational: `in_query`, `not_in_query` (with aggregation pipeline)
+
+```ruby
+# Date range queries
+future_events = Event.query(:event_date.gt => Time.now).results_direct
+
+# Array size queries
+popular = Song.query(:tags.size => 3).results_direct
+
+# Regex queries
+iphones = Product.query(:name.like => /iphone/i).results_direct
+
+# Complex queries with in_query + empty_or_nil
+songs = Song.query(
+  :artist.in_query => Artist.query(:verified => true),
+  :tags.empty_or_nil => false
+).results_direct
+```
+
+**Include/Eager Loading:**
+Eager load related objects via MongoDB `$lookup`:
+```ruby
+# Include related artist data (resolved via $lookup)
+songs = Song.query(:plays.gt => 1000).includes(:artist).results_direct
+songs.each do |song|
+  puts "#{song.title} by #{song.artist.name}"  # No additional queries!
+end
+```
+
+**Raw Results:**
+```ruby
+# Get raw Parse-formatted hashes instead of objects
+hashes = Song.query(:plays.gt => 1000).results_direct(raw: true)
+```
+
+**Performance Benefits:**
+- Bypasses Parse Server REST API overhead
+- Direct MongoDB aggregation pipeline execution
+- Automatic pointer resolution with `$lookup`
+- Native BSON date handling
+- Ideal for read-heavy operations and analytics
+
+#### Direct MongoDB Access
+
+New `Parse::MongoDB` module for direct MongoDB queries bypassing Parse Server:
+
+```ruby
+# Configure
+Parse::MongoDB.configure(uri: "mongodb://localhost:27017/parse", enabled: true)
+
+# Direct queries
+docs = Parse::MongoDB.find("Song", { plays: { "$gt" => 1000 } }, limit: 10)
+
+# Aggregation pipelines
+results = Parse::MongoDB.aggregate("Song", [
+  { "$match" => { "genre" => "Rock" } },
+  { "$group" => { "_id" => "$artist", "total" => { "$sum" => "$plays" } } }
+])
+
+# List Atlas Search indexes
+indexes = Parse::MongoDB.list_search_indexes("Song")
+```
+
+**Features:**
+- Direct `find` and `aggregate` operations
+- Automatic MongoDB-to-Parse document conversion
+- ACL format conversion (r/w → read/write)
+- Pointer field handling (_p_fieldName → fieldName)
+- Date type conversion
+
+#### Keys Projection with mongo_direct
+
+The `keys` method now works with `mongo_direct` queries, returning partially fetched objects:
+
+```ruby
+# Only fetch specific fields - returns partially fetched objects
+songs = Song.query(:genre => "Rock")
+            .keys(:title, :plays)
+            .results(mongo_direct: true)
+
+song = songs.first
+song.title              # => "My Song"
+song.plays              # => 500
+song.partially_fetched? # => true
+song.fetched_keys       # => [:title, :plays, :id, :objectId]
+```
+
+Required fields (`objectId`, `createdAt`, `updatedAt`, `ACL`) are always included automatically.
+
+#### AggregationResult for Custom Aggregation Output
+
+Custom aggregation results (from `$group`, `$project`, etc.) now return `AggregationResult` objects that support both hash access and method access:
+
+```ruby
+pipeline = [
+  { "$group" => { "_id" => "$genre", "totalPlays" => { "$sum" => "$playCount" } } }
+]
+results = Song.query.aggregate(pipeline, mongo_direct: true).results
+
+# Method access (snake_case)
+results.first.total_plays  # => 5000
+
+# Hash access (original key also works)
+results.first["totalPlays"] # => 5000
+results.first[:total_plays] # => 5000
+```
+
+- Standard Parse documents (with `objectId`) are returned as `Parse::Object` instances
+- Custom aggregation output is wrapped in `AggregationResult`
+- Field names automatically converted from camelCase to snake_case
+
+#### Aggregation Pipeline Field Conventions
+
+When writing aggregation pipelines for `mongo_direct`, use MongoDB's native field names:
+
+| Field Type | Ruby Property | MongoDB Field |
+|------------|---------------|---------------|
+| Regular | `release_date` | `releaseDate` |
+| Pointer | `artist` | `_p_artist` |
+| Built-in dates | `created_at` | `_created_at` |
+| Field reference | - | `$releaseDate` |
+
+```ruby
+# Use MongoDB field names in pipelines
+pipeline = [
+  { "$match" => { "releaseDate" => { "$lt" => Time.now } } },
+  { "$group" => { "_id" => "$_p_artist", "total" => { "$sum" => "$playCount" } } }
+]
+results = Song.query.aggregate(pipeline, mongo_direct: true).results
+
+# Results come back with snake_case access
+results.first.total  # => 5000
+```
+
+**Date comparisons:** MongoDB stores dates in UTC. For date-only comparisons, use `Time.utc(year, month, day)`:
+
+```ruby
+cutoff = Time.utc(2024, 1, 1)
+pipeline = [{ "$match" => { "releaseDate" => { "$gte" => cutoff } } }]
+```
+
+#### ACL Filtering with mongo_direct
+
+Filter objects by ACL permissions using MongoDB's `_rperm` and `_wperm` fields directly:
+
+**`readable_by` / `writable_by`** - Exact permission strings (no modification):
+```ruby
+# By user ID (exact match)
+Song.query.readable_by("user123").results(mongo_direct: true)
+
+# By role with explicit prefix
+Song.query.readable_by("role:Admin").results(mongo_direct: true)
+
+# By user object (auto-fetches user's roles)
+Song.query.readable_by(current_user).results(mongo_direct: true)
+
+# Special aliases
+Song.query.readable_by("public")  # Alias for "*" (public access)
+Song.query.readable_by("none")    # Objects with empty _rperm (master key only)
+```
+
+**`readable_by_role` / `writable_by_role`** - Automatically adds "role:" prefix:
+```ruby
+# By role name (adds "role:" prefix automatically)
+Song.query.readable_by_role("Admin").results(mongo_direct: true)
+
+# By Role object
+Song.query.readable_by_role(admin_role).results(mongo_direct: true)
+
+# Multiple roles
+Song.query.writable_by_role(["Admin", "Editor"]).results(mongo_direct: true)
+```
+
+**Key differences:**
+- `readable_by("Admin")` → queries for exact string "Admin" in `_rperm`
+- `readable_by_role("Admin")` → queries for "role:Admin" in `_rperm`
+- Public access (`*`) is always included in permission checks
+- Works with `mongo_direct: true` for direct MongoDB queries
+
+#### Docker Support for Atlas Search Testing
+
+New Docker Compose configuration for local Atlas Search testing:
+
+```bash
+# Start Atlas Local with search support
+docker-compose -f scripts/docker/docker-compose.atlas.yml up -d
+
+# Run tests
+ATLAS_URI="mongodb://localhost:27020/parse_atlas_test?directConnection=true" \
+  ruby -Ilib:test test/lib/parse/atlas_search_integration_test.rb
+```
+
+**New files:**
+- `scripts/docker/docker-compose.atlas.yml` - Docker setup for Atlas Local
+- `scripts/docker/atlas-init.js` - Seeds test data and creates search indexes
+
+**Note:** Requires the `mongo` gem. Add `gem 'mongo'` to your Gemfile.
+
 ### 3.0.2
 
 #### Push Notification Enhancements

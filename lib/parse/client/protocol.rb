@@ -28,6 +28,12 @@ module Parse
     CONTENT_TYPE = "Content-Type"
     # The default content type format for sending API requests.
     CONTENT_TYPE_FORMAT = "application/json; charset=utf-8"
+    # The request header field for MongoDB read preference.
+    # Supported values: PRIMARY, PRIMARY_PREFERRED, SECONDARY, SECONDARY_PREFERRED, NEAREST
+    READ_PREFERENCE = "X-Parse-Read-Preference"
+
+    # Valid read preference values for MongoDB
+    READ_PREFERENCES = %w[PRIMARY PRIMARY_PREFERRED SECONDARY SECONDARY_PREFERRED NEAREST].freeze
   end
 
   # All Parse error codes.

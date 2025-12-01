@@ -16,5 +16,6 @@ group :test, :development do
   gem "yard", ">= 0.9.11"
   gem "redcarpet"
   gem "rufo"
+  gem "mongo"
   # gem "thin" # for yard server - disabled due to eventmachine compilation issues
 end

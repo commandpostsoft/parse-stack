@@ -2078,27 +2078,25 @@ module Parse
       end
     end
 
-    # A constraint for filtering objects based on ACL read permissions for specific users or roles.
-    # This constraint queries the MongoDB _rperm field directly, which contains an array of user IDs 
-    # and role names that have read access to the object.
+    # A constraint for filtering objects based on ACL read permissions.
+    # This constraint queries the MongoDB _rperm field directly.
+    # Strings are used as exact permission values (user IDs or "role:RoleName" format).
     #
-    #  # Find objects readable by a specific user (includes user ID + their roles)
+    # For role-based filtering with automatic "role:" prefix, use readable_by_role instead.
+    #
+    #  # Find objects readable by a specific user object (fetches user's roles automatically)
     #  Post.where(:ACL.readable_by => user)
-    #  
-    #  # Find objects readable by specific role names (strings are treated as role names)
-    #  Post.where(:ACL.readable_by => ["Admin", "Moderator"])
-    #  
-    #  # Find objects readable by a single role name
-    #  Post.where(:ACL.readable_by => "Admin")
-    #  
-    #  # Mix users and role names
-    #  Post.where(:ACL.readable_by => [user1, user2, "Admin", "Moderator"])
+    #
+    #  # Find objects readable by exact permission strings (no prefix added)
+    #  Post.where(:ACL.readable_by => "user123")           # User ID
+    #  Post.where(:ACL.readable_by => "role:Admin")        # Role with explicit prefix
+    #  Post.where(:ACL.readable_by => ["user123", "role:Admin"])
     #
     class ACLReadableByConstraint < Constraint
       # @!method readable_by
       # A registered method on a symbol to create the constraint.
       # @example
-      #  q.where :ACL.readable_by => user_or_roles
+      #  q.where :ACL.readable_by => user_or_permission_strings
       # @return [ACLReadableByConstraint]
       register :readable_by
 
@@ -2106,17 +2104,15 @@ module Parse
       def build
         value = formatted_value
         permissions_to_check = []
-        
+
         # Handle different input types using duck typing
         if value.is_a?(Parse::User) || (value.respond_to?(:is_a?) && value.is_a?(Parse::User))
           # For a user, include their ID and all their role names
           permissions_to_check << value.id if value.respond_to?(:id) && value.id.present?
-          
+
           # Automatically fetch user's roles from Parse
-          # Parse stores user roles as objects in _Role collection that have this user in their 'users' relation
           begin
             if value.respond_to?(:id) && value.id.present? && defined?(Parse::Role)
-              # Query roles that contain this user
               user_roles = Parse::Role.all(users: value)
               user_roles.each do |role|
                 permissions_to_check << "role:#{role.name}" if role.respond_to?(:name) && role.name.present?
@@ -2124,19 +2120,18 @@ module Parse
             end
           rescue => e
             # If role fetching fails, continue with just the user ID
-            # This allows the constraint to work even if role queries fail
           end
-          
+
         elsif value.is_a?(Parse::Role) || (value.respond_to?(:is_a?) && value.is_a?(Parse::Role))
-          # For a role, add the role name with "role:" prefix
+          # For a role object, add the role name with "role:" prefix
           permissions_to_check << "role:#{value.name}" if value.respond_to?(:name) && value.name.present?
-          
+
         elsif value.is_a?(Parse::Pointer) || (value.respond_to?(:parse_class) && value.respond_to?(:id))
           # Handle pointer to User or Role
           if value.respond_to?(:parse_class) && (value.parse_class == "User" || value.parse_class == "_User")
             permissions_to_check << value.id if value.respond_to?(:id) && value.id.present?
 
-            # Query roles directly using the user pointer (no need to fetch the full user)
+            # Query roles directly using the user pointer
             begin
               if value.respond_to?(:id) && value.id.present? && defined?(Parse::Role)
                 user_roles = Parse::Role.all(users: value)
@@ -2147,64 +2142,58 @@ module Parse
             rescue => e
               # If role fetching fails, continue with just the user ID
             end
-          elsif value.respond_to?(:parse_class) && (value.parse_class == "Role" || value.parse_class == "_Role")
-            # For role pointers, we need the role name, but we only have the ID
-            # We'd need to fetch the role to get its name, so for now skip this
-            # or require that role names be passed as strings
           end
-          
+
         elsif value.is_a?(Array)
-          # Handle array of role names, user IDs, or mixed
+          # Handle array of permission values
           value.each do |item|
             if item.is_a?(Parse::User) || (item.respond_to?(:is_a?) && item.is_a?(Parse::User))
               permissions_to_check << item.id if item.respond_to?(:id) && item.id.present?
             elsif item.is_a?(Parse::Role) || (item.respond_to?(:is_a?) && item.is_a?(Parse::Role))
               permissions_to_check << "role:#{item.name}" if item.respond_to?(:name) && item.name.present?
             elsif item.is_a?(Parse::Pointer) || (item.respond_to?(:parse_class) && item.respond_to?(:id))
-              # Handle pointer to User
               if item.respond_to?(:parse_class) && (item.parse_class == "User" || item.parse_class == "_User")
                 permissions_to_check << item.id if item.respond_to?(:id) && item.id.present?
               end
             elsif item.is_a?(String)
-              # Treat all strings as role names or public access
-              if item == "*"
-                # Special case for public access - don't add role: prefix
-                permissions_to_check << "*"
-              elsif item.start_with?("role:")
-                permissions_to_check << item
-              else
-                # Assume it's a role name, add role: prefix
-                permissions_to_check << "role:#{item}"
-              end
+              # Use string as-is (exact permission value)
+              # Also accept "public" as an alias for "*"
+              permissions_to_check << (item == "public" ? "*" : item)
             end
           end
-          
+
         elsif value.is_a?(String)
-          # Handle single string - only accept "*" for public access or "role:name" format
-          if value == "*"
-            # Special case for public access - don't add role: prefix
-            permissions_to_check << "*"
-          elsif value.start_with?("role:")
-            permissions_to_check << value
-          else
-            # For role names, add role: prefix
-            permissions_to_check << "role:#{value}"
+          if value == "none"
+            # "none" = objects with empty _rperm (master key only)
+            # Return immediately with a special query for empty array
+            pipeline = [
+              {
+                "$match" => {
+                  "$or" => [
+                    { "_rperm" => { "$eq" => [] } },
+                    { "_rperm" => { "$exists" => false } }
+                  ]
+                }
+              }
+            ]
+            return { "__aggregation_pipeline" => pipeline }
           end
-          
+
+          # Use string as-is (exact permission value: user ID, "role:Name", or "*")
+          # Also accept "public" as an alias for "*"
+          permissions_to_check << (value == "public" ? "*" : value)
+
         else
           raise ArgumentError, "ACLReadableByConstraint: value must be a User, Role, String, or Array of these types"
         end
-        
+
         if permissions_to_check.empty?
           raise ArgumentError, "ACLReadableByConstraint: no valid permissions found in provided value"
         end
-        
-        # Query the _rperm field through aggregation pipeline since Parse Server
-        # doesn't expose _rperm/_wperm fields through regular REST API queries
-        # _rperm contains an array of user IDs and role names that have read access
-        # Also include public access "*" in the check
-        permissions_with_public = permissions_to_check + ["*"]
-        
+
+        # Also include public access "*" in the check (unless already included)
+        permissions_with_public = permissions_to_check.include?("*") ? permissions_to_check : permissions_to_check + ["*"]
+
         # Build the aggregation pipeline to match documents with _rperm field
         # Also match documents where _rperm doesn't exist (publicly accessible)
         pipeline = [
@@ -2217,33 +2206,117 @@ module Parse
             }
           }
         ]
-        
-        # Return a special marker that indicates this needs aggregation pipeline processing
+
         { "__aggregation_pipeline" => pipeline }
       end
     end
 
-    # A constraint for filtering objects based on ACL write permissions for specific users or roles.
-    # This constraint queries the MongoDB _wperm field directly, which contains an array of user IDs 
-    # and role names that have write access to the object.
+    # A constraint for filtering objects readable by specific role names.
+    # Automatically adds "role:" prefix to role names.
     #
-    #  # Find objects writable by a specific user (includes user ID + their roles)
+    #  # Find objects readable by Admin role (string - adds role: prefix)
+    #  Post.where(:ACL.readable_by_role => "Admin")
+    #
+    #  # Find objects readable by Role object
+    #  Post.where(:ACL.readable_by_role => admin_role)
+    #
+    #  # Find objects readable by multiple roles
+    #  Post.where(:ACL.readable_by_role => ["Admin", "Moderator"])
+    #
+    class ACLReadableByRoleConstraint < Constraint
+      # @!method readable_by_role
+      # @example
+      #  q.where :ACL.readable_by_role => "Admin"
+      # @return [ACLReadableByRoleConstraint]
+      register :readable_by_role
+
+      # @return [Hash] the compiled constraint using _rperm field.
+      def build
+        value = formatted_value
+        permissions_to_check = []
+
+        if value.is_a?(Parse::Role) || (value.respond_to?(:is_a?) && value.is_a?(Parse::Role))
+          permissions_to_check << "role:#{value.name}" if value.respond_to?(:name) && value.name.present?
+
+        elsif value.is_a?(Parse::Pointer) || (value.respond_to?(:parse_class) && value.respond_to?(:id))
+          # Handle pointer to Role - need to fetch it to get the name
+          if value.respond_to?(:parse_class) && (value.parse_class == "Role" || value.parse_class == "_Role")
+            begin
+              role = value.fetch if value.respond_to?(:fetch)
+              permissions_to_check << "role:#{role.name}" if role&.respond_to?(:name) && role.name.present?
+            rescue => e
+              # If fetching fails, skip this pointer
+            end
+          end
+
+        elsif value.is_a?(Array)
+          value.each do |item|
+            if item.is_a?(Parse::Role) || (item.respond_to?(:is_a?) && item.is_a?(Parse::Role))
+              permissions_to_check << "role:#{item.name}" if item.respond_to?(:name) && item.name.present?
+            elsif item.is_a?(Parse::Pointer) || (item.respond_to?(:parse_class) && item.respond_to?(:id))
+              if item.respond_to?(:parse_class) && (item.parse_class == "Role" || item.parse_class == "_Role")
+                begin
+                  role = item.fetch if item.respond_to?(:fetch)
+                  permissions_to_check << "role:#{role.name}" if role&.respond_to?(:name) && role.name.present?
+                rescue => e
+                  # If fetching fails, skip this pointer
+                end
+              end
+            elsif item.is_a?(String)
+              # Add role: prefix if not already present
+              permissions_to_check << (item.start_with?("role:") ? item : "role:#{item}")
+            end
+          end
+
+        elsif value.is_a?(String)
+          # Add role: prefix if not already present
+          permissions_to_check << (value.start_with?("role:") ? value : "role:#{value}")
+
+        else
+          raise ArgumentError, "ACLReadableByRoleConstraint: value must be a Role, Role Pointer, String, or Array of these types"
+        end
+
+        if permissions_to_check.empty?
+          raise ArgumentError, "ACLReadableByRoleConstraint: no valid role names found"
+        end
+
+        # Also include public access "*" in the check
+        permissions_with_public = permissions_to_check + ["*"]
+
+        pipeline = [
+          {
+            "$match" => {
+              "$or" => [
+                { "_rperm" => { "$in" => permissions_with_public } },
+                { "_rperm" => { "$exists" => false } }
+              ]
+            }
+          }
+        ]
+
+        { "__aggregation_pipeline" => pipeline }
+      end
+    end
+
+    # A constraint for filtering objects based on ACL write permissions.
+    # This constraint queries the MongoDB _wperm field directly.
+    # Strings are used as exact permission values (user IDs or "role:RoleName" format).
+    #
+    # For role-based filtering with automatic "role:" prefix, use writable_by_role instead.
+    #
+    #  # Find objects writable by a specific user object (fetches user's roles automatically)
     #  Post.where(:ACL.writable_by => user)
-    #  
-    #  # Find objects writable by specific role names (strings are treated as role names)
-    #  Post.where(:ACL.writable_by => ["Admin", "Moderator"])
-    #  
-    #  # Find objects writable by a single role name
-    #  Post.where(:ACL.writable_by => "Admin")
-    #  
-    #  # Mix users and role names
-    #  Post.where(:ACL.writable_by => [user1, user2, "Admin", "Moderator"])
+    #
+    #  # Find objects writable by exact permission strings (no prefix added)
+    #  Post.where(:ACL.writable_by => "user123")           # User ID
+    #  Post.where(:ACL.writable_by => "role:Admin")        # Role with explicit prefix
+    #  Post.where(:ACL.writable_by => ["user123", "role:Admin"])
     #
     class ACLWritableByConstraint < Constraint
       # @!method writable_by
       # A registered method on a symbol to create the constraint.
       # @example
-      #  q.where :ACL.writable_by => user_or_roles
+      #  q.where :ACL.writable_by => user_or_permission_strings
       # @return [ACLWritableByConstraint]
       register :writable_by
 
@@ -2251,17 +2324,15 @@ module Parse
       def build
         value = formatted_value
         permissions_to_check = []
-        
+
         # Handle different input types using duck typing
         if value.is_a?(Parse::User) || (value.respond_to?(:is_a?) && value.is_a?(Parse::User))
           # For a user, include their ID and all their role names
           permissions_to_check << value.id if value.respond_to?(:id) && value.id.present?
-          
+
           # Automatically fetch user's roles from Parse
-          # Parse stores user roles as objects in _Role collection that have this user in their 'users' relation
           begin
             if value.respond_to?(:id) && value.id.present? && defined?(Parse::Role)
-              # Query roles that contain this user
               user_roles = Parse::Role.all(users: value)
               user_roles.each do |role|
                 permissions_to_check << "role:#{role.name}" if role.respond_to?(:name) && role.name.present?
@@ -2269,19 +2340,18 @@ module Parse
             end
           rescue => e
             # If role fetching fails, continue with just the user ID
-            # This allows the constraint to work even if role queries fail
           end
-          
+
         elsif value.is_a?(Parse::Role) || (value.respond_to?(:is_a?) && value.is_a?(Parse::Role))
-          # For a role, add the role name with "role:" prefix
+          # For a role object, add the role name with "role:" prefix
           permissions_to_check << "role:#{value.name}" if value.respond_to?(:name) && value.name.present?
-          
+
         elsif value.is_a?(Parse::Pointer) || (value.respond_to?(:parse_class) && value.respond_to?(:id))
           # Handle pointer to User or Role
           if value.respond_to?(:parse_class) && (value.parse_class == "User" || value.parse_class == "_User")
             permissions_to_check << value.id if value.respond_to?(:id) && value.id.present?
 
-            # Query roles directly using the user pointer (no need to fetch the full user)
+            # Query roles directly using the user pointer
             begin
               if value.respond_to?(:id) && value.id.present? && defined?(Parse::Role)
                 user_roles = Parse::Role.all(users: value)
@@ -2292,64 +2362,58 @@ module Parse
             rescue => e
               # If role fetching fails, continue with just the user ID
             end
-          elsif value.respond_to?(:parse_class) && (value.parse_class == "Role" || value.parse_class == "_Role")
-            # For role pointers, we need the role name, but we only have the ID
-            # We'd need to fetch the role to get its name, so for now skip this
-            # or require that role names be passed as strings
           end
-          
+
         elsif value.is_a?(Array)
-          # Handle array of role names, user IDs, or mixed
+          # Handle array of permission values
           value.each do |item|
             if item.is_a?(Parse::User) || (item.respond_to?(:is_a?) && item.is_a?(Parse::User))
               permissions_to_check << item.id if item.respond_to?(:id) && item.id.present?
             elsif item.is_a?(Parse::Role) || (item.respond_to?(:is_a?) && item.is_a?(Parse::Role))
               permissions_to_check << "role:#{item.name}" if item.respond_to?(:name) && item.name.present?
             elsif item.is_a?(Parse::Pointer) || (item.respond_to?(:parse_class) && item.respond_to?(:id))
-              # Handle pointer to User
               if item.respond_to?(:parse_class) && (item.parse_class == "User" || item.parse_class == "_User")
                 permissions_to_check << item.id if item.respond_to?(:id) && item.id.present?
               end
             elsif item.is_a?(String)
-              # Treat all strings as role names or public access
-              if item == "*"
-                # Special case for public access - don't add role: prefix
-                permissions_to_check << "*"
-              elsif item.start_with?("role:")
-                permissions_to_check << item
-              else
-                # Assume it's a role name, add role: prefix
-                permissions_to_check << "role:#{item}"
-              end
+              # Use string as-is (exact permission value)
+              # Also accept "public" as an alias for "*"
+              permissions_to_check << (item == "public" ? "*" : item)
             end
           end
-          
+
         elsif value.is_a?(String)
-          # Handle single string - only accept "*" for public access or "role:name" format
-          if value == "*"
-            # Special case for public access - don't add role: prefix
-            permissions_to_check << "*"
-          elsif value.start_with?("role:")
-            permissions_to_check << value
-          else
-            # For role names, add role: prefix
-            permissions_to_check << "role:#{value}"
+          if value == "none"
+            # "none" = objects with empty _wperm (master key only)
+            # Return immediately with a special query for empty array
+            pipeline = [
+              {
+                "$match" => {
+                  "$or" => [
+                    { "_wperm" => { "$eq" => [] } },
+                    { "_wperm" => { "$exists" => false } }
+                  ]
+                }
+              }
+            ]
+            return { "__aggregation_pipeline" => pipeline }
           end
-          
+
+          # Use string as-is (exact permission value: user ID, "role:Name", or "*")
+          # Also accept "public" as an alias for "*"
+          permissions_to_check << (value == "public" ? "*" : value)
+
         else
           raise ArgumentError, "ACLWritableByConstraint: value must be a User, Role, String, or Array of these types"
         end
-        
+
         if permissions_to_check.empty?
           raise ArgumentError, "ACLWritableByConstraint: no valid permissions found in provided value"
         end
-        
-        # Query the _wperm field through aggregation pipeline since Parse Server
-        # doesn't expose _rperm/_wperm fields through regular REST API queries
-        # _wperm contains an array of user IDs and role names that have write access
-        # Also include public access "*" in the check
-        permissions_with_public = permissions_to_check + ["*"]
-        
+
+        # Also include public access "*" in the check (unless already included)
+        permissions_with_public = permissions_to_check.include?("*") ? permissions_to_check : permissions_to_check + ["*"]
+
         # Build the aggregation pipeline to match documents with _wperm field
         # Also match documents where _wperm doesn't exist (publicly writable)
         pipeline = [
@@ -2362,8 +2426,94 @@ module Parse
             }
           }
         ]
-        
-        # Return a special marker that indicates this needs aggregation pipeline processing
+
+        { "__aggregation_pipeline" => pipeline }
+      end
+    end
+
+    # A constraint for filtering objects writable by specific role names.
+    # Automatically adds "role:" prefix to role names.
+    #
+    #  # Find objects writable by Admin role (string - adds role: prefix)
+    #  Post.where(:ACL.writable_by_role => "Admin")
+    #
+    #  # Find objects writable by Role object
+    #  Post.where(:ACL.writable_by_role => admin_role)
+    #
+    #  # Find objects writable by multiple roles
+    #  Post.where(:ACL.writable_by_role => ["Admin", "Moderator"])
+    #
+    class ACLWritableByRoleConstraint < Constraint
+      # @!method writable_by_role
+      # @example
+      #  q.where :ACL.writable_by_role => "Admin"
+      # @return [ACLWritableByRoleConstraint]
+      register :writable_by_role
+
+      # @return [Hash] the compiled constraint using _wperm field.
+      def build
+        value = formatted_value
+        permissions_to_check = []
+
+        if value.is_a?(Parse::Role) || (value.respond_to?(:is_a?) && value.is_a?(Parse::Role))
+          permissions_to_check << "role:#{value.name}" if value.respond_to?(:name) && value.name.present?
+
+        elsif value.is_a?(Parse::Pointer) || (value.respond_to?(:parse_class) && value.respond_to?(:id))
+          # Handle pointer to Role - need to fetch it to get the name
+          if value.respond_to?(:parse_class) && (value.parse_class == "Role" || value.parse_class == "_Role")
+            begin
+              role = value.fetch if value.respond_to?(:fetch)
+              permissions_to_check << "role:#{role.name}" if role&.respond_to?(:name) && role.name.present?
+            rescue => e
+              # If fetching fails, skip this pointer
+            end
+          end
+
+        elsif value.is_a?(Array)
+          value.each do |item|
+            if item.is_a?(Parse::Role) || (item.respond_to?(:is_a?) && item.is_a?(Parse::Role))
+              permissions_to_check << "role:#{item.name}" if item.respond_to?(:name) && item.name.present?
+            elsif item.is_a?(Parse::Pointer) || (item.respond_to?(:parse_class) && item.respond_to?(:id))
+              if item.respond_to?(:parse_class) && (item.parse_class == "Role" || item.parse_class == "_Role")
+                begin
+                  role = item.fetch if item.respond_to?(:fetch)
+                  permissions_to_check << "role:#{role.name}" if role&.respond_to?(:name) && role.name.present?
+                rescue => e
+                  # If fetching fails, skip this pointer
+                end
+              end
+            elsif item.is_a?(String)
+              # Add role: prefix if not already present
+              permissions_to_check << (item.start_with?("role:") ? item : "role:#{item}")
+            end
+          end
+
+        elsif value.is_a?(String)
+          # Add role: prefix if not already present
+          permissions_to_check << (value.start_with?("role:") ? value : "role:#{value}")
+
+        else
+          raise ArgumentError, "ACLWritableByRoleConstraint: value must be a Role, Role Pointer, String, or Array of these types"
+        end
+
+        if permissions_to_check.empty?
+          raise ArgumentError, "ACLWritableByRoleConstraint: no valid role names found"
+        end
+
+        # Also include public access "*" in the check
+        permissions_with_public = permissions_to_check + ["*"]
+
+        pipeline = [
+          {
+            "$match" => {
+              "$or" => [
+                { "_wperm" => { "$in" => permissions_with_public } },
+                { "_wperm" => { "$exists" => false } }
+              ]
+            }
+          }
+        ]
+
         { "__aggregation_pipeline" => pipeline }
       end
     end
