@@ -2701,6 +2701,48 @@ module Parse
       end
     end
 
+    # Shared helper module for ACL constraint classes.
+    # Provides common normalization logic for converting various input types
+    # (User, Role, Pointer, symbols, strings) to ACL permission keys.
+    # @api private
+    module AclConstraintHelpers
+      private
+
+      # Normalize various input types to ACL permission keys.
+      # @param value [Array, String, Symbol, Parse::User, Parse::Role, nil]
+      # @return [Array<String>] normalized permission keys
+      # @note Returns empty array for nil, [], "none", or :none (indicating no permissions)
+      def normalize_acl_keys(value)
+        # Handle special "none" case for no permissions
+        return [] if value.nil?
+        return [] if value == "none" || value == :none
+        return [] if value.is_a?(Array) && value.empty?
+
+        Array(value).map do |item|
+          case item
+          when Parse::User
+            item.id
+          when Parse::Role
+            "role:#{item.name}"
+          when Parse::Pointer
+            item.id
+          when :public, :everyone, :world
+            "*"
+          when "public", "*"
+            "*"
+          when "none", :none
+            nil # Will be compacted out, but array will be non-empty so won't match "no permissions"
+          when String
+            item
+          when Symbol
+            item == :public ? "*" : item.to_s
+          else
+            item.respond_to?(:id) ? item.id : item.to_s
+          end
+        end.compact.uniq
+      end
+    end
+
     # ACL Read Permission Query Constraint
     # Query objects based on read permissions using MongoDB's internal _rperm field.
     # Parse Server restricts direct queries on _rperm, so this uses aggregation pipeline.
@@ -2725,6 +2767,8 @@ module Parse
     # @note This constraint uses aggregation pipeline because Parse Server
     #   restricts direct queries on the internal _rperm field.
     class ReadableByConstraint < Constraint
+      include AclConstraintHelpers
+
       # @!method readable_by
       # A registered method on a symbol to create the constraint.
       # @example
@@ -2765,42 +2809,6 @@ module Parse
 
         { "__aggregation_pipeline" => pipeline }
       end
-
-      private
-
-      # Normalize various input types to ACL permission keys.
-      # @param value [Array, String, Symbol, Parse::User, Parse::Role, nil]
-      # @return [Array<String>] normalized permission keys
-      # @note Returns empty array for nil, [], "none", or :none (indicating no permissions)
-      def normalize_acl_keys(value)
-        # Handle special "none" case for no permissions
-        return [] if value.nil?
-        return [] if value == "none" || value == :none
-        return [] if value.is_a?(Array) && value.empty?
-
-        Array(value).map do |item|
-          case item
-          when Parse::User
-            item.id
-          when Parse::Role
-            "role:#{item.name}"
-          when Parse::Pointer
-            item.id
-          when :public, :everyone, :world
-            "*"
-          when "public", "*"
-            "*"
-          when "none", :none
-            nil # Will be compacted out, but array will be non-empty so won't match "no permissions"
-          when String
-            item
-          when Symbol
-            item == :public ? "*" : item.to_s
-          else
-            item.respond_to?(:id) ? item.id : item.to_s
-          end
-        end.compact.uniq
-      end
     end
 
     # ACL Write Permission Query Constraint
@@ -2820,6 +2828,8 @@ module Parse
     # @note This constraint uses aggregation pipeline because Parse Server
     #   restricts direct queries on the internal _wperm field.
     class WriteableByConstraint < Constraint
+      include AclConstraintHelpers
+
       # @!method writeable_by
       # A registered method on a symbol to create the constraint.
       # @example
@@ -2857,37 +2867,6 @@ module Parse
 
         { "__aggregation_pipeline" => pipeline }
       end
-
-      private
-
-      def normalize_acl_keys(value)
-        return [] if value.nil?
-        return [] if value == "none" || value == :none
-        return [] if value.is_a?(Array) && value.empty?
-
-        Array(value).map do |item|
-          case item
-          when Parse::User
-            item.id
-          when Parse::Role
-            "role:#{item.name}"
-          when Parse::Pointer
-            item.id
-          when :public, :everyone, :world
-            "*"
-          when "public", "*"
-            "*"
-          when "none", :none
-            nil
-          when String
-            item
-          when Symbol
-            item == :public ? "*" : item.to_s
-          else
-            item.respond_to?(:id) ? item.id : item.to_s
-          end
-        end.compact.uniq
-      end
     end
 
     # Alias for writeable_by (American spelling)
@@ -2909,6 +2888,8 @@ module Parse
     # @note This constraint uses aggregation pipeline because Parse Server
     #   restricts direct queries on the internal _rperm field.
     class NotReadableByConstraint < Constraint
+      include AclConstraintHelpers
+
       register :not_readable_by
 
       def build
@@ -2926,37 +2907,6 @@ module Parse
 
         { "__aggregation_pipeline" => pipeline }
       end
-
-      private
-
-      def normalize_acl_keys(value)
-        return [] if value.nil?
-        return [] if value == "none" || value == :none
-        return [] if value.is_a?(Array) && value.empty?
-
-        Array(value).map do |item|
-          case item
-          when Parse::User
-            item.id
-          when Parse::Role
-            "role:#{item.name}"
-          when Parse::Pointer
-            item.id
-          when :public, :everyone, :world
-            "*"
-          when "public", "*"
-            "*"
-          when "none", :none
-            nil
-          when String
-            item
-          when Symbol
-            item == :public ? "*" : item.to_s
-          else
-            item.respond_to?(:id) ? item.id : item.to_s
-          end
-        end.compact.uniq
-      end
     end
 
     # ACL NOT Writable By Constraint
@@ -2968,6 +2918,8 @@ module Parse
     # @note This constraint uses aggregation pipeline because Parse Server
     #   restricts direct queries on the internal _wperm field.
     class NotWriteableByConstraint < Constraint
+      include AclConstraintHelpers
+
       register :not_writeable_by
 
       def build
@@ -2983,37 +2935,6 @@ module Parse
         ]
 
         { "__aggregation_pipeline" => pipeline }
-      end
-
-      private
-
-      def normalize_acl_keys(value)
-        return [] if value.nil?
-        return [] if value == "none" || value == :none
-        return [] if value.is_a?(Array) && value.empty?
-
-        Array(value).map do |item|
-          case item
-          when Parse::User
-            item.id
-          when Parse::Role
-            "role:#{item.name}"
-          when Parse::Pointer
-            item.id
-          when :public, :everyone, :world
-            "*"
-          when "public", "*"
-            "*"
-          when "none", :none
-            nil
-          when String
-            item
-          when Symbol
-            item == :public ? "*" : item.to_s
-          else
-            item.respond_to?(:id) ? item.id : item.to_s
-          end
-        end.compact.uniq
       end
     end
 

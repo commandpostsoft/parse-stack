@@ -1,5 +1,54 @@
 ## Parse-Stack Changelog
 
+### 3.1.4
+
+#### Code Quality Improvements
+
+- **IMPROVED**: Extracted shared `AclConstraintHelpers` module for ACL query constraint classes (`ReadableByConstraint`, `WriteableByConstraint`, `NotReadableByConstraint`, `NotWriteableByConstraint`). This eliminates ~120 lines of duplicated `normalize_acl_keys` code and makes it easier to maintain ACL permission normalization logic.
+
+```ruby
+# All ACL constraints now share the same normalization logic via module inclusion
+module Parse::Constraint::AclConstraintHelpers
+  def normalize_acl_keys(value)
+    # Handles Parse::User, Parse::Role, Parse::Pointer, symbols, strings
+    # Returns normalized permission keys for ACL queries
+  end
+end
+
+class ReadableByConstraint < Constraint
+  include AclConstraintHelpers
+  # ...
+end
+```
+
+- **FIXED**: The `changed` method now uses `dup` before modifying the result array, preventing potential interference with ActiveModel's internal dirty tracking state.
+
+```ruby
+# Before: Could mutate ActiveModel's internal array
+def changed
+  result = super
+  result = result - ["acl"] if ...
+  result
+end
+
+# After: Safely operates on a copy
+def changed
+  result = super.dup
+  result.delete("acl") if ...
+  result
+end
+```
+
+- **FIXED**: Added nil-safe check in `acl_changed?` to prevent `NoMethodError` when `@acl` is nil.
+
+```ruby
+# Before: Could raise NoMethodError if @acl is nil
+acl_current_json = @acl.respond_to?(:as_json) ? @acl.as_json : @acl
+
+# After: Safe navigation operator handles nil
+acl_current_json = @acl&.respond_to?(:as_json) ? @acl.as_json : @acl
+```
+
 ### 3.1.3
 
 #### Private ACL by Default

@@ -897,7 +897,7 @@ module Parse
       return false unless super
       # Then verify the content actually changed by comparing JSON representations
       acl_was_json = acl_was.respond_to?(:as_json) ? acl_was.as_json : acl_was
-      acl_current_json = @acl.respond_to?(:as_json) ? @acl.as_json : @acl
+      acl_current_json = @acl&.respond_to?(:as_json) ? @acl.as_json : @acl
       acl_was_json != acl_current_json
     end
 
@@ -906,11 +906,11 @@ module Parse
     # For new objects, ACL is always included since it needs to be sent to the server.
     # @return [Array<String>] list of changed attribute names.
     def changed
-      result = super
+      result = super.dup
       # If ACL is in the changed list but content is identical, remove it
       # BUT keep it if the object is new (needs to be sent to server)
       if result.include?("acl") && !new? && !acl_changed?
-        result = result - ["acl"]
+        result.delete("acl")
       end
       result
     end

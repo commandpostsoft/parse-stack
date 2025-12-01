@@ -4822,6 +4822,14 @@ obj.new?                      # => true
 obj.changed.include?("acl")   # => true (always included for new objects)
 ```
 
+**Implementation Notes:**
+
+The ACL dirty tracking system uses several techniques to ensure correctness:
+- A snapshot of the ACL is captured before any in-place modifications via `acl_will_change!`
+- Content comparison uses JSON serialization to detect actual changes vs reference changes
+- The `changed` method safely duplicates arrays before modification to avoid interfering with ActiveModel internals
+- Nil-safe checks prevent errors when ACL is unset
+
 ## Atlas Search
 
 MongoDB Atlas Search integration provides full-text search, autocomplete, and faceted search capabilities directly through MongoDB.
