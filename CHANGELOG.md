@@ -1,5 +1,21 @@
 ## Parse-Stack Changelog
 
+### 3.1.2
+
+#### Bug Fixes
+
+- **FIXED**: Query methods `first`, `latest`, and `last_updated` now properly accept keyword-style constraint options like `keys:`, `includes:`, etc. Previously, adding the `mongo_direct:` keyword argument broke Ruby's argument parsing, causing `ArgumentError: unknown keyword: :keys` when using these options.
+
+```ruby
+# These all work again:
+Song.first(keys: [:title, :artist])
+Song.query.first(keys: [:title], includes: [:album])
+Song.query.latest(5, keys: [:title, :created_at])
+Song.query.last_updated(keys: [:title])
+```
+
+---
+
 ### 3.1.1
 
 #### Serialization Options for `as_json`

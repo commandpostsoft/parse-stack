@@ -992,7 +992,8 @@ module Parse
     #   @return [Parse::Object] the first object from the result.
     # @param mongo_direct [Boolean] if true, queries MongoDB directly bypassing Parse Server.
     #   Requires Parse::MongoDB to be configured. Default: false.
-    def first(limit_or_constraints = 1, mongo_direct: false)
+    # @note Supports all constraint options like :keys, :includes, :order, etc.
+    def first(limit_or_constraints = 1, mongo_direct: false, **options)
       # Use direct MongoDB query if requested
       if mongo_direct
         return first_direct(limit_or_constraints)
@@ -1012,6 +1013,8 @@ module Parse
         @results = nil if @limit != fetch_count
         @limit = fetch_count
       end
+      # Apply any additional keyword options as conditions (e.g., keys:, includes:)
+      conditions(options) unless options.empty?
       fetch_count == 1 ? results.first : results.first(fetch_count)
     end
 
@@ -1019,11 +1022,14 @@ module Parse
     # @param limit [Integer] the number of items to return (default: 1).
     # @return [Parse::Object] if limit == 1
     # @return [Array<Parse::Object>] if limit > 1
-    def latest(limit = 1)
+    # @note Supports all constraint options like :keys, :includes, etc.
+    def latest(limit = 1, **options)
       @results = nil if @limit != limit
       @limit = limit
       # Add created_at descending order if not already present
       order(:created_at.desc) unless @order.any? { |o| o.operand == :created_at }
+      # Apply any additional keyword options as conditions (e.g., keys:, includes:)
+      conditions(options) unless options.empty?
       limit == 1 ? results.first : results.first(limit)
     end
 
@@ -1031,11 +1037,14 @@ module Parse
     # @param limit [Integer] the number of items to return (default: 1).
     # @return [Parse::Object] if limit == 1
     # @return [Array<Parse::Object>] if limit > 1
-    def last_updated(limit = 1)
+    # @note Supports all constraint options like :keys, :includes, etc.
+    def last_updated(limit = 1, **options)
       @results = nil if @limit != limit
       @limit = limit
       # Add updated_at descending order if not already present
       order(:updated_at.desc) unless @order.any? { |o| o.operand == :updated_at }
+      # Apply any additional keyword options as conditions (e.g., keys:, includes:)
+      conditions(options) unless options.empty?
       limit == 1 ? results.first : results.first(limit)
     end
 
