@@ -1,5 +1,53 @@
 ## Parse-Stack Changelog
 
+### 3.0.2
+
+#### Push Notification Enhancements
+
+##### User Targeting Methods
+
+New methods to target push notifications to specific users by their user object or objectId:
+
+```ruby
+# Target a single user
+Parse::Push.to_user(current_user).with_alert("Hello!").send!
+Parse::Push.to_user_id("abc123").with_alert("Hello!").send!
+
+# Target multiple users
+Parse::Push.to_users(user1, user2, user3).with_alert("Group message!").send!
+
+# Arrays also work with singular methods
+Parse::Push.to_user([user1, user2]).with_alert("Hello!").send!
+```
+
+**New Methods:**
+- `to_user(user)` - Target a user (accepts `Parse::User`, pointer hash, objectId string, or array)
+- `to_user_id(user_id)` - Target a user by objectId
+- `to_users(*users)` - Target multiple users
+
+##### Installation Targeting Methods
+
+New methods to target push notifications to specific device installations:
+
+```ruby
+# Target a single installation
+Parse::Push.to_installation(device).with_alert("Hello!").send!
+Parse::Push.to_installation_id("xyz789").with_alert("Hello!").send!
+
+# Target multiple installations
+Parse::Push.to_installations(device1, device2).with_alert("Hello devices!").send!
+
+# Arrays also work with singular methods
+Parse::Push.to_installation([device1, device2]).with_alert("Hello!").send!
+```
+
+**New Methods:**
+- `to_installation(installation)` - Target an installation (accepts `Parse::Installation`, hash, objectId string, or array)
+- `to_installation_id(installation_id)` - Target an installation by objectId
+- `to_installations(*installations)` - Target multiple installations
+
+All methods support the fluent builder pattern and have both instance and class method versions.
+
 ### 3.0.1
 
 #### Agent Enhancements

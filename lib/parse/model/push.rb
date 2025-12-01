@@ -146,6 +146,60 @@ module Parse
       Parse::Installation.all_channels
     end
 
+    # Create a new Push targeting a specific user.
+    # @param user [Parse::User, Hash, String] the user to target
+    # @return [Parse::Push] a new Push instance for chaining
+    # @example
+    #   Parse::Push.to_user(current_user).with_alert("Hello!").send!
+    def self.to_user(user)
+      new.to_user(user)
+    end
+
+    # Create a new Push targeting a user by their objectId.
+    # @param user_id [String] the objectId of the user to target
+    # @return [Parse::Push] a new Push instance for chaining
+    # @example
+    #   Parse::Push.to_user_id("abc123").with_alert("Hello!").send!
+    def self.to_user_id(user_id)
+      new.to_user_id(user_id)
+    end
+
+    # Create a new Push targeting multiple users.
+    # @param users [Array<Parse::User, Hash, String>] the users to target
+    # @return [Parse::Push] a new Push instance for chaining
+    # @example
+    #   Parse::Push.to_users(user1, user2).with_alert("Group message!").send!
+    def self.to_users(*users)
+      new.to_users(*users)
+    end
+
+    # Create a new Push targeting a specific installation.
+    # @param installation [Parse::Installation, Hash, String] the installation to target
+    # @return [Parse::Push] a new Push instance for chaining
+    # @example
+    #   Parse::Push.to_installation(device).with_alert("Hello!").send!
+    def self.to_installation(installation)
+      new.to_installation(installation)
+    end
+
+    # Create a new Push targeting an installation by its objectId.
+    # @param installation_id [String] the objectId of the installation to target
+    # @return [Parse::Push] a new Push instance for chaining
+    # @example
+    #   Parse::Push.to_installation_id("abc123").with_alert("Hello!").send!
+    def self.to_installation_id(installation_id)
+      new.to_installation_id(installation_id)
+    end
+
+    # Create a new Push targeting multiple installations.
+    # @param installations [Array<Parse::Installation, Hash, String>] the installations to target
+    # @return [Parse::Push] a new Push instance for chaining
+    # @example
+    #   Parse::Push.to_installations(device1, device2).with_alert("Hello!").send!
+    def self.to_installations(*installations)
+      new.to_installations(*installations)
+    end
+
     # Initialize a new push notification request.
     # @param constraints [Hash] a set of query constraints
     def initialize(constraints = {})
@@ -595,6 +649,184 @@ module Parse
           query.where(key.to_sym => value)
         end
       end
+      self
+    end
+
+    # =========================================================================
+    # User Targeting Methods
+    # =========================================================================
+
+    # Target installations belonging to a specific user (or multiple users).
+    # This queries the Installation collection for devices where the user pointer
+    # matches the given user(s).
+    #
+    # @param user [Parse::User, Hash, String, Array] the user(s) to target. Can be:
+    #   - A Parse::User object
+    #   - A pointer hash (e.g., { "__type" => "Pointer", "className" => "_User", "objectId" => "abc123" })
+    #   - A user objectId string (will be converted to a pointer)
+    #   - An array of any of the above (delegates to to_users)
+    # @return [self] returns self for method chaining
+    # @example With a Parse::User object
+    #   user = Parse::User.find("abc123")
+    #   Parse::Push.new.to_user(user).with_alert("Hello!").send!
+    #
+    # @example With a user objectId
+    #   Parse::Push.new.to_user("abc123").with_alert("Hello!").send!
+    #
+    # @example With an array of users
+    #   Parse::Push.new.to_user([user1, user2]).with_alert("Hello!").send!
+    #
+    # @example Using class method shortcut
+    #   Parse::Push.to_user(current_user).with_alert("Welcome back!").send!
+    def to_user(user)
+      # Delegate to to_users if given an array
+      return to_users(user) if user.is_a?(Array)
+
+      pointer = case user
+                when Parse::User
+                  user.pointer
+                when Hash
+                  user
+                when String
+                  Parse::Pointer.new(Parse::Model::CLASS_USER, user).to_h
+                else
+                  raise ArgumentError, "Expected Parse::User, Hash, String, or Array, got #{user.class}"
+                end
+
+      query.where(user: pointer)
+      self
+    end
+
+    # Target installations belonging to a user by their objectId.
+    # This is a convenience method equivalent to to_user with a string ID.
+    #
+    # @param user_id [String] the objectId of the user to target
+    # @return [self] returns self for method chaining
+    # @example
+    #   Parse::Push.new.to_user_id("abc123").with_alert("Hello!").send!
+    #
+    # @example Using class method shortcut
+    #   Parse::Push.to_user_id("abc123").with_alert("You have a message").send!
+    def to_user_id(user_id)
+      pointer = Parse::Pointer.new(Parse::Model::CLASS_USER, user_id).to_h
+      query.where(user: pointer)
+      self
+    end
+
+    # Target installations belonging to multiple users.
+    # This queries the Installation collection for devices where the user pointer
+    # matches any of the given users.
+    #
+    # @param users [Array<Parse::User, Hash, String>] the users to target
+    # @return [self] returns self for method chaining
+    # @example
+    #   Parse::Push.new.to_users(user1, user2, user3).with_alert("Group message!").send!
+    #
+    # @example With user IDs
+    #   Parse::Push.new.to_users("id1", "id2", "id3").with_alert("Hello everyone!").send!
+    def to_users(*users)
+      pointers = users.flatten.map do |user|
+        case user
+        when Parse::User
+          user.pointer
+        when Hash
+          user
+        when String
+          Parse::Pointer.new(Parse::Model::CLASS_USER, user).to_h
+        else
+          raise ArgumentError, "Expected Parse::User, Hash, or String, got #{user.class}"
+        end
+      end
+
+      query.where(:user.in => pointers)
+      self
+    end
+
+    # =========================================================================
+    # Installation Targeting Methods
+    # =========================================================================
+
+    # Target a specific installation (or multiple installations) by object or objectId.
+    # This directly targets device installation(s).
+    #
+    # @param installation [Parse::Installation, Hash, String, Array] the installation(s) to target. Can be:
+    #   - A Parse::Installation object
+    #   - A hash with objectId key
+    #   - An objectId string
+    #   - An array of any of the above (delegates to to_installations)
+    # @return [self] returns self for method chaining
+    # @example With a Parse::Installation object
+    #   device = Parse::Installation.find("abc123")
+    #   Parse::Push.new.to_installation(device).with_alert("Hello!").send!
+    #
+    # @example With an objectId
+    #   Parse::Push.new.to_installation("abc123").with_alert("Hello!").send!
+    #
+    # @example With an array of installations
+    #   Parse::Push.new.to_installation([device1, device2]).with_alert("Hello!").send!
+    #
+    # @example Using class method shortcut
+    #   Parse::Push.to_installation(device).with_alert("Device notification").send!
+    def to_installation(installation)
+      # Delegate to to_installations if given an array
+      return to_installations(installation) if installation.is_a?(Array)
+
+      object_id = case installation
+                  when Parse::Installation
+                    installation.id
+                  when Hash
+                    installation[:objectId] || installation["objectId"] || installation[:id] || installation["id"]
+                  when String
+                    installation
+                  else
+                    raise ArgumentError, "Expected Parse::Installation, Hash, String, or Array, got #{installation.class}"
+                  end
+
+      query.where(objectId: object_id)
+      self
+    end
+
+    # Target a specific installation by its objectId.
+    # This is a convenience method equivalent to to_installation with a string ID.
+    #
+    # @param installation_id [String] the objectId of the installation to target
+    # @return [self] returns self for method chaining
+    # @example
+    #   Parse::Push.new.to_installation_id("abc123").with_alert("Hello!").send!
+    #
+    # @example Using class method shortcut
+    #   Parse::Push.to_installation_id("abc123").with_alert("Device notification").send!
+    def to_installation_id(installation_id)
+      query.where(objectId: installation_id)
+      self
+    end
+
+    # Target multiple installations.
+    # This queries the Installation collection for devices matching any of the given
+    # installation objectIds.
+    #
+    # @param installations [Array<Parse::Installation, Hash, String>] the installations to target
+    # @return [self] returns self for method chaining
+    # @example
+    #   Parse::Push.new.to_installations(device1, device2, device3).with_alert("Group notification!").send!
+    #
+    # @example With objectIds
+    #   Parse::Push.new.to_installations("id1", "id2", "id3").with_alert("Hello devices!").send!
+    def to_installations(*installations)
+      object_ids = installations.flatten.map do |installation|
+        case installation
+        when Parse::Installation
+          installation.id
+        when Hash
+          installation[:objectId] || installation["objectId"] || installation[:id] || installation["id"]
+        when String
+          installation
+        else
+          raise ArgumentError, "Expected Parse::Installation, Hash, or String, got #{installation.class}"
+        end
+      end
+
+      query.where(:objectId.in => object_ids)
       self
     end
   end
