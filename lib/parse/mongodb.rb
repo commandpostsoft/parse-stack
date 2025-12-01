@@ -1,6 +1,9 @@
 # encoding: UTF-8
 # frozen_string_literal: true
 
+require "date"
+require "time"
+
 module Parse
   # Direct MongoDB access module for bypassing Parse Server.
   # Provides read-only direct access to MongoDB for performance-critical queries.
@@ -54,8 +57,14 @@ module Parse
   #   cutoff = Time.utc(2024, 1, 1, 0, 0, 0)
   #   pipeline = [{ "$match" => { "releaseDate" => { "$gte" => cutoff } } }]
   #
+  # @example Using the date conversion helper
+  #   # Safely convert any date/time to MongoDB-compatible UTC Time
+  #   cutoff = Parse::MongoDB.to_mongodb_date(Date.new(2024, 1, 1))  # => Time UTC
+  #   cutoff = Parse::MongoDB.to_mongodb_date("2024-01-01")          # => Time UTC
+  #   cutoff = Parse::MongoDB.to_mongodb_date(Time.now)              # => Time UTC
+  #
   # @note Requires the 'mongo' gem to be installed. Add to your Gemfile:
-  #   gem 'mongo'
+  #   gem 'mongo', '~> 2.18'
   module MongoDB
     # Error raised when mongo gem is not available
     class GemNotAvailable < StandardError; end
@@ -284,6 +293,71 @@ module Parse
       # @return [Array<Hash>] the Parse-formatted hashes
       def convert_documents_to_parse(docs, class_name = nil)
         docs.map { |doc| convert_document_to_parse(doc, class_name) }
+      end
+
+      # Convert a date value to a UTC Time object suitable for MongoDB queries.
+      # MongoDB stores all dates in UTC, so this helper ensures consistent date handling
+      # when building aggregation pipelines or direct queries.
+      #
+      # @param value [Date, Time, DateTime, String, nil] the date value to convert
+      # @return [Time, nil] a UTC Time object, or nil if value is nil
+      # @raise [ArgumentError] if the value cannot be parsed as a date
+      #
+      # @example Converting different date types
+      #   Parse::MongoDB.to_mongodb_date(Date.new(2024, 1, 15))
+      #   # => 2024-01-15 00:00:00 UTC
+      #
+      #   Parse::MongoDB.to_mongodb_date(Time.now)
+      #   # => 2024-11-30 12:30:45 UTC (converted to UTC)
+      #
+      #   Parse::MongoDB.to_mongodb_date("2024-01-15")
+      #   # => 2024-01-15 00:00:00 UTC
+      #
+      #   Parse::MongoDB.to_mongodb_date("2024-01-15T10:30:00Z")
+      #   # => 2024-01-15 10:30:00 UTC
+      #
+      # @example Using in aggregation pipelines
+      #   cutoff = Parse::MongoDB.to_mongodb_date(Date.today - 30)
+      #   pipeline = [{ "$match" => { "createdAt" => { "$gte" => cutoff } } }]
+      #   results = Song.query.aggregate(pipeline, mongo_direct: true).results
+      #
+      # @example Using with query constraints
+      #   # For date comparisons in queries, this ensures UTC consistency
+      #   start_date = Parse::MongoDB.to_mongodb_date(params[:start_date])
+      #   end_date = Parse::MongoDB.to_mongodb_date(params[:end_date])
+      #   songs = Song.query(:release_date.gte => start_date, :release_date.lt => end_date)
+      def to_mongodb_date(value)
+        return nil if value.nil?
+
+        case value
+        when ::Time
+          value.utc
+        when ::DateTime
+          value.to_time.utc
+        when ::Date
+          # Convert Date to midnight UTC
+          ::Time.utc(value.year, value.month, value.day)
+        when ::String
+          # Parse string dates - try ISO 8601 first, then Date.parse
+          begin
+            if value =~ /T/
+              # ISO 8601 with time component
+              ::Time.parse(value).utc
+            else
+              # Date-only string, convert to midnight UTC
+              date = ::Date.parse(value)
+              ::Time.utc(date.year, date.month, date.day)
+            end
+          rescue ::ArgumentError => e
+            raise ::ArgumentError, "Cannot parse '#{value}' as a date: #{e.message}"
+          end
+        when ::Integer
+          # Assume Unix timestamp
+          ::Time.at(value).utc
+        else
+          raise ::ArgumentError, "Cannot convert #{value.class} to MongoDB date. " \
+            "Expected Date, Time, DateTime, String, or Integer."
+        end
       end
 
       private

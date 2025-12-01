@@ -44,6 +44,12 @@ Gem::Specification.new do |spec|
   # Users can add this to their Gemfile for comprehensive phone validation:
   #   gem 'phonelib' # For full ITU-T E.164 validation with libphonenumber data
 
+  # Optional dependency for direct MongoDB queries and Atlas Search
+  # Required for: Parse::MongoDB, Parse::AtlasSearch, mongo_direct query methods
+  # Users can add this to their Gemfile for direct MongoDB access:
+  #   gem 'mongo', '~> 2.18'
+  # Note: The gem is loaded at runtime only when MongoDB features are used
+
   #   spec.post_install_message = <<UPGRADE
   #
   # ** BREAKING CHANGES **

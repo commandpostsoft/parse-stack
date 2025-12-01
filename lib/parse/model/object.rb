@@ -322,8 +322,14 @@ module Parse
     #   were fetched for partially fetched objects. This prevents autofetch during serialization.
     # @option opts [Array<Symbol,String>] :only limit serialization to these fields
     # @option opts [Array<Symbol,String>] :except exclude these fields from serialization
+    # @option opts [Array<Symbol,String>] :exclude_keys alias for :except
     def as_json(opts = nil)
       opts ||= {}
+
+      # Normalize :exclude_keys to :except (alias support)
+      if opts[:exclude_keys] && !opts[:except]
+        opts = opts.merge(except: opts[:exclude_keys])
+      end
 
       # For selectively fetched objects (partial fetch), serialize only the fetched fields.
       # This takes priority over pointer detection because a partial fetch has actual data

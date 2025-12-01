@@ -1,5 +1,80 @@
 ## Parse-Stack Changelog
 
+### 3.1.1
+
+#### Serialization Options for `as_json`
+
+Added `:exclude_keys` option as an alias for `:except` to exclude specific fields when serializing Parse objects to JSON:
+
+```ruby
+# Exclude specific fields from JSON output
+song.as_json(exclude_keys: [:created_at, :updated_at, :acl])
+# => {"__type"=>"Object", "className"=>"Song", "title"=>"My Song", ...}
+
+# Also works with the existing :except option
+song.as_json(except: [:created_at, :updated_at])
+
+# Combine with :only to limit fields
+song.as_json(only: [:title, :artist])
+```
+
+**Note:** When both `:except` and `:exclude_keys` are provided, `:except` takes precedence. When `:only` is provided, it takes precedence over both exclusion options.
+
+#### MongoDB Date Conversion Helper
+
+New `Parse::MongoDB.to_mongodb_date` method for converting date values to UTC Time objects suitable for MongoDB queries. MongoDB stores all dates in UTC, and this helper ensures consistent date handling when building aggregation pipelines or direct queries.
+
+```ruby
+# Convert various date types to UTC Time for MongoDB
+Parse::MongoDB.to_mongodb_date(Date.new(2024, 1, 15))
+# => 2024-01-15 00:00:00 UTC
+
+Parse::MongoDB.to_mongodb_date(Time.now)
+# => 2024-12-01 12:30:45 UTC (converted to UTC)
+
+Parse::MongoDB.to_mongodb_date("2024-01-15")
+# => 2024-01-15 00:00:00 UTC
+
+Parse::MongoDB.to_mongodb_date("2024-01-15T10:30:00-05:00")
+# => 2024-01-15 15:30:00 UTC (timezone converted)
+
+# Unix timestamps also supported
+Parse::MongoDB.to_mongodb_date(1718451045)
+# => 2024-06-15 12:30:45 UTC
+```
+
+**Supported input types:**
+- `Time` - converted to UTC
+- `DateTime` - converted to UTC Time
+- `Date` - converted to midnight UTC
+- `String` - parsed (ISO 8601 or date string) and converted to UTC
+- `Integer` - treated as Unix timestamp
+- `nil` - returns nil
+
+**Example usage in aggregation pipelines:**
+```ruby
+# Get records from the last 30 days
+cutoff = Parse::MongoDB.to_mongodb_date(Date.today - 30)
+pipeline = [{ "$match" => { "_created_at" => { "$gte" => cutoff } } }]
+results = Song.query.aggregate(pipeline, mongo_direct: true).results
+```
+
+#### Documentation: Optional Mongo Gem
+
+The `mongo` gem is now explicitly documented as an optional dependency in the gemspec. Users who want to use MongoDB direct query features (`Parse::MongoDB`, `Parse::AtlasSearch`, `mongo_direct` query methods) should add it to their Gemfile:
+
+```ruby
+gem 'mongo', '~> 2.18'
+```
+
+The gem is loaded at runtime only when MongoDB features are used, so it doesn't affect users who don't need these features.
+
+#### Bug Fixes
+
+- **FIXED**: ActiveSupport constant resolution issue where `Date`, `Time`, and `DateTime` weren't matching correctly in `case` statements when ActiveSupport was loaded. Now uses explicit top-level constants (`::Date`, `::Time`, `::DateTime`) to ensure correct matching regardless of what other gems are loaded.
+
+---
+
 ### 3.1.0
 
 #### Enhanced Role Management
