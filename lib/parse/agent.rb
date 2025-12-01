@@ -37,10 +37,10 @@ module Parse
   #   agent = Parse::Agent.new(session_token: user.session_token)
   #   result = agent.execute(:query_class, class_name: "PrivateData")
   #
-  # @example MCP Server for external AI agents (must enable first)
-  #   Parse::Agent.mcp_enabled = true
-  #   require 'parse/agent/mcp_server'
-  #   Parse::Agent::MCPServer.run(port: 3001)
+  # @example MCP Server for external AI agents (requires ENV + code)
+  #   # First, set in environment: PARSE_MCP_ENABLED=true
+  #   Parse.mcp_server_enabled = true
+  #   Parse::Agent.enable_mcp!(port: 3001)
   #
   class Agent
     # Error hierarchy for agent operations
@@ -118,9 +118,17 @@ module Parse
       #   )
       #   Parse::Agent.enable_mcp!
       def enable_mcp!(port: nil)
-        unless Parse.mcp_server_enabled?
-          raise RuntimeError, "MCP server is experimental and must be explicitly enabled. " \
-            "Set Parse.mcp_server_enabled = true before calling enable_mcp!"
+        env_set = ENV["PARSE_MCP_ENABLED"] == "true"
+        prog_set = Parse.instance_variable_get(:@mcp_server_enabled) == true
+
+        unless env_set && prog_set
+          error_parts = []
+          error_parts << "Set PARSE_MCP_ENABLED=true in environment" unless env_set
+          error_parts << "Set Parse.mcp_server_enabled = true in code" unless prog_set
+
+          raise RuntimeError, "MCP server requires both environment and code configuration:\n" \
+            "  - #{error_parts.join("\n  - ")}\n" \
+            "Then call Parse::Agent.enable_mcp!(port: 3001)"
         end
 
         # Use provided port, or configured port, or default
@@ -207,6 +215,18 @@ module Parse
     # @return [Integer] the maximum operation log size
     attr_reader :max_log_size
 
+    # @return [Array<Hash>] conversation history for multi-turn interactions
+    attr_reader :conversation_history
+
+    # @return [Integer] total prompt tokens used across all requests
+    attr_reader :total_prompt_tokens
+
+    # @return [Integer] total completion tokens used across all requests
+    attr_reader :total_completion_tokens
+
+    # @return [Integer] total tokens used across all requests
+    attr_reader :total_tokens
+
     # Create a new Parse Agent instance.
     #
     # @param permissions [Symbol] the permission level (:readonly, :write, or :admin)
@@ -237,6 +257,10 @@ module Parse
       @operation_log = []
       @max_log_size = max_log_size
       @rate_limiter = RateLimiter.new(limit: rate_limit, window: rate_window)
+      @conversation_history = []
+      @total_prompt_tokens = 0
+      @total_completion_tokens = 0
+      @total_tokens = 0
     end
 
     # Check if a tool is allowed under current permissions
@@ -363,6 +387,7 @@ module Parse
     # Requires an LLM API endpoint to be configured.
     #
     # @param prompt [String] the natural language question to ask
+    # @param continue_conversation [Boolean] whether to include conversation history
     # @param llm_endpoint [String] OpenAI-compatible API endpoint (default: LM Studio)
     # @param model [String] the model to use
     # @param max_iterations [Integer] maximum tool call iterations (default: 10)
@@ -378,17 +403,26 @@ module Parse
     #     llm_endpoint: "http://localhost:1234/v1",
     #     model: "qwen2.5-7b-instruct")
     #
-    def ask(prompt, llm_endpoint: nil, model: nil, max_iterations: 10)
+    # @example Multi-turn conversation
+    #   agent = Parse::Agent.new
+    #   agent.ask("How many users are there?")
+    #   agent.ask_followup("What about in the last week?")
+    #   agent.clear_conversation!  # Start fresh
+    #
+    def ask(prompt, continue_conversation: false, llm_endpoint: nil, model: nil, max_iterations: 10)
       require "net/http"
       require "json"
+
+      # Clear history if not continuing conversation
+      @conversation_history = [] unless continue_conversation
 
       endpoint = llm_endpoint || ENV["LLM_ENDPOINT"] || "http://127.0.0.1:1234/v1"
       model_name = model || ENV["LLM_MODEL"] || "default"
 
-      messages = [
-        { role: "system", content: system_prompt },
-        { role: "user", content: prompt }
-      ]
+      # Build messages with system prompt, conversation history, and new prompt
+      messages = [{ role: "system", content: system_prompt }]
+      messages += @conversation_history
+      messages << { role: "user", content: prompt }
 
       tool_calls_made = []
 
@@ -396,13 +430,26 @@ module Parse
         response = chat_completion(endpoint, model_name, messages)
         return { answer: nil, error: response[:error], tool_calls: tool_calls_made } if response[:error]
 
+        # Accumulate token usage
+        if response[:usage]
+          @total_prompt_tokens += response[:usage][:prompt_tokens]
+          @total_completion_tokens += response[:usage][:completion_tokens]
+          @total_tokens += response[:usage][:total_tokens]
+        end
+
         message = response[:message]
         tool_calls = message["tool_calls"]
 
         # If no tool calls, we have the final answer
         unless tool_calls&.any?
+          answer = message["content"]
+
+          # Save successful exchange to conversation history
+          @conversation_history << { role: "user", content: prompt }
+          @conversation_history << { role: "assistant", content: answer }
+
           return {
-            answer: message["content"],
+            answer: answer,
             tool_calls: tool_calls_made
           }
         end
@@ -432,6 +479,71 @@ module Parse
       end
 
       { answer: nil, error: "Max iterations reached", tool_calls: tool_calls_made }
+    end
+
+    # Ask a follow-up question in the current conversation.
+    # Convenience method that calls ask with continue_conversation: true.
+    #
+    # @param prompt [String] the follow-up question
+    # @param kwargs [Hash] additional arguments passed to ask
+    # @return [Hash] response with :answer and :tool_calls keys
+    #
+    # @example
+    #   agent.ask("How many users are there?")
+    #   agent.ask_followup("What about admins?")
+    #   agent.ask_followup("Show me the most recent ones")
+    #
+    def ask_followup(prompt, **kwargs)
+      ask(prompt, continue_conversation: true, **kwargs)
+    end
+
+    # Clear the conversation history to start a fresh conversation.
+    #
+    # @return [Array] empty array
+    #
+    # @example
+    #   agent.ask("How many users?")
+    #   agent.ask_followup("What about admins?")
+    #   agent.clear_conversation!  # Start fresh
+    #   agent.ask("Different topic...")
+    #
+    def clear_conversation!
+      @conversation_history = []
+    end
+
+    # Reset token usage counters to zero.
+    #
+    # @return [Hash] zeroed token counts
+    #
+    # @example
+    #   agent.ask("How many users?")
+    #   puts agent.token_usage  # => { prompt_tokens: 150, completion_tokens: 50, total_tokens: 200 }
+    #   agent.reset_token_counts!
+    #   puts agent.total_tokens  # => 0
+    #
+    def reset_token_counts!
+      @total_prompt_tokens = 0
+      @total_completion_tokens = 0
+      @total_tokens = 0
+      token_usage
+    end
+
+    # Get a summary of token usage.
+    #
+    # @return [Hash] token usage summary with prompt, completion, and total tokens
+    #
+    # @example
+    #   agent.ask("How many users?")
+    #   agent.ask_followup("What about admins?")
+    #   puts agent.token_usage
+    #   # => { prompt_tokens: 300, completion_tokens: 100, total_tokens: 400 }
+    #
+    def token_usage
+      {
+        prompt_tokens: @total_prompt_tokens,
+        completion_tokens: @total_completion_tokens,
+        total_tokens: @total_tokens
+      }
     end
 
     private
@@ -469,7 +581,16 @@ module Parse
         if data["error"]
           { error: data["error"]["message"] }
         else
-          { message: data["choices"][0]["message"] }
+          # Extract usage info if available (OpenAI-compatible format)
+          usage = data["usage"] || {}
+          {
+            message: data["choices"][0]["message"],
+            usage: {
+              prompt_tokens: usage["prompt_tokens"] || 0,
+              completion_tokens: usage["completion_tokens"] || 0,
+              total_tokens: usage["total_tokens"] || 0
+            }
+          }
         end
       rescue StandardError => e
         { error: e.message }

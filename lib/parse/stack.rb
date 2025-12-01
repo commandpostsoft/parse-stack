@@ -69,11 +69,17 @@ module Parse
 
   # Configuration for experimental Agent MCP server feature.
   # The MCP (Model Context Protocol) server allows AI agents to interact with Parse data.
-  # This feature is experimental and not fully implemented. Enable at your own risk.
+  # This feature requires TWO steps to enable for safety:
+  #   1. Set environment variable: PARSE_MCP_ENABLED=true
+  #   2. Set in code: Parse.mcp_server_enabled = true
   # @example Enable MCP server (experimental)
+  #   # In environment or .env file:
+  #   # PARSE_MCP_ENABLED=true
+  #
+  #   # In code:
   #   Parse.mcp_server_enabled = true
   #   Parse::Agent.enable_mcp!(port: 3001)
-  # @note MCP server implementation is incomplete
+  # @note MCP server implementation is experimental
   @mcp_server_enabled = false
 
   # Configuration for MCP server port.
@@ -103,8 +109,10 @@ module Parse
     end
 
     # Check if MCP server feature is enabled
+    # Requires PARSE_MCP_ENABLED=true in environment AND Parse.mcp_server_enabled = true
     # @return [Boolean]
     def mcp_server_enabled?
+      return false unless ENV["PARSE_MCP_ENABLED"] == "true"
       @mcp_server_enabled == true
     end
 
@@ -212,6 +220,12 @@ module Parse
       end
     end
   end
+end
+
+# Startup warning: If ENV is set but programmatic flag isn't, warn the user
+if ENV["PARSE_MCP_ENABLED"] == "true" && !Parse.instance_variable_get(:@mcp_server_enabled)
+  warn "[Parse::Stack] PARSE_MCP_ENABLED is set in environment but Parse.mcp_server_enabled is false. " \
+       "Call Parse.mcp_server_enabled = true to enable the MCP agent feature."
 end
 
 require_relative "stack/railtie" if defined?(::Rails)

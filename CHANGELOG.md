@@ -1,5 +1,119 @@
 ## Parse-Stack Changelog
 
+### 3.0.1
+
+#### Agent Enhancements
+
+##### Environment Variable Gating for MCP
+
+The MCP server now requires an environment variable to be set for additional safety. This prevents accidental enablement in production.
+
+```ruby
+# Step 1: Set environment variable
+# PARSE_MCP_ENABLED=true
+
+# Step 2: Enable in code
+Parse.mcp_server_enabled = true
+Parse::Agent.enable_mcp!(port: 3001)
+```
+
+- Requires `PARSE_MCP_ENABLED=true` in environment AND `Parse.mcp_server_enabled = true` in code
+- Startup warning when ENV is set but code flag isn't
+- Helpful error messages showing exactly which step is missing
+
+##### Conversation Support (Multi-turn)
+
+Agents now support multi-turn conversations with history tracking:
+
+```ruby
+agent = Parse::Agent.new
+
+# Initial question
+agent.ask("How many users are there?")
+
+# Follow-up questions maintain context
+agent.ask_followup("What about admins?")
+agent.ask_followup("Show me the most recent 5")
+
+# Clear history to start fresh
+agent.clear_conversation!
+```
+
+**New Methods:**
+- `ask_followup(prompt)` - Ask a follow-up question with conversation history
+- `clear_conversation!` - Clear conversation history
+- `conversation_history` - Access the conversation history array
+
+##### Token Usage Tracking
+
+Track LLM token usage across agent requests:
+
+```ruby
+agent = Parse::Agent.new
+agent.ask("How many users?")
+agent.ask_followup("What about admins?")
+
+# Check token usage
+puts agent.token_usage
+# => { prompt_tokens: 450, completion_tokens: 120, total_tokens: 570 }
+
+# Individual accessors
+agent.total_prompt_tokens   # => 450
+agent.total_completion_tokens  # => 120
+agent.total_tokens          # => 570
+
+# Reset counters
+agent.reset_token_counts!
+```
+
+**New Methods:**
+- `token_usage` - Get hash with all token counts
+- `reset_token_counts!` - Reset counters to zero
+- `total_prompt_tokens` - Total prompt tokens used
+- `total_completion_tokens` - Total completion tokens used
+- `total_tokens` - Total tokens used
+
+##### Configurable Operation Log Size
+
+The agent operation log now uses a circular buffer with configurable size to prevent unbounded memory growth:
+
+```ruby
+# Default: 1000 entries
+agent = Parse::Agent.new
+
+# Custom size
+agent = Parse::Agent.new(max_log_size: 5000)
+
+# Access the log
+agent.operation_log  # => Array of recent operations
+agent.max_log_size   # => 5000
+```
+
+#### LiveQuery Enhancements
+
+##### Frame Read Timeout
+
+Added configurable frame read timeout to prevent indefinite socket blocking:
+
+```ruby
+Parse::LiveQuery.configure do |config|
+  config.frame_read_timeout = 30.0  # seconds (default: 30)
+end
+```
+
+- Timeout protection when reading WebSocket frames
+- Prevents hung connections from blocking indefinitely
+- Configurable via `frame_read_timeout` setting
+
+#### Audience Cache Improvements
+
+Added periodic cleanup of expired cache entries in `Parse::Audience` to prevent memory leaks:
+
+- Automatic cleanup of stale cache entries
+- Prevents unbounded cache growth in long-running processes
+
+---
+
 ### 3.0.0
 
 #### New Features: Push Notifications Enhancement
