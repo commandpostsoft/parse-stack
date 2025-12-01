@@ -189,7 +189,27 @@ agent.ask_streaming("Generate a report") do |chunk|
 end
 ```
 
-**Note:** Streaming mode does not currently support tool calls. Use `ask` for queries requiring database access.
+**Important Limitation:** Streaming mode does **not** support tool calls. This means the agent cannot query the database, call cloud functions, or perform any Parse operations while streaming.
+
+**When to use `ask_streaming`:**
+- Generating text summaries or explanations based on prior context
+- Reformatting or analyzing data already retrieved
+- General conversation without database access
+
+**When to use `ask` instead:**
+- Queries requiring database access ("How many users are there?")
+- Operations that modify data
+- Any request that needs Parse tool execution
+
+```ruby
+# DON'T: This won't query the database
+agent.ask_streaming("How many users are in the system?") { |c| print c }
+# Result: LLM will respond without actual data
+
+# DO: Use ask for database queries
+result = agent.ask("How many users are in the system?")
+# Result: Agent uses count_objects tool to get real data
+```
 
 ##### Configurable Operation Log Size
 
@@ -229,6 +249,65 @@ Added periodic cleanup of expired cache entries in `Parse::Audience` to prevent 
 
 - Automatic cleanup of stale cache entries
 - Prevents unbounded cache growth in long-running processes
+
+#### Bug Fixes
+
+##### Array Pointer Storage/Query Compatibility
+
+Fixed an issue where arrays containing Parse objects weren't stored in proper pointer format, causing `.in`/`.nin` queries to fail.
+
+**Before (broken):**
+```ruby
+# Objects stored as full hashes, not pointers
+library.featured_authors = [author1, author2]
+library.save
+
+# Query couldn't match because format mismatch
+Library.where(:featured_authors.in => [author1]).results
+# => [] (empty, even though data exists)
+```
+
+**After (fixed):**
+```ruby
+# Objects automatically converted to pointer format on save
+library.featured_authors = [author1, author2]
+library.save
+
+# Query now works correctly
+Library.where(:featured_authors.in => [author1]).results
+# => [library] (correctly finds matching records)
+```
+
+**New Feature: `pointers_only` option for `CollectionProxy#as_json`**
+
+Added a `pointers_only` option to control serialization behavior:
+
+```ruby
+# Default: Full objects preserved (for API responses)
+team.members.as_json
+# => [{"objectId"=>"abc", "name"=>"Alice", "email"=>"alice@test.com", ...}, ...]
+
+# With pointers_only: Converts to pointer format (for Parse storage/webhooks)
+team.members.as_json(pointers_only: true)
+# => [{"__type"=>"Pointer", "className"=>"Member", "objectId"=>"abc"}, ...]
+```
+
+**Technical Details:**
+- During `save`, `attribute_updates` automatically uses `as_json(pointers_only: true)` for `CollectionProxy` fields
+- This ensures arrays are stored correctly in Parse and can be queried with `.in`/`.nin`/`.all` constraints
+- Default `as_json` behavior preserves full objects for API responses (e.g., webhook returns with includes)
+- Regular arrays (strings, integers, etc.) are unaffected
+- `PointerCollectionProxy` (used by `has_many through: :array`) continues to always convert to pointers
+
+**Atomic Operations Also Fixed:**
+
+The `add!`, `add_unique!`, and `remove!` methods on `CollectionProxy` now correctly convert Parse objects to pointer format:
+
+```ruby
+library.featured_authors.add!(author1)        # Works correctly now
+library.featured_authors.add_unique!(author2) # Works correctly now
+library.featured_authors.remove!(author1)     # Works correctly now
+```
 
 ---
 

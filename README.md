@@ -3987,14 +3987,20 @@ end
 
 ### MCP Server
 
-Run an HTTP server for external AI agents:
+Run an HTTP server for external AI agents. Requires dual-gating for safety:
+
+```bash
+# Step 1: Set environment variable
+export PARSE_MCP_ENABLED=true
+```
 
 ```ruby
-# Enable and start MCP server
+# Step 2: Enable in code and start server
 Parse.mcp_server_enabled = true
 Parse::Agent.enable_mcp!(port: 3001)
-Parse::Agent::MCPServer.run(port: 3001)
 ```
+
+Both the environment variable AND the code flag must be set. This prevents accidental enablement in production.
 
 ### Security
 
@@ -4007,6 +4013,124 @@ Configure LLM endpoint via environment:
 ```bash
 export LLM_ENDPOINT="http://127.0.0.1:1234/v1"
 export LLM_MODEL="qwen2.5-7b-instruct"
+```
+
+### Multi-turn Conversations
+
+Agents support multi-turn conversations with context maintained across questions:
+
+```ruby
+agent = Parse::Agent.new
+
+# Initial question
+agent.ask("How many users are there?")
+
+# Follow-up questions maintain context
+agent.ask_followup("What about admins?")
+agent.ask_followup("Show me the most recent 5")
+
+# Clear history to start fresh
+agent.clear_conversation!
+```
+
+### Token Usage & Cost Estimation
+
+Track LLM token usage and estimate costs:
+
+```ruby
+agent = Parse::Agent.new(pricing: { prompt: 0.01, completion: 0.03 })
+
+agent.ask("How many users?")
+agent.ask_followup("What about admins?")
+
+# Check token usage
+puts agent.token_usage
+# => { prompt_tokens: 450, completion_tokens: 120, total_tokens: 570 }
+
+# Get estimated cost
+puts agent.estimated_cost  # => 0.0234
+
+# Reset counters
+agent.reset_token_counts!
+```
+
+### Callbacks/Hooks
+
+Register callbacks for debugging, logging, and custom behavior:
+
+```ruby
+agent = Parse::Agent.new
+
+# Before tool execution
+agent.on_tool_call { |tool, args| puts "Calling: #{tool}" }
+
+# After tool execution
+agent.on_tool_result { |tool, args, result| log_result(tool, result) }
+
+# On any error
+agent.on_error { |error, context| notify_slack(error) }
+
+# After LLM response
+agent.on_llm_response { |response| log_llm_usage(response) }
+```
+
+### Streaming Support
+
+Stream responses as they arrive from the LLM:
+
+```ruby
+agent.ask_streaming("Analyze user growth trends") do |chunk|
+  print chunk
+end
+```
+
+**Important Limitation:** Streaming mode does **not** support tool calls. The agent cannot query the database or perform Parse operations while streaming. Use `ask` for database queries:
+
+```ruby
+# DON'T: This won't query the database
+agent.ask_streaming("How many users?") { |c| print c }
+
+# DO: Use ask for database queries
+result = agent.ask("How many users?")
+```
+
+### Conversation Export/Import
+
+Serialize and restore conversation state:
+
+```ruby
+agent = Parse::Agent.new
+agent.ask("How many users?")
+agent.ask_followup("What about admins?")
+
+# Export state
+state = agent.export_conversation
+File.write("conversation.json", state)
+
+# Later, restore in a new session
+new_agent = Parse::Agent.new
+new_agent.import_conversation(File.read("conversation.json"))
+new_agent.ask_followup("Show me the most recent ones")
+```
+
+### Configuration Options
+
+Additional agent configuration:
+
+```ruby
+# Custom system prompt
+agent = Parse::Agent.new(system_prompt: "You are a music database expert...")
+
+# Or append to the default prompt
+agent = Parse::Agent.new(system_prompt_suffix: "Focus on performance data.")
+
+# Configure operation log size (circular buffer, default: 1000)
+agent = Parse::Agent.new(max_log_size: 5000)
+
+# Access debugging info
+agent.last_request   # Last LLM request sent
+agent.last_response  # Last LLM response received
+agent.operation_log  # Recent operations
 ```
 
 ## Cloud Code Webhooks

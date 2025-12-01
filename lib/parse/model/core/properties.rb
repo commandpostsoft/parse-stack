@@ -526,6 +526,10 @@ module Parse
         # in the case that the field is a Parse object, generate a pointer
         # if it is a Parse::PointerCollectionProxy, then make sure we get a list of pointers.
         h[remote_field] = h[remote_field].parse_pointers if h[remote_field].is_a?(Parse::PointerCollectionProxy)
+        # For regular CollectionProxy arrays containing Parse objects, convert to pointers for storage
+        if h[remote_field].is_a?(Parse::CollectionProxy) && !h[remote_field].is_a?(Parse::PointerCollectionProxy)
+          h[remote_field] = h[remote_field].as_json(pointers_only: true)
+        end
         h[remote_field] = h[remote_field].pointer if h[remote_field].respond_to?(:pointer)
       end
       h

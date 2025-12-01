@@ -776,13 +776,19 @@ module Parse
     # Ask a question with streaming response.
     # Yields chunks of the response as they arrive.
     #
+    # @note **Important Limitation:** Streaming mode does NOT support tool calls.
+    #   The agent cannot query the database, call cloud functions, or perform any
+    #   Parse operations while streaming. Use this for text generation based on
+    #   prior context, reformatting data, or general conversation. For database
+    #   queries or Parse operations, use {#ask} instead.
+    #
     # @param prompt [String] the natural language question to ask
     # @param continue_conversation [Boolean] whether to include conversation history
     # @param llm_endpoint [String] OpenAI-compatible API endpoint
     # @param model [String] the model to use
     # @yield [chunk] called for each chunk of the response
     # @yieldparam chunk [String] a chunk of text from the response
-    # @return [Hash] final response with :answer and :tool_calls keys
+    # @return [Hash] final response with :answer and :tool_calls (always empty)
     #
     # @example Stream response to console
     #   agent.ask_streaming("Analyze user growth") do |chunk|
@@ -793,6 +799,13 @@ module Parse
     #   agent.ask_streaming("Summary of recent activity") do |chunk|
     #     websocket.send(chunk)
     #   end
+    #
+    # @example When NOT to use streaming (use ask instead)
+    #   # DON'T: This won't query the database
+    #   agent.ask_streaming("How many users?") { |c| print c }
+    #
+    #   # DO: Use ask for database queries
+    #   result = agent.ask("How many users?")
     #
     def ask_streaming(prompt, continue_conversation: false, llm_endpoint: nil, model: nil, &block)
       raise ArgumentError, "Block required for streaming" unless block_given?
