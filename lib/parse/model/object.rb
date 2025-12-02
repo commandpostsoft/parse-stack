@@ -520,17 +520,26 @@ module Parse
     end
 
     # Force reload from the database and replace any local fields with data from
-    # the persistent store. By default, bypasses the cache to ensure fresh data.
+    # the persistent store. By default, bypasses cache reads but updates the cache
+    # with fresh data (write-only mode) so future cached reads get the latest data.
     # @param opts [Hash] a set of options to send to fetch!
-    # @option opts [Boolean] :cache (false) set to true to allow cached responses
+    # @option opts [Boolean, Symbol] :cache (:write_only) caching mode:
+    #   - :write_only (default) - skip cache read, but update cache with fresh data
+    #   - true - read from and write to cache
+    #   - false - completely bypass cache (no read or write)
     # @see Fetching#fetch!
-    # @example Reload with fresh data (default)
+    # @example Reload with fresh data (default - updates cache)
     #   song.reload!
-    # @example Reload allowing cached data
+    # @example Reload with full caching (may return cached data)
     #   song.reload!(cache: true)
+    # @example Reload completely bypassing cache
+    #   song.reload!(cache: false)
     def reload!(**opts)
-      # Default to bypassing cache - reload semantically means "get fresh data"
-      opts = { cache: false }.merge(opts)
+      # Default to write-only cache mode - reload always gets fresh data
+      # but updates cache for future cached reads. Controlled by feature flag.
+      unless opts.key?(:cache)
+        opts[:cache] = Parse.cache_write_on_fetch ? :write_only : false
+      end
       # get the values from the persistence layer
       fetch!(**opts)
       clear_changes!

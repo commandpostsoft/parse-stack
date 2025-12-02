@@ -549,6 +549,10 @@ module Parse
 
       if opts[:cache] == false
         headers[Parse::Middleware::Caching::CACHE_CONTROL] = "no-cache"
+      elsif opts[:cache] == :write_only
+        # Write-only mode: skip reading from cache, but still write to cache
+        # Useful for fetch!/reload! which want fresh data but should update cache
+        headers[Parse::Middleware::Caching::CACHE_WRITE_ONLY] = "true"
       elsif opts[:cache].is_a?(Numeric)
         # specify the cache duration of this request
         headers[Parse::Middleware::Caching::CACHE_EXPIRES_DURATION] = opts[:cache].to_s

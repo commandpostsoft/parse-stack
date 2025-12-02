@@ -68,6 +68,20 @@ module Parse
   # @note WebSocket client implementation is incomplete
   @live_query_enabled = false
 
+  # Configuration for cache write-through on fetch operations.
+  # When set to true (default), fetch!/reload!/find operations will:
+  #   - Skip reading from cache (always get fresh data from server)
+  #   - Write the fresh data back to cache for future cached reads
+  # This is the "write-only" cache mode - ensures data freshness while keeping cache updated.
+  # Set to false to completely bypass cache (no read or write) on fetch operations.
+  # @example Disable cache write-on-fetch
+  #   Parse.cache_write_on_fetch = false
+  #   # Now fetch!/reload!/find will completely bypass cache
+  # @example Default behavior (write-only mode)
+  #   song.fetch!  # Gets fresh data, updates cache
+  #   song.fetch!(cache: true)  # Uses cached data if available
+  @cache_write_on_fetch = true
+
   # Configuration for experimental Agent MCP server feature.
   # The MCP (Model Context Protocol) server allows AI agents to interact with Parse data.
   # This feature requires TWO steps to enable for safety:
@@ -101,7 +115,7 @@ module Parse
 
   class << self
     attr_accessor :warn_on_query_issues, :autofetch_raise_on_missing_keys, :serialize_only_fetched_fields, :validate_query_keys,
-                  :live_query_enabled, :mcp_server_enabled, :mcp_server_port, :mcp_remote_api
+                  :live_query_enabled, :cache_write_on_fetch, :mcp_server_enabled, :mcp_server_port, :mcp_remote_api
 
     # Check if LiveQuery feature is enabled
     # @return [Boolean]

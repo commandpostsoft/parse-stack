@@ -34,6 +34,8 @@ module Parse
       CACHE_RESPONSE_HEADER = "X-Cache-Response"
       # Header in request to set caching information for the middleware.
       CACHE_EXPIRES_DURATION = "X-Parse-Stack-Cache-Expires"
+      # Header in request to enable write-only cache mode (skip read, still write)
+      CACHE_WRITE_ONLY = "X-Parse-Stack-Cache-Write-Only"
 
       class << self
         # @!attribute enabled
@@ -101,6 +103,10 @@ module Parse
           @enabled = false
         end
 
+        # Check for write-only mode (skip cache read, still write to cache)
+        # This is useful for fetch!/reload! which want fresh data but should update cache
+        @write_only = @request_headers[CACHE_WRITE_ONLY] == "true"
+
         # get the expires information from header (per-request) or instance default
         if @request_headers[CACHE_EXPIRES_DURATION].to_i > 0
           @expires = @request_headers[CACHE_EXPIRES_DURATION].to_i
@@ -109,6 +115,7 @@ module Parse
         # cleanup
         @request_headers.delete(CACHE_CONTROL)
         @request_headers.delete(CACHE_EXPIRES_DURATION)
+        @request_headers.delete(CACHE_WRITE_ONLY)
 
         # if caching is enabled and we have a valid cache duration, use cache
         # otherwise work as a passthrough.
@@ -126,7 +133,8 @@ module Parse
         end
 
         begin
-          if method == :get && @cache_key.present? && @store.key?(@cache_key)
+          # Skip cache read if write_only mode is enabled
+          if method == :get && @cache_key.present? && !@write_only && @store.key?(@cache_key)
             puts("[Parse::Cache] Hit >> #{url}") if self.class.logging.present?
             response = Faraday::Response.new
             begin

@@ -45,6 +45,8 @@ module Parse
 
       # Force fetches and updates the current object with the data contained in the Parse collection.
       # The changes applied to the object are not dirty tracked.
+      # By default, bypasses cache reads but updates the cache with fresh data (write-only mode).
+      # This ensures you always get fresh data while keeping the cache updated for future reads.
       # @param keys [Array<Symbol, String>, nil] optional list of fields to fetch (partial fetch).
       #   If provided, only these fields will be fetched and the object will be marked as partially fetched.
       #   Use dot notation for nested fields (e.g., "author.name") - Parse automatically resolves the pointer.
@@ -54,9 +56,17 @@ module Parse
       #   By default (false), fetched fields accept server values and local changes are discarded.
       #   Unfetched fields always preserve their dirty state regardless of this setting.
       # @param opts [Hash] a set of options to pass to the client request.
+      # @option opts [Boolean, Symbol] :cache (:write_only) caching mode:
+      #   - :write_only (default) - skip cache read, but update cache with fresh data
+      #   - true - read from and write to cache
+      #   - false - completely bypass cache (no read or write)
       # @return [self] the current object, useful for chaining.
-      # @example Full fetch
+      # @example Full fetch (updates cache but doesn't read from it)
       #   post.fetch!
+      # @example Fetch with full caching (read and write)
+      #   post.fetch!(cache: true)
+      # @example Fetch completely bypassing cache
+      #   post.fetch!(cache: false)
       # @example Partial fetch with specific keys
       #   post.fetch!(keys: [:title, :content])
       # @example Partial fetch with nested fields (pointer auto-resolved)
@@ -66,6 +76,12 @@ module Parse
       # @example Preserve local changes during fetch
       #   post.fetch!(keys: [:title], preserve_changes: true)
       def fetch!(keys: nil, includes: nil, preserve_changes: false, **opts)
+        # Default to write-only cache mode - fetch fresh data but update cache
+        # This can be disabled globally with Parse.cache_write_on_fetch = false
+        unless opts.key?(:cache)
+          opts[:cache] = Parse.cache_write_on_fetch ? :write_only : false
+        end
+
         # Normalize keys and includes arrays once at the start for performance
         keys_array = keys.present? ? Array(keys) : nil
         includes_array = includes.present? ? Array(includes) : nil

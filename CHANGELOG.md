@@ -4,18 +4,45 @@
 
 #### Improvements
 
-- **IMPROVED**: `reload!` now defaults to `cache: false` to ensure fresh data from the server. This better matches the semantic expectation that "reload" means getting the latest data. Use `reload!(cache: true)` to opt-in to cached responses.
+- **NEW**: Added "write-only" cache mode (`:write_only`) for fetch operations. This mode skips reading from cache (always gets fresh data from server) but writes the fresh data back to cache for future cached reads. This is now the default behavior for `fetch!`, `reload!`, and `find` operations.
 
-- **NEW**: Added `fetch_cache!` method as a convenience for fetching with explicit caching enabled. Use this when you want to leverage cached responses for better performance.
+- **IMPROVED**: `fetch!`, `reload!`, and `find` now use `:write_only` cache mode by default. This ensures you always get fresh data while keeping the cache updated for future `find_cached` or `fetch_cache!` calls. Previously, these operations used cached responses if caching was configured.
+
+- **NEW**: Added `Parse.cache_write_on_fetch` configuration option to control the default caching behavior:
+  - `true` (default): Use write-only cache mode - skip cache read, update cache with fresh data
+  - `false`: Completely bypass cache (no read or write)
+
+- **NEW**: Added `fetch_cache!` method as a convenience for fetching with full caching enabled (read from and write to cache).
+
+- **NEW**: Added `find_cached` class method as a convenience for finding objects with full caching enabled.
 
 ```ruby
-# reload! now bypasses cache by default
-song.reload!                    # Fresh data from server (no cache)
-song.reload!(cache: true)       # Opt-in to cached response
+# Default behavior: write-only cache mode
+# - Always gets fresh data from server (no cache read)
+# - Updates cache with fresh data for future cached reads
+song.fetch!                     # Fresh data, updates cache
+song.reload!                    # Fresh data, updates cache
+Song.find(id)                   # Fresh data, updates cache
 
-# fetch_cache! for explicit caching
-song.fetch_cache!               # Fetch with caching enabled
+# Full caching (read from and write to cache)
+song.fetch!(cache: true)        # Use cached data if available
+song.reload!(cache: true)       # Use cached data if available
+Song.find(id, cache: true)      # Use cached data if available
+
+# Convenience methods for full caching
+song.fetch_cache!               # Fetch with full caching
 song.fetch_cache!(keys: [:title])  # Partial fetch with caching
+Song.find_cached(id)            # Find with full caching
+Song.find_cached(id1, id2)      # Find multiple with caching
+
+# Completely bypass cache (no read or write)
+song.fetch!(cache: false)       # Bypass cache entirely
+song.reload!(cache: false)      # Bypass cache entirely
+Song.find(id, cache: false)     # Bypass cache entirely
+
+# Disable write-only mode globally
+Parse.cache_write_on_fetch = false
+# Now fetch!/reload!/find will bypass cache entirely (same as cache: false)
 ```
 
 #### Bug Fixes
