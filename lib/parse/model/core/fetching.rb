@@ -238,6 +238,23 @@ module Parse
         self
       end
 
+      # Fetches the object with explicit caching enabled.
+      # This is a convenience method that calls fetch! with cache: true.
+      # Use this when you want to leverage cached responses for better performance.
+      # @param keys [Array<Symbol, String>, nil] optional list of fields to fetch (partial fetch).
+      # @param includes [Array<String>, nil] optional list of pointer fields to resolve.
+      # @param preserve_changes [Boolean] if true, re-apply local dirty values to fetched fields.
+      # @param opts [Hash] additional options to pass to the client request.
+      # @return [self] the current object, useful for chaining.
+      # @example Fetch with caching
+      #   post.fetch_cache!
+      # @example Partial fetch with caching
+      #   post.fetch_cache!(keys: [:title, :content])
+      # @see #fetch!
+      def fetch_cache!(keys: nil, includes: nil, preserve_changes: false, **opts)
+        fetch!(keys: keys, includes: includes, preserve_changes: preserve_changes, cache: true, **opts)
+      end
+
       # Fetches the object from the Parse data store. Unlike fetchIfNeeded, this always
       # fetches from the server and updates the local object with fresh data.
       # @overload fetch

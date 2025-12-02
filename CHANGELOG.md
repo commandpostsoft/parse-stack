@@ -2,6 +2,22 @@
 
 ### 3.1.5
 
+#### Improvements
+
+- **IMPROVED**: `reload!` now defaults to `cache: false` to ensure fresh data from the server. This better matches the semantic expectation that "reload" means getting the latest data. Use `reload!(cache: true)` to opt-in to cached responses.
+
+- **NEW**: Added `fetch_cache!` method as a convenience for fetching with explicit caching enabled. Use this when you want to leverage cached responses for better performance.
+
+```ruby
+# reload! now bypasses cache by default
+song.reload!                    # Fresh data from server (no cache)
+song.reload!(cache: true)       # Opt-in to cached response
+
+# fetch_cache! for explicit caching
+song.fetch_cache!               # Fetch with caching enabled
+song.fetch_cache!(keys: [:title])  # Partial fetch with caching
+```
+
 #### Bug Fixes
 
 - **FIXED**: Connection pooling `pool_size` option now works correctly. Previously, configuring `pool_size` in the `connection_pooling` hash would raise `NoMethodError: undefined method 'pool_size='` because `Net::HTTP::Persistent` only accepts `pool_size` as a constructor argument, not a setter. The fix passes `pool_size` as a keyword argument to the Faraday adapter instead of attempting to set it in the configuration block.

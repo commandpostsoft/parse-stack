@@ -519,11 +519,18 @@ module Parse
       changed? == false && !(@id.nil? || @created_at.nil? || @updated_at.nil? || @acl.nil?)
     end
 
-    # force reload from the database and replace any local fields with data from
-    # the persistent store
-    # @param opts [Hash] a set of options to send to fetch! (e.g., cache: false)
+    # Force reload from the database and replace any local fields with data from
+    # the persistent store. By default, bypasses the cache to ensure fresh data.
+    # @param opts [Hash] a set of options to send to fetch!
+    # @option opts [Boolean] :cache (false) set to true to allow cached responses
     # @see Fetching#fetch!
+    # @example Reload with fresh data (default)
+    #   song.reload!
+    # @example Reload allowing cached data
+    #   song.reload!(cache: true)
     def reload!(**opts)
+      # Default to bypassing cache - reload semantically means "get fresh data"
+      opts = { cache: false }.merge(opts)
       # get the values from the persistence layer
       fetch!(**opts)
       clear_changes!
