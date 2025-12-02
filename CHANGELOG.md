@@ -1,5 +1,25 @@
 ## Parse-Stack Changelog
 
+### 3.1.5
+
+#### Bug Fixes
+
+- **FIXED**: Connection pooling `pool_size` option now works correctly. Previously, configuring `pool_size` in the `connection_pooling` hash would raise `NoMethodError: undefined method 'pool_size='` because `Net::HTTP::Persistent` only accepts `pool_size` as a constructor argument, not a setter. The fix passes `pool_size` as a keyword argument to the Faraday adapter instead of attempting to set it in the configuration block.
+
+```ruby
+# This now works correctly
+Parse.setup(
+  server_url: "https://your-server.com/parse",
+  application_id: ENV['PARSE_APP_ID'],
+  api_key: ENV['PARSE_REST_API_KEY'],
+  connection_pooling: {
+    pool_size: 5,        # Now correctly passed to Net::HTTP::Persistent constructor
+    idle_timeout: 60,    # Set via setter (works as before)
+    keep_alive: 60       # Set via setter (works as before)
+  }
+)
+```
+
 ### 3.1.4
 
 #### ACL Query Convenience Methods

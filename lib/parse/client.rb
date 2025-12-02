@@ -410,12 +410,16 @@ module Parse
         yield(conn) if block_given?
 
         # Configure the adapter with optional settings
-        # For net_http_persistent, options like pool_size and idle_timeout
-        # are passed via a block to configure the underlying Net::HTTP::Persistent
+        # For net_http_persistent:
+        # - pool_size must be passed as an adapter argument (constructor param, no setter)
+        # - idle_timeout and keep_alive have setters and are configured in the block
         if adapter_options.any?
-          conn.adapter adapter do |http|
+          # Extract constructor arguments for the adapter
+          adapter_args = {}
+          adapter_args[:pool_size] = adapter_options[:pool_size] if adapter_options[:pool_size]
+
+          conn.adapter adapter, **adapter_args do |http|
             http.idle_timeout = adapter_options[:idle_timeout] if adapter_options[:idle_timeout]
-            http.pool_size = adapter_options[:pool_size] if adapter_options[:pool_size]
             http.keep_alive = adapter_options[:keep_alive] if adapter_options[:keep_alive]
           end
         else
