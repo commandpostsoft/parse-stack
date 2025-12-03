@@ -290,7 +290,7 @@ module Parse
         #
         # @return [Boolean] whether to raise a {Parse::RecordNotSaved}
         #   when an object fails to save.
-        attr_accessor :raise_on_save_failure
+        attr_writer :raise_on_save_failure
 
         def raise_on_save_failure
           return @raise_on_save_failure unless @raise_on_save_failure.nil?

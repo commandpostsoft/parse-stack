@@ -261,7 +261,6 @@ module Parse
 
             enum_values.each do |enum|
               method_name = enum # default
-              scope_name = enum
               if add_suffix
                 method_name = :"#{enum}_#{prefix_or_key}"
               elsif prefix.present?

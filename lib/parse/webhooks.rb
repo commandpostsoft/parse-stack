@@ -10,7 +10,8 @@ require "active_model/serializers/json"
 require "rack"
 require "ostruct"
 require_relative "client"
-require_relative "stack"
+# Note: Do not require "stack" here - this file is loaded from stack.rb
+# and adding that require would create a circular dependency.
 require_relative "model/object"
 require_relative "webhooks/payload"
 require_relative "webhooks/registration"
@@ -244,7 +245,7 @@ module Parse
       # Returns the configured webhook key if available. By default it will use
       # the value of ENV['PARSE_SERVER_WEBHOOK_KEY'] if not configured.
       # @return [String]
-      attr_accessor :key
+      attr_writer :key
 
       def key
         @key ||= ENV["PARSE_SERVER_WEBHOOK_KEY"] || ENV["PARSE_WEBHOOK_KEY"]

@@ -273,8 +273,7 @@ module Parse
     # the remote Parse table is named 'Artist'. You may override this behavior by utilizing the `parse_class(<className>)` method
     # to set it to something different.
     class << self
-      attr_accessor :parse_class
-      attr_reader :default_acls
+      attr_writer :parse_class
 
       # @!attribute [rw] default_acl_private
       # When set to true, new instances of this class will have a private ACL

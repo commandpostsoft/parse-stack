@@ -115,7 +115,8 @@ module Parse
     #  The instance object to be notified of changes. The delegate must support
     #  receiving a {Parse::Object#acl_will_change!} method.
     # @return [Parse::Object]
-    attr_accessor :permissions, :delegate
+    attr_writer :permissions
+    attr_accessor :delegate
 
     # @!attribute [rw] permissions
     # Contains a hash structure of permissions, with keys mapping to either Public '*',
@@ -486,7 +487,7 @@ module Parse
                 permissions_to_check << "role:#{role.name}" if role.respond_to?(:name) && role.name.present?
               end
             end
-          rescue => e
+          rescue
             # If role fetching fails, continue with just the user ID
           end
 
@@ -511,7 +512,7 @@ module Parse
               permissions_to_check << "role:#{role.name}" if role.respond_to?(:name) && role.name.present?
             end
           end
-        rescue => e
+        rescue
           # If role fetching fails, continue with just the user ID
         end
 
@@ -566,7 +567,7 @@ module Parse
                 permissions_to_check << "role:#{role.name}" if role.respond_to?(:name) && role.name.present?
               end
             end
-          rescue => e
+          rescue
             # If role fetching fails, continue with just the user ID
           end
 
@@ -591,7 +592,7 @@ module Parse
               permissions_to_check << "role:#{role.name}" if role.respond_to?(:name) && role.name.present?
             end
           end
-        rescue => e
+        rescue
           # If role fetching fails, continue with just the user ID
         end
 
@@ -693,7 +694,7 @@ module Parse
                 permissions_to_check << "role:#{role.name}" if role.respond_to?(:name) && role.name.present?
               end
             end
-          rescue => e
+          rescue
             # If role fetching fails, continue with just the user ID
           end
 
@@ -718,7 +719,7 @@ module Parse
               permissions_to_check << "role:#{role.name}" if role.respond_to?(:name) && role.name.present?
             end
           end
-        rescue => e
+        rescue
           # If role fetching fails, continue with just the user ID
         end
 

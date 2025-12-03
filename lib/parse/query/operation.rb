@@ -26,7 +26,7 @@ module Parse
     class << self
       # @return [Hash] a hash containing all supported Parse operations mapped
       # to their {Parse::Constraint} subclass.
-      attr_accessor :operators
+      attr_writer :operators
 
       def operators
         @operators ||= {}

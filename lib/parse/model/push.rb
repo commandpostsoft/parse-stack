@@ -104,8 +104,10 @@ module Parse
     #   @return [Hash] language-specific alert messages (e.g., {"en" => "Hello", "fr" => "Bonjour"})
     # @!attribute [rw] localized_titles
     #   @return [Hash] language-specific titles (e.g., {"en" => "Welcome", "fr" => "Bienvenue"})
-    attr_accessor :query, :alert, :badge, :sound, :title, :data,
-                  :expiration_time, :expiration_interval, :push_time, :channels,
+    attr_writer :query
+    attr_reader :channels, :data
+    attr_accessor :alert, :badge, :sound, :title,
+                  :expiration_time, :expiration_interval, :push_time,
                   :content_available, :mutable_content, :category, :image_url,
                   :localized_alerts, :localized_titles
 

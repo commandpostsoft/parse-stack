@@ -43,7 +43,8 @@ module Parse
     #  the name of the property key to use when sending notifications for _will_change! and _fetch!
     #  @return [String]
 
-    attr_accessor :collection, :delegate, :loaded, :parse_class
+    attr_writer :collection
+    attr_accessor :loaded, :parse_class
     attr_reader :delegate, :key
 
     # This is to use dirty tracking within the proxy
@@ -360,19 +361,19 @@ module Parse
     # Alias for Array#each
     def each(&block)
       return collection.enum_for(:each) unless block_given?
-      collection.each &block
+      collection.each(&block)
     end
 
     # Alias for Array#map
     def map(&block)
       return collection.enum_for(:map) unless block_given?
-      collection.map &block
+      collection.map(&block)
     end
 
     # Alias for Array#select
     def select(&block)
       return collection.enum_for(:select) unless block_given?
-      collection.select &block
+      collection.select(&block)
     end
 
     # Alias for Array#uniq

@@ -175,7 +175,8 @@ module Parse
     #  The default retry count for the client when a specific request timesout or
     #  the service is unavailable. Defaults to {DEFAULT_RETRIES}.
     #  @return [String]
-    attr_accessor :cache, :retry_limit
+    attr_accessor :cache
+    attr_writer :retry_limit
     attr_reader :application_id, :api_key, :master_key, :server_url
     alias_method :app_id, :application_id
     # The client can support multiple sessions. The first session created, will be placed
@@ -708,7 +709,7 @@ module Parse
       module ClassMethods
 
         # @return [Parse::Client] the current client for :default.
-        attr_accessor :client
+        attr_writer :client
 
         def client
           @client ||= Parse::Client.client #defaults to :default tag

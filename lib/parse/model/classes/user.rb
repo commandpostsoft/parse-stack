@@ -1,7 +1,8 @@
 # encoding: UTF-8
 # frozen_string_literal: true
 
-require_relative "../object"
+# Note: Do not require "../object" here - this file is loaded from object.rb
+# and adding that require would create a circular dependency.
 
 module Parse
   class Error
@@ -146,7 +147,7 @@ module Parse
   class User < Parse::Object
     parse_class Parse::Model::CLASS_USER
     # @return [String] The session token if this user is logged in.
-    attr_accessor :session_token
+    attr_reader :session_token
 
     # @!attribute auth_data
     # The auth data for this Parse::User. Depending on how this user is authenticated or
@@ -260,7 +261,7 @@ module Parse
       end
 
       signup_attrs = attribute_updates
-      signup_attrs.except! *Parse::Properties::BASE_FIELD_MAP.flatten
+      signup_attrs.except!(*Parse::Properties::BASE_FIELD_MAP.flatten)
 
       # first signup the user, then save any additional attributes
       response = client.create_user signup_attrs
@@ -302,7 +303,7 @@ module Parse
       client.logout session_token
       self.session_token = nil
       true
-    rescue => e
+    rescue
       false
     end
 
@@ -407,7 +408,7 @@ module Parse
     # @see #session!
     def self.session(token, opts = {})
       self.session! token, opts
-    rescue Parse::Error::InvalidSessionTokenError => e
+    rescue Parse::Error::InvalidSessionTokenError
       nil
     end
 

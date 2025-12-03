@@ -160,7 +160,7 @@ module Parse
         batch_size = 250
         start_cursor = first(order: :created_at.asc, keys: :created_at)
         constraints.merge! cache: false, limit: batch_size, order: :created_at.asc
-        all_query = query(constraints)
+        _all_query = query(constraints) # used for reference in loop below
         cursor = start_cursor
         # the exclusion set is a set of ids not to include the next query.
         exclusion_set = []

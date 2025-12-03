@@ -1,5 +1,51 @@
 ## Parse-Stack Changelog
 
+### 3.1.6
+
+#### Code Quality Improvements
+
+- **FIXED**: Resolved circular require warning between `api/all.rb` and `client.rb`. Removed redundant `require_relative` that was causing Ruby's "loading in progress, circular require considered harmful" warning.
+
+- **FIXED**: Resolved 9 additional circular require warnings in model class files (`audience.rb`, `installation.rb`, `product.rb`, `push_status.rb`, `role.rb`, `session.rb`, `user.rb`), `builder.rb`, and `webhooks.rb`. These files are now loaded from their parent files without back-references.
+
+- **FIXED**: Resolved 25+ "method redefined" warnings by changing `attr_accessor` to `attr_writer` or `attr_reader` where custom getters or setters were defined. Affected files include:
+  - `client.rb` - `retry_limit`, `client`
+  - `client/caching.rb` - `enabled`
+  - `client/request.rb` - removed redundant `request_id` getter
+  - `api/config.rb` - `config`
+  - `api/server.rb` - `server_info`
+  - `query.rb` - `table`, `session_token`, `client`
+  - `query/operation.rb` - `operators`
+  - `query/constraint.rb` - `precedence`
+  - `query/ordering.rb` - `field`
+  - `model/geopoint.rb` - `latitude`, `longitude`
+  - `model/file.rb` - `url`, `default_mime_type`, `force_ssl`
+  - `model/acl.rb` - `permissions`
+  - `model/push.rb` - `query`, `channels`, `data`
+  - `model/object.rb` - `parse_class`
+  - `model/core/actions.rb` - `raise_on_save_failure`
+  - `model/associations/collection_proxy.rb` - `collection`
+  - `model/associations/belongs_to.rb` - `references`
+  - `model/associations/has_many.rb` - `relations`
+  - `model/classes/user.rb` - `session_token`
+  - `webhooks.rb` - `key`
+
+- **FIXED**: Resolved 15+ "assigned but unused variable" warnings by removing unused variables or prefixing with underscore:
+  - `api/aggregate.rb` - removed unused `id` variable
+  - `query.rb` - removed unused exception variables
+  - `query/constraints.rb` - removed unused exception variables (multiple locations)
+  - `model/acl.rb` - removed unused exception variables
+  - `model/core/builder.rb` - removed unused exception variable
+  - `model/core/querying.rb` - prefixed unused variable with underscore
+  - `model/core/properties.rb` - removed unused `scope_name` variable
+  - `model/validations/uniqueness_validator.rb` - prefixed unused variable
+  - `model/associations/has_one.rb` - prefixed unused `ivar` variable
+  - `model/classes/user.rb` - removed unused exception variables
+
+- **FIXED**: Resolved 2 "character class has duplicated range" regex warnings in `query.rb` by simplifying `[\w\d]+` to `\w+` (since `\w` already includes digits).
+
+- **FIXED**: Resolved 3 "`&` interpreted as argument prefix" warnings in `collection_proxy.rb` by using explicit parentheses: `collection.each(&block)` instead of `collection.each &block`.
+
 ### 3.1.5
 
 #### Improvements

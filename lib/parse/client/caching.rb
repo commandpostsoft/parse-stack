@@ -40,7 +40,7 @@ module Parse
       class << self
         # @!attribute enabled
         # @return [Boolean] whether the caching middleware should be enabled.
-        attr_accessor :enabled
+        attr_writer :enabled
 
         # @!attribute logging
         # @return [Boolean] whether the logging should be enabled.

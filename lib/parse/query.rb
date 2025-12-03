@@ -77,7 +77,7 @@ module Parse
         # Add built-in Parse classes
         built_in_classes = %w[_User _Role _Session _Installation _Audience User Role Session Installation Audience]
         (built_in_classes + schema_classes).uniq.freeze
-      rescue => e
+      rescue
         # Fallback to built-in classes if schema query fails (e.g., during testing without server)
         %w[_User _Role _Session _Installation _Audience User Role Session Installation Audience].freeze
       end
@@ -179,7 +179,9 @@ module Parse
     #   query.read_preference = :secondary  # read from secondary replicas
     #   # Valid values: :primary, :primary_preferred, :secondary, :secondary_preferred, :nearest
     #  @return [Symbol, String] the read preference for this query.
-    attr_accessor :table, :client, :key, :cache, :use_master_key, :session_token, :verbose_aggregate, :read_preference
+    attr_reader :table, :session_token
+    attr_writer :client
+    attr_accessor :key, :cache, :use_master_key, :verbose_aggregate, :read_preference
 
     # We have a special class method to handle field formatting. This turns
     # the symbol keys in an operand from one key to another. For example, we can
@@ -858,7 +860,7 @@ module Parse
         end
       else
         # Fallback to original string detection for backward compatibility
-        if values.any? && values.first.is_a?(String) && values.first.include?('$') && values.first.match(/^[A-Za-z]\w*\$[\w\d]+$/)
+        if values.any? && values.first.is_a?(String) && values.first.include?('$') && values.first.match(/^[A-Za-z]\w*\$\w+$/)
           first_class_name = values.first.split('$', 2)[0]
           if values.all? { |v| v.is_a?(String) && v.start_with?("#{first_class_name}$") }
             values.map { |value| value.split('$', 2)[1] }
@@ -3410,7 +3412,7 @@ module Parse
           resolved_obj = model_class.find(pointer['objectId'])
           return resolved_obj if resolved_obj
         end
-      rescue NameError, Parse::Error => e
+      rescue NameError, Parse::Error
         # If we can't resolve, fall back to displaying pointer info
       end
       
@@ -3828,7 +3830,7 @@ module Parse
         
       when String
         # Handle MongoDB format strings ("ClassName$objectId") first - regardless of schema
-        if value.include?('$') && value.match(/^[A-Za-z_]\w*\$[\w\d]+$/)
+        if value.include?('$') && value.match(/^[A-Za-z_]\w*\$\w+$/)
           class_name, object_id = value.split('$', 2)
           
           # Validate that the class_name is a known Parse class

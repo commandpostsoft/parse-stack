@@ -204,11 +204,6 @@ module Parse
       @request_id.present? && @headers[self.class.request_id_header].present?
     end
 
-    # Returns the request ID if present
-    # @return [String, nil]
-    def request_id
-      @request_id
-    end
 
     # Class methods for configuration
 

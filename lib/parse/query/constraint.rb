@@ -59,7 +59,7 @@ module Parse
       # Precedence defines the priority of this operation when merging.
       # The higher the more priority it will receive.
       # @return [Integer]
-      attr_accessor :precedence
+      attr_writer :precedence
 
       # @!attribute operand
       # @return [Symbol] the operand for this constraint.

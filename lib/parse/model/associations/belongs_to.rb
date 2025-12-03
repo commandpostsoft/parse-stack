@@ -111,7 +111,7 @@ module Parse
 
       # @!visibility private
       module ClassMethods
-        attr_accessor :references
+        attr_writer :references
         # We can keep references to all "belong_to" properties
         def references
           @references ||= {}

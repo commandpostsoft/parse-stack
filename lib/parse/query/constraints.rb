@@ -115,7 +115,7 @@ module Parse
 
         begin
           klass = className.constantize
-        rescue NameError => e
+        rescue NameError
           klass = Parse::Model.find_class className
         end
 
@@ -2125,7 +2125,7 @@ module Parse
                 end
               end
             end
-          rescue => e
+          rescue
             # If role fetching fails, continue with just the user ID
           end
 
@@ -2140,7 +2140,7 @@ module Parse
                 permissions_to_check << "role:#{child_role.name}" if child_role.respond_to?(:name) && child_role.name.present?
               end
             end
-          rescue => e
+          rescue
             # If child role fetching fails, continue with just the direct role
           end
 
@@ -2163,7 +2163,7 @@ module Parse
                   end
                 end
               end
-            rescue => e
+            rescue
               # If role fetching fails, continue with just the user ID
             end
           end
@@ -2186,7 +2186,7 @@ module Parse
                     end
                   end
                 end
-              rescue => e
+              rescue
                 # Continue with just the user ID
               end
             elsif item.is_a?(Parse::Role) || (item.respond_to?(:is_a?) && item.is_a?(Parse::Role))
@@ -2198,7 +2198,7 @@ module Parse
                     permissions_to_check << "role:#{child_role.name}" if child_role.respond_to?(:name) && child_role.name.present?
                   end
                 end
-              rescue => e
+              rescue
                 # Continue with just the direct role
               end
             elsif item.is_a?(Parse::Pointer) || (item.respond_to?(:parse_class) && item.respond_to?(:id))
@@ -2293,7 +2293,7 @@ module Parse
             begin
               role = value.fetch if value.respond_to?(:fetch)
               permissions_to_check << "role:#{role.name}" if role&.respond_to?(:name) && role.name.present?
-            rescue => e
+            rescue
               # If fetching fails, skip this pointer
             end
           end
@@ -2307,7 +2307,7 @@ module Parse
                 begin
                   role = item.fetch if item.respond_to?(:fetch)
                   permissions_to_check << "role:#{role.name}" if role&.respond_to?(:name) && role.name.present?
-                rescue => e
+                rescue
                   # If fetching fails, skip this pointer
                 end
               end
@@ -2394,7 +2394,7 @@ module Parse
                 end
               end
             end
-          rescue => e
+          rescue
             # If role fetching fails, continue with just the user ID
           end
 
@@ -2409,7 +2409,7 @@ module Parse
                 permissions_to_check << "role:#{child_role.name}" if child_role.respond_to?(:name) && child_role.name.present?
               end
             end
-          rescue => e
+          rescue
             # If child role fetching fails, continue with just the direct role
           end
 
@@ -2432,7 +2432,7 @@ module Parse
                   end
                 end
               end
-            rescue => e
+            rescue
               # If role fetching fails, continue with just the user ID
             end
           end
@@ -2455,7 +2455,7 @@ module Parse
                     end
                   end
                 end
-              rescue => e
+              rescue
                 # Continue with just the user ID
               end
             elsif item.is_a?(Parse::Role) || (item.respond_to?(:is_a?) && item.is_a?(Parse::Role))
@@ -2467,7 +2467,7 @@ module Parse
                     permissions_to_check << "role:#{child_role.name}" if child_role.respond_to?(:name) && child_role.name.present?
                   end
                 end
-              rescue => e
+              rescue
                 # Continue with just the direct role
               end
             elsif item.is_a?(Parse::Pointer) || (item.respond_to?(:parse_class) && item.respond_to?(:id))
@@ -2561,7 +2561,7 @@ module Parse
             begin
               role = value.fetch if value.respond_to?(:fetch)
               permissions_to_check << "role:#{role.name}" if role&.respond_to?(:name) && role.name.present?
-            rescue => e
+            rescue
               # If fetching fails, skip this pointer
             end
           end
@@ -2575,7 +2575,7 @@ module Parse
                 begin
                   role = item.fetch if item.respond_to?(:fetch)
                   permissions_to_check << "role:#{role.name}" if role&.respond_to?(:name) && role.name.present?
-                rescue => e
+                rescue
                   # If fetching fails, skip this pointer
                 end
               end
