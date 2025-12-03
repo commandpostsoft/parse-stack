@@ -68,6 +68,15 @@ module Parse
   class Push
     include Client::Connectable
 
+    # Device types that support push notifications.
+    # These are the device types that Parse Server has push adapters for.
+    # @see https://docs.parseplatform.org/parse-server/guide/#push-notifications
+    SUPPORTED_PUSH_DEVICE_TYPES = %w[ios android osx tvos watchos web expo].freeze
+
+    # Device types that are known but may not have push support configured.
+    # These will generate warnings when targeted.
+    UNSUPPORTED_PUSH_DEVICE_TYPES = %w[win other unknown unsupported].freeze
+
     # @!attribute [rw] query
     # Sending a push notification is done by performing a query against the Installation
     # collection with a Parse::Query. This query contains the constraints that will be
@@ -751,12 +760,17 @@ module Parse
     # Target a specific installation (or multiple installations) by object or objectId.
     # This directly targets device installation(s).
     #
+    # When given a Parse::Installation object, this method validates:
+    # - The installation has a device_token (raises ArgumentError if missing)
+    # - The device_type is supported for push (warns if unsupported)
+    #
     # @param installation [Parse::Installation, Hash, String, Array] the installation(s) to target. Can be:
     #   - A Parse::Installation object
     #   - A hash with objectId key
     #   - An objectId string
     #   - An array of any of the above (delegates to to_installations)
     # @return [self] returns self for method chaining
+    # @raise [ArgumentError] if installation object has no device_token
     # @example With a Parse::Installation object
     #   device = Parse::Installation.find("abc123")
     #   Parse::Push.new.to_installation(device).with_alert("Hello!").send!
@@ -775,6 +789,7 @@ module Parse
 
       object_id = case installation
         when Parse::Installation
+          validate_installation_for_push!(installation)
           installation.id
         when Hash
           installation[:objectId] || installation["objectId"] || installation[:id] || installation["id"]
@@ -807,8 +822,13 @@ module Parse
     # This queries the Installation collection for devices matching any of the given
     # installation objectIds.
     #
+    # When given Parse::Installation objects, this method validates each:
+    # - The installation has a device_token (raises ArgumentError if missing)
+    # - The device_type is supported for push (warns if unsupported)
+    #
     # @param installations [Array<Parse::Installation, Hash, String>] the installations to target
     # @return [self] returns self for method chaining
+    # @raise [ArgumentError] if any installation object has no device_token
     # @example
     #   Parse::Push.new.to_installations(device1, device2, device3).with_alert("Group notification!").send!
     #
@@ -818,6 +838,7 @@ module Parse
       object_ids = installations.flatten.map do |installation|
         case installation
         when Parse::Installation
+          validate_installation_for_push!(installation)
           installation.id
         when Hash
           installation[:objectId] || installation["objectId"] || installation[:id] || installation["id"]
@@ -830,6 +851,38 @@ module Parse
 
       query.where(:objectId.in => object_ids)
       self
+    end
+
+    private
+
+    # Validate that an installation can receive push notifications.
+    # @param installation [Parse::Installation] the installation to validate
+    # @raise [ArgumentError] if the installation has no device_token
+    # @return [void]
+    def validate_installation_for_push!(installation)
+      # Access instance variables directly to avoid triggering autofetch
+      device_token = installation.instance_variable_get(:@device_token)
+      device_type = installation.instance_variable_get(:@device_type).to_s
+      installation_id = installation.id
+
+      # Check for device_token - required for push delivery
+      if device_token.blank?
+        raise ArgumentError,
+          "Cannot send push to installation #{installation_id}: missing device_token. " \
+          "Push notifications require a valid device_token."
+      end
+
+      # Check for unsupported device types - warn but allow
+      if device_type.present? && !SUPPORTED_PUSH_DEVICE_TYPES.include?(device_type)
+        if UNSUPPORTED_PUSH_DEVICE_TYPES.include?(device_type)
+          warn "[Parse::Push] Warning: device_type '#{device_type}' may not be supported for push notifications. " \
+               "Supported types: #{SUPPORTED_PUSH_DEVICE_TYPES.join(', ')}"
+        else
+          warn "[Parse::Push] Warning: unknown device_type '#{device_type}' for installation #{installation_id}. " \
+               "This device type may not receive push notifications. " \
+               "Supported types: #{SUPPORTED_PUSH_DEVICE_TYPES.join(', ')}"
+        end
+      end
     end
   end
 end

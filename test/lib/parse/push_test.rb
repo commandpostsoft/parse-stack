@@ -1378,4 +1378,313 @@ class PushTest < Minitest::Test
 
     puts "localized_titles attribute works correctly!"
   end
+
+  # ==========================================================================
+  # Push Validation Tests
+  # ==========================================================================
+
+  # Test 70: SUPPORTED_PUSH_DEVICE_TYPES constant
+  def test_supported_push_device_types_constant
+    puts "\n=== Testing SUPPORTED_PUSH_DEVICE_TYPES Constant ==="
+
+    assert_equal %w[ios android osx tvos watchos web expo], Parse::Push::SUPPORTED_PUSH_DEVICE_TYPES
+    assert Parse::Push::SUPPORTED_PUSH_DEVICE_TYPES.frozen?
+
+    puts "SUPPORTED_PUSH_DEVICE_TYPES constant is correct!"
+  end
+
+  # Test 71: UNSUPPORTED_PUSH_DEVICE_TYPES constant
+  def test_unsupported_push_device_types_constant
+    puts "\n=== Testing UNSUPPORTED_PUSH_DEVICE_TYPES Constant ==="
+
+    assert_equal %w[win other unknown unsupported], Parse::Push::UNSUPPORTED_PUSH_DEVICE_TYPES
+    assert Parse::Push::UNSUPPORTED_PUSH_DEVICE_TYPES.frozen?
+
+    puts "UNSUPPORTED_PUSH_DEVICE_TYPES constant is correct!"
+  end
+
+  # Test 72: to_installation raises error when device_token is missing
+  def test_to_installation_raises_error_without_device_token
+    puts "\n=== Testing to_installation Raises Error Without device_token ==="
+
+    installation = Parse::Installation.new
+    installation.instance_variable_set(:@id, "test123")
+    installation.instance_variable_set(:@device_type, "ios")
+    # Intentionally not setting device_token
+
+    push = Parse::Push.new
+    error = assert_raises(ArgumentError) do
+      push.to_installation(installation)
+    end
+
+    assert_match(/missing device_token/, error.message)
+    assert_match(/test123/, error.message)
+
+    puts "to_installation raises error without device_token correctly!"
+  end
+
+  # Test 73: to_installation raises error when device_token is blank
+  def test_to_installation_raises_error_with_blank_device_token
+    puts "\n=== Testing to_installation Raises Error With Blank device_token ==="
+
+    installation = Parse::Installation.new
+    installation.instance_variable_set(:@id, "test456")
+    installation.instance_variable_set(:@device_type, "android")
+    installation.instance_variable_set(:@device_token, "")  # blank string
+
+    push = Parse::Push.new
+    error = assert_raises(ArgumentError) do
+      push.to_installation(installation)
+    end
+
+    assert_match(/missing device_token/, error.message)
+
+    puts "to_installation raises error with blank device_token correctly!"
+  end
+
+  # Test 74: to_installation warns for unsupported device type (win)
+  def test_to_installation_warns_for_win_device_type
+    puts "\n=== Testing to_installation Warns for 'win' Device Type ==="
+
+    installation = Parse::Installation.new
+    installation.instance_variable_set(:@id, "test789")
+    installation.instance_variable_set(:@device_token, "valid_token_123")
+    installation.instance_variable_set(:@device_type, "win")
+
+    push = Parse::Push.new
+
+    # Capture stderr to check for warning
+    warnings = capture_io do
+      push.to_installation(installation)
+    end[1]
+
+    assert_match(/Warning.*win.*may not be supported/, warnings)
+    assert_match(/Supported types:.*ios.*android/, warnings)
+
+    puts "to_installation warns for 'win' device type correctly!"
+  end
+
+  # Test 75: to_installation warns for other unsupported device types
+  def test_to_installation_warns_for_other_unsupported_types
+    puts "\n=== Testing to_installation Warns for Other Unsupported Types ==="
+
+    %w[other unknown unsupported].each do |device_type|
+      installation = Parse::Installation.new
+      installation.instance_variable_set(:@id, "test_#{device_type}")
+      installation.instance_variable_set(:@device_token, "valid_token")
+      installation.instance_variable_set(:@device_type, device_type)
+
+      push = Parse::Push.new
+
+      warnings = capture_io do
+        push.to_installation(installation)
+      end[1]
+
+      assert_match(/Warning.*#{device_type}.*may not be supported/, warnings)
+    end
+
+    puts "to_installation warns for other unsupported types correctly!"
+  end
+
+  # Test 76: to_installation warns for unknown/unrecognized device type
+  def test_to_installation_warns_for_unrecognized_device_type
+    puts "\n=== Testing to_installation Warns for Unrecognized Device Type ==="
+
+    installation = Parse::Installation.new
+    installation.instance_variable_set(:@id, "test_custom")
+    installation.instance_variable_set(:@device_token, "valid_token")
+    installation.instance_variable_set(:@device_type, "custom_device")
+
+    push = Parse::Push.new
+
+    warnings = capture_io do
+      push.to_installation(installation)
+    end[1]
+
+    assert_match(/Warning.*unknown device_type.*custom_device/, warnings)
+    assert_match(/may not receive push notifications/, warnings)
+
+    puts "to_installation warns for unrecognized device type correctly!"
+  end
+
+  # Test 77: to_installation succeeds without warning for supported device types
+  def test_to_installation_no_warning_for_supported_types
+    puts "\n=== Testing to_installation No Warning for Supported Types ==="
+
+    Parse::Push::SUPPORTED_PUSH_DEVICE_TYPES.each do |device_type|
+      installation = Parse::Installation.new
+      installation.instance_variable_set(:@id, "test_#{device_type}")
+      installation.instance_variable_set(:@device_token, "valid_token_#{device_type}")
+      installation.instance_variable_set(:@device_type, device_type)
+
+      push = Parse::Push.new
+
+      warnings = capture_io do
+        result = push.to_installation(installation)
+        assert_same push, result, "to_installation should return self for chaining"
+      end[1]
+
+      assert_empty warnings, "Should not warn for supported device type: #{device_type}"
+    end
+
+    puts "to_installation has no warning for supported types!"
+  end
+
+  # Test 78: to_installation with string ID does not validate
+  def test_to_installation_with_string_id_no_validation
+    puts "\n=== Testing to_installation With String ID (No Validation) ==="
+
+    push = Parse::Push.new
+
+    # Should not raise - no validation for string IDs
+    result = push.to_installation("abc123")
+    assert_same push, result
+
+    # Verify query was set correctly
+    assert_equal "abc123", push.where["objectId"]
+
+    puts "to_installation with string ID skips validation correctly!"
+  end
+
+  # Test 79: to_installation with hash does not validate
+  def test_to_installation_with_hash_no_validation
+    puts "\n=== Testing to_installation With Hash (No Validation) ==="
+
+    push = Parse::Push.new
+
+    # Should not raise - no validation for hashes
+    result = push.to_installation({ objectId: "def456" })
+    assert_same push, result
+
+    puts "to_installation with hash skips validation correctly!"
+  end
+
+  # Test 80: to_installations validates all installations
+  def test_to_installations_validates_all
+    puts "\n=== Testing to_installations Validates All Installations ==="
+
+    valid_installation = Parse::Installation.new
+    valid_installation.instance_variable_set(:@id, "valid1")
+    valid_installation.instance_variable_set(:@device_token, "token1")
+    valid_installation.instance_variable_set(:@device_type, "ios")
+
+    invalid_installation = Parse::Installation.new
+    invalid_installation.instance_variable_set(:@id, "invalid1")
+    invalid_installation.instance_variable_set(:@device_type, "android")
+    # No device_token
+
+    push = Parse::Push.new
+
+    # Should raise error for the invalid installation
+    error = assert_raises(ArgumentError) do
+      push.to_installations(valid_installation, invalid_installation)
+    end
+
+    assert_match(/missing device_token/, error.message)
+    assert_match(/invalid1/, error.message)
+
+    puts "to_installations validates all installations correctly!"
+  end
+
+  # Test 81: to_installations warns for unsupported device types
+  def test_to_installations_warns_for_unsupported_types
+    puts "\n=== Testing to_installations Warns for Unsupported Types ==="
+
+    ios_installation = Parse::Installation.new
+    ios_installation.instance_variable_set(:@id, "ios1")
+    ios_installation.instance_variable_set(:@device_token, "token_ios")
+    ios_installation.instance_variable_set(:@device_type, "ios")
+
+    win_installation = Parse::Installation.new
+    win_installation.instance_variable_set(:@id, "win1")
+    win_installation.instance_variable_set(:@device_token, "token_win")
+    win_installation.instance_variable_set(:@device_type, "win")
+
+    push = Parse::Push.new
+
+    warnings = capture_io do
+      push.to_installations(ios_installation, win_installation)
+    end[1]
+
+    # Should warn about win but not have "Warning" prefix for ios
+    assert_match(/Warning.*'win'.*may not be supported/, warnings)
+    # The warning only mentions ios in the "Supported types" list, not as a warning target
+    refute_match(/Warning.*'ios'/, warnings)
+
+    puts "to_installations warns for unsupported types correctly!"
+  end
+
+  # Test 82: to_installations with mixed types (objects and strings)
+  def test_to_installations_mixed_types
+    puts "\n=== Testing to_installations With Mixed Types ==="
+
+    installation = Parse::Installation.new
+    installation.instance_variable_set(:@id, "obj1")
+    installation.instance_variable_set(:@device_token, "token1")
+    installation.instance_variable_set(:@device_type, "android")
+
+    push = Parse::Push.new
+
+    # Mix of Installation object and string ID
+    result = push.to_installations(installation, "string_id_123")
+
+    assert_same push, result
+    # Should have both IDs in the query
+    where_clause = push.where
+    assert where_clause["objectId"]
+    # The $in key is a symbol
+    in_list = where_clause["objectId"][:$in]
+    assert in_list.include?("obj1")
+    assert in_list.include?("string_id_123")
+
+    puts "to_installations with mixed types works correctly!"
+  end
+
+  # Test 83: to_installation delegates array to to_installations
+  def test_to_installation_delegates_array
+    puts "\n=== Testing to_installation Delegates Array to to_installations ==="
+
+    installation1 = Parse::Installation.new
+    installation1.instance_variable_set(:@id, "arr1")
+    installation1.instance_variable_set(:@device_token, "token1")
+    installation1.instance_variable_set(:@device_type, "ios")
+
+    installation2 = Parse::Installation.new
+    installation2.instance_variable_set(:@id, "arr2")
+    installation2.instance_variable_set(:@device_token, "token2")
+    installation2.instance_variable_set(:@device_type, "android")
+
+    push = Parse::Push.new
+    result = push.to_installation([installation1, installation2])
+
+    assert_same push, result
+    where_clause = push.where
+    # The $in key is a symbol
+    in_list = where_clause["objectId"][:$in]
+    assert in_list.include?("arr1")
+    assert in_list.include?("arr2")
+
+    puts "to_installation delegates array correctly!"
+  end
+
+  # Test 84: Validation with nil device_type (should not warn)
+  def test_to_installation_no_warning_for_nil_device_type
+    puts "\n=== Testing to_installation No Warning for nil Device Type ==="
+
+    installation = Parse::Installation.new
+    installation.instance_variable_set(:@id, "nil_type")
+    installation.instance_variable_set(:@device_token, "valid_token")
+    installation.instance_variable_set(:@device_type, nil)
+
+    push = Parse::Push.new
+
+    warnings = capture_io do
+      push.to_installation(installation)
+    end[1]
+
+    # Should not warn for nil device_type (empty string after to_s)
+    assert_empty warnings
+
+    puts "to_installation has no warning for nil device type!"
+  end
 end

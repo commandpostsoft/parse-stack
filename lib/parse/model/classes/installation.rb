@@ -25,7 +25,7 @@ module Parse
   #     property :channels, :array
   #     property :device_token
   #     property :device_token_last_modified, :integer
-  #     property :device_type, enum: [:ios, :android, :winrt, :winphone, :dotnet]
+  #     property :device_type, enum: [:ios, :android, :osx, :tvos, :watchos, :web, :expo, :win, :other, :unknown, :unsupported]
   #     property :installation_id
   #     property :locale_identifier
   #     property :parse_version
@@ -86,10 +86,11 @@ module Parse
     property :device_token_last_modified, :integer
 
     # @!attribute device_type
-    # The type of device, “ios”, “android”, “winrt”, “winphone”, or “dotnet” (readonly).
+    # The type of device: "ios", "android", "osx", "tvos", "watchos", "web", "expo", "win",
+    # "other", "unknown", or "unsupported".
     # This property is implemented as a Parse::Stack enumeration.
     # @return [String]
-    property :device_type, enum: [:ios, :android, :winrt, :winphone, :dotnet]
+    property :device_type, enum: [:ios, :android, :osx, :tvos, :watchos, :web, :expo, :win, :other, :unknown, :unsupported]
 
     # @!attribute installation_id
     # Universally Unique Identifier (UUID) for the device used by Parse. It
@@ -167,28 +168,15 @@ module Parse
       # =========================================================================
       # Device Type Scopes
       # =========================================================================
-
-      # Query scope for iOS installations.
-      # @return [Parse::Query] a query for iOS devices
-      # @example
-      #   ios_devices = Parse::Installation.ios.all
-      def ios
-        query(device_type: "ios")
-      end
-
-      # Query scope for Android installations.
-      # @return [Parse::Query] a query for Android devices
-      # @example
-      #   android_devices = Parse::Installation.android.all
-      def android
-        query(device_type: "android")
-      end
+      # Note: ios and android scopes are automatically created by the enum property:
+      #   property :device_type, enum: [:ios, :android, :osx, :tvos, :watchos, :web, :expo, :win, :other, :unknown, :unsupported]
+      # This creates: Installation.ios, Installation.android, etc.
 
       # Query scope for a specific device type.
-      # @param type [String, Symbol] the device type (ios, android, winrt, winphone, dotnet)
+      # @param type [String, Symbol] the device type (ios, android, osx, tvos, watchos, web, expo, win, other, unknown, unsupported)
       # @return [Parse::Query] a query for the specified device type
       # @example
-      #   windows_devices = Parse::Installation.by_device_type(:winrt).all
+      #   mac_devices = Parse::Installation.by_device_type(:osx).all
       def by_device_type(type)
         query(device_type: type.to_s)
       end
@@ -362,17 +350,8 @@ module Parse
     # =========================================================================
     # Device Type Helpers - Instance Methods
     # =========================================================================
-
-    # Check if this installation is an iOS device.
-    # @return [Boolean] true if device_type is ios
-    def ios?
-      device_type.to_s == "ios"
-    end
-
-    # Check if this installation is an Android device.
-    # @return [Boolean] true if device_type is android
-    def android?
-      device_type.to_s == "android"
-    end
+    # Note: ios? and android? predicates are automatically created by the enum property:
+    #   property :device_type, enum: [:ios, :android, :osx, :tvos, :watchos, :web, :expo, :win, :other, :unknown, :unsupported]
+    # This creates: installation.ios?, installation.android?, etc.
   end
 end

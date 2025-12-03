@@ -46,6 +46,15 @@
 
 - **FIXED**: Resolved 3 "`&` interpreted as argument prefix" warnings in `collection_proxy.rb` by using explicit parentheses: `collection.each(&block)` instead of `collection.each &block`.
 
+- **UPDATED**: Updated `Parse::Installation` device_type enum to match current Parse Server device types: `ios`, `android`, `osx`, `tvos`, `watchos`, `web`, `expo`, `win`, `other`, `unknown`, `unsupported`. Removed obsolete Windows device types (`winrt`, `winphone`, `dotnet`). This provides automatic scope methods (e.g., `Installation.ios`, `Installation.tvos`, `Installation.unknown`) and predicate methods (e.g., `installation.osx?`, `installation.expo?`, `installation.unsupported?`).
+
+- **NEW**: Added push notification validation in `Parse::Push` when targeting installations directly:
+  - Raises `ArgumentError` if an installation object has no `device_token` (required for push delivery)
+  - Warns if `device_type` is a known but unsupported type (`win`, `other`, `unknown`, `unsupported`)
+  - Warns if `device_type` is an unrecognized value (may not receive push notifications)
+  - Added `SUPPORTED_PUSH_DEVICE_TYPES` constant (`ios`, `android`, `osx`, `tvos`, `watchos`, `web`, `expo`)
+  - Added `UNSUPPORTED_PUSH_DEVICE_TYPES` constant (`win`, `other`, `unknown`, `unsupported`)
+
 ### 3.1.5
 
 #### Improvements

@@ -266,7 +266,9 @@ module Parse
 
     singleton_class.prepend ValidationCallbackOnSupport
 
-    attr_accessor :created_at, :updated_at, :acl
+    # Note: created_at, updated_at, and acl are defined via `property` declarations
+    # at the bottom of this file (lines ~870-878). Do not add attr_accessor here
+    # as it would be overwritten and cause "method redefined" warnings.
 
     # All Parse Objects have a class-level and instance level `parse_class` method, in which the
     # instance method is a convenience one for the class one. The default value for the parse_class is
