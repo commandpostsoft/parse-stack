@@ -402,7 +402,7 @@ module Parse
       "ES" => "Spain", "LK" => "Sri Lanka", "SE" => "Sweden",
       "CH" => "Switzerland", "TH" => "Thailand", "TN" => "Tunisia",
       "TR" => "Turkey", "AE" => "UAE", "GB" => "United Kingdom",
-      "US" => "United States", "VN" => "Vietnam"
+      "US" => "United States", "VN" => "Vietnam",
     }.freeze
 
     # Fallback country code extraction when phonelib is not available
@@ -480,7 +480,7 @@ module Parse
       "421" => "Slovakia",
       "966" => "Saudi Arabia",
       "971" => "UAE",
-      "972" => "Israel"
+      "972" => "Israel",
     }.freeze
 
     def extract_country_code_fallback
@@ -503,7 +503,7 @@ module Parse
       return @number unless cc && nat
 
       case cc
-      when "1"  # North America: +1 415-555-1234
+      when "1" # North America: +1 415-555-1234
         if nat.length == 10
           "+#{cc} #{nat[0, 3]}-#{nat[3, 3]}-#{nat[6, 4]}"
         else

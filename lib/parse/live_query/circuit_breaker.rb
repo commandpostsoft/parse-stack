@@ -207,7 +207,7 @@ module Parse
             failure_threshold: @failure_threshold,
             reset_timeout: @reset_timeout,
             last_failure_at: @last_failure_at,
-            time_until_half_open: time_until_half_open
+            time_until_half_open: time_until_half_open,
           }
         end
       end

@@ -10,7 +10,7 @@ class TestLiveQueryEventQueue < Minitest::Test
   def setup
     @queue = Parse::LiveQuery::EventQueue.new(
       max_size: 5,
-      strategy: :drop_oldest
+      strategy: :drop_oldest,
     )
   end
 
@@ -76,7 +76,7 @@ class TestLiveQueryEventQueue < Minitest::Test
     queue = Parse::LiveQuery::EventQueue.new(
       max_size: 3,
       strategy: :drop_oldest,
-      on_drop: ->(event, reason) { dropped_events << [event, reason] }
+      on_drop: ->(event, reason) { dropped_events << [event, reason] },
     )
 
     # Start with slow processor that signals when processing
@@ -112,7 +112,7 @@ class TestLiveQueryEventQueue < Minitest::Test
     queue = Parse::LiveQuery::EventQueue.new(
       max_size: 3,
       strategy: :drop_newest,
-      on_drop: ->(event, reason) { dropped_events << [event, reason] }
+      on_drop: ->(event, reason) { dropped_events << [event, reason] },
     )
 
     # Start with slow processor

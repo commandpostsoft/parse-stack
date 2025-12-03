@@ -1,5 +1,5 @@
-require_relative '../../test_helper_integration'
-require 'timeout'
+require_relative "../../test_helper_integration"
+require "timeout"
 
 # Tests for Parse Stack 2.1.10 array constraint features
 class ArrayConstraints210IntegrationTest < Minitest::Test
@@ -32,7 +32,7 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
   # Test 1: :any constraint (alias for $in)
   # ==========================================================================
   def test_any_constraint
-    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
 
     with_parse_server do
       puts "\n=== Testing :any Constraint (alias for $in) ==="
@@ -78,7 +78,7 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
   # Test 2: :none constraint (alias for $nin)
   # ==========================================================================
   def test_none_constraint
-    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
 
     with_parse_server do
       puts "\n=== Testing :none Constraint (alias for $nin) ==="
@@ -124,7 +124,7 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
   # Test 3: :superset_of constraint (alias for $all)
   # ==========================================================================
   def test_superset_of_constraint
-    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
 
     with_parse_server do
       puts "\n=== Testing :superset_of Constraint (alias for $all) ==="
@@ -168,7 +168,7 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
   # Test 4: :elem_match constraint (native $elemMatch)
   # ==========================================================================
   def test_elem_match_constraint
-    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
 
     with_parse_server do
       puts "\n=== Testing :elem_match Constraint ==="
@@ -179,24 +179,24 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
           name: "order1",
           items: [
             { "product" => "SKU001", "quantity" => 5, "price" => 10.0 },
-            { "product" => "SKU002", "quantity" => 2, "price" => 25.0 }
-          ]
+            { "product" => "SKU002", "quantity" => 2, "price" => 25.0 },
+          ],
         ).save
 
         OrderItem.new(
           name: "order2",
           items: [
             { "product" => "SKU001", "quantity" => 10, "price" => 10.0 },
-            { "product" => "SKU003", "quantity" => 1, "price" => 100.0 }
-          ]
+            { "product" => "SKU003", "quantity" => 1, "price" => 100.0 },
+          ],
         ).save
 
         OrderItem.new(
           name: "order3",
           items: [
             { "product" => "SKU002", "quantity" => 3, "price" => 25.0 },
-            { "product" => "SKU004", "quantity" => 7, "price" => 15.0 }
-          ]
+            { "product" => "SKU004", "quantity" => 7, "price" => 15.0 },
+          ],
         ).save
       end
 
@@ -204,9 +204,9 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
         begin
           # Test :items.elem_match - find orders with SKU001 and quantity > 7
           results = OrderItem.query(:items.elem_match => {
-            "product" => "SKU001",
-            "quantity" => { "$gt" => 7 }
-          }).all
+                                      "product" => "SKU001",
+                                      "quantity" => { "$gt" => 7 },
+                                    }).all
           names = results.map(&:name)
 
           puts "Query: :items.elem_match => { product: 'SKU001', quantity: { $gt: 7 } }"
@@ -231,7 +231,7 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
   # Test 5: :subset_of constraint (uses aggregation)
   # ==========================================================================
   def test_subset_of_constraint
-    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
 
     with_parse_server do
       puts "\n=== Testing :subset_of Constraint ==="
@@ -275,7 +275,7 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
   # Test 6: :first constraint (uses aggregation)
   # ==========================================================================
   def test_first_constraint
-    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
 
     with_parse_server do
       puts "\n=== Testing :first Constraint ==="
@@ -321,7 +321,7 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
   # Test 7: :last constraint (uses aggregation)
   # ==========================================================================
   def test_last_constraint
-    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
 
     with_parse_server do
       puts "\n=== Testing :last Constraint ==="
@@ -367,7 +367,7 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
   # Test 8: :empty_or_nil combined with date constraints
   # ==========================================================================
   def test_empty_or_nil_with_date_constraint
-    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
 
     with_parse_server do
       puts "\n=== Testing :empty_or_nil Combined with Date Constraint ==="
@@ -415,7 +415,7 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
           # Now test with date constraint
           combined_results = TaggedItem210.query(
             :tags.empty_or_nil => true,
-            :created_at.gte => cutoff_time
+            :created_at.gte => cutoff_time,
           ).all
           combined_names = combined_results.map(&:name).sort
           puts "Combined (empty_or_nil + created_at.gte) results: #{combined_names.inspect}"
@@ -423,7 +423,7 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
           # Count should match .all.count for combined query
           combined_count = TaggedItem210.query(
             :tags.empty_or_nil => true,
-            :created_at.gte => cutoff_time
+            :created_at.gte => cutoff_time,
           ).count
           puts "Combined count: #{combined_count}, all.count: #{combined_results.count}"
           assert_equal combined_results.count, combined_count, "count should match all.count for combined query"
@@ -453,7 +453,7 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
   # Test 9: :empty_or_nil with multiple constraints (category + date)
   # ==========================================================================
   def test_empty_or_nil_with_multiple_constraints
-    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
 
     with_parse_server do
       puts "\n=== Testing :empty_or_nil with Multiple Constraints ==="
@@ -474,7 +474,7 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
 
           results = TaggedItem210.query(
             :name.starts_with => "report",
-            :tags.empty_or_nil => true
+            :tags.empty_or_nil => true,
           ).all
           names = results.map(&:name).sort
           puts "Results: #{names.inspect}"
@@ -491,7 +491,7 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
           # Verify count matches
           count = TaggedItem210.query(
             :name.starts_with => "report",
-            :tags.empty_or_nil => true
+            :tags.empty_or_nil => true,
           ).count
           assert_equal results.count, count, "count should match all.count"
           puts "Count: #{count}, all.count: #{results.count}"
@@ -533,7 +533,7 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
   end
 
   def test_empty_or_nil_with_pointer_and_date_constraints
-    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
 
     with_parse_server do
       puts "\n=== Testing :empty_or_nil with Pointer + Date Constraints ==="
@@ -600,7 +600,7 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
           puts "\n--- Test: empty_or_nil + pointer constraint only ---"
           results1 = ReportTest210.query(
             project: project,
-            :topics.empty_or_nil => true
+            :topics.empty_or_nil => true,
           ).all
           names1 = results1.map(&:name).sort
           puts "Query: project=#{project.id}, :topics.empty_or_nil => true"
@@ -623,7 +623,7 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
           results2 = ReportTest210.query(
             project: project,
             :topics.empty_or_nil => true,
-            :created_at.lt => reference_time
+            :created_at.lt => reference_time,
           ).all
           names2 = results2.map(&:name).sort
           puts "Query: project=#{project.id}, :topics.empty_or_nil => true, :created_at.lt => #{reference_time}"
@@ -637,7 +637,7 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
           count2 = ReportTest210.query(
             project: project,
             :topics.empty_or_nil => true,
-            :created_at.lt => reference_time
+            :created_at.lt => reference_time,
           ).count
           puts "Count: #{count2}, all.count: #{results2.count}"
           assert_equal results2.count, count2, "count should match all.count for pointer+date+empty_or_nil"
@@ -650,7 +650,7 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
             project: project,
             team: team,
             :topics.empty_or_nil => true,
-            :created_at.lt => reference_time
+            :created_at.lt => reference_time,
           ).all
           names3 = results3.map(&:name).sort
           puts "Query: project=#{project.id}, team=#{team.id}, :topics.empty_or_nil => true, :created_at.lt => #{reference_time}"
@@ -662,13 +662,12 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
             project: project,
             team: team,
             :topics.empty_or_nil => true,
-            :created_at.lt => reference_time
+            :created_at.lt => reference_time,
           ).count
           puts "Count: #{count3}"
           assert_equal results3.count, count3, "count should match all.count for multiple pointers"
 
           puts "✅ multiple pointers + empty_or_nil + date works!"
-
         rescue => e
           puts "❌ Test failed: #{e.class} - #{e.message}"
           puts e.backtrace.first(10).join("\n")
@@ -682,7 +681,7 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
   # Test 11: :size with pointer constraints and date constraints
   # ==========================================================================
   def test_size_with_pointer_and_date_constraints
-    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
 
     with_parse_server do
       puts "\n=== Testing :size with Pointer + Date Constraints ==="
@@ -731,7 +730,7 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
           puts "\n--- Test: size + pointer constraint ---"
           results1 = ReportTest210.query(
             project: project,
-            :topics.size => 2
+            :topics.size => 2,
           ).all
           names1 = results1.map(&:name).sort
           puts "Query: project=#{project.id}, :topics.size => 2"
@@ -753,7 +752,7 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
           results2 = ReportTest210.query(
             project: project,
             :topics.size => 2,
-            :created_at.lt => reference_time
+            :created_at.lt => reference_time,
           ).all
           names2 = results2.map(&:name).sort
           puts "Query: project=#{project.id}, :topics.size => 2, :created_at.lt => #{reference_time}"
@@ -765,13 +764,12 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
           count2 = ReportTest210.query(
             project: project,
             :topics.size => 2,
-            :created_at.lt => reference_time
+            :created_at.lt => reference_time,
           ).count
           puts "Count: #{count2}, all.count: #{results2.count}"
           assert_equal results2.count, count2, "count should match all.count for pointer+date+size"
 
           puts "✅ size + pointer + date constraint works!"
-
         rescue => e
           puts "❌ Test failed: #{e.class} - #{e.message}"
           puts e.backtrace.first(10).join("\n")
@@ -785,7 +783,7 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
   # Test 12: :arr_empty and :arr_nempty with pointer constraints and date constraints
   # ==========================================================================
   def test_arr_empty_with_pointer_and_date_constraints
-    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
 
     with_parse_server do
       puts "\n=== Testing :arr_empty and :arr_nempty with Pointer + Date Constraints ==="
@@ -838,7 +836,7 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
           puts "\n--- Test: arr_empty + pointer constraint ---"
           results_empty = ReportTest210.query(
             project: project,
-            :topics.arr_empty => true
+            :topics.arr_empty => true,
           ).all
           names_empty = results_empty.map(&:name).sort
           puts "Query: project=#{project.id}, :topics.arr_empty => true"
@@ -860,7 +858,7 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
           results_empty_date = ReportTest210.query(
             project: project,
             :topics.arr_empty => true,
-            :created_at.lt => reference_time
+            :created_at.lt => reference_time,
           ).all
           names_empty_date = results_empty_date.map(&:name).sort
           puts "Query: project=#{project.id}, :topics.arr_empty => true, :created_at.lt => #{reference_time}"
@@ -872,7 +870,7 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
           count_empty_date = ReportTest210.query(
             project: project,
             :topics.arr_empty => true,
-            :created_at.lt => reference_time
+            :created_at.lt => reference_time,
           ).count
           puts "Count: #{count_empty_date}"
           assert_equal results_empty_date.count, count_empty_date, "count should match for arr_empty+date"
@@ -883,7 +881,7 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
           puts "\n--- Test: arr_nempty + pointer constraint ---"
           results_nempty = ReportTest210.query(
             project: project,
-            :topics.arr_nempty => true
+            :topics.arr_nempty => true,
           ).all
           names_nempty = results_nempty.map(&:name).sort
           puts "Query: project=#{project.id}, :topics.arr_nempty => true"
@@ -904,7 +902,7 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
           results_nempty_date = ReportTest210.query(
             project: project,
             :topics.arr_nempty => true,
-            :created_at.lt => reference_time
+            :created_at.lt => reference_time,
           ).all
           names_nempty_date = results_nempty_date.map(&:name).sort
           puts "Query: project=#{project.id}, :topics.arr_nempty => true, :created_at.lt => #{reference_time}"
@@ -916,7 +914,7 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
           count_nempty_date = ReportTest210.query(
             project: project,
             :topics.arr_nempty => true,
-            :created_at.lt => reference_time
+            :created_at.lt => reference_time,
           ).count
           puts "Count: #{count_nempty_date}"
           assert_equal results_nempty_date.count, count_nempty_date, "count should match for arr_nempty+date"
@@ -924,7 +922,6 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
           puts "✅ arr_nempty + pointer + date works!"
 
           puts "\n✅ All arr_empty/arr_nempty tests with pointer + date passed!"
-
         rescue => e
           puts "❌ Test failed: #{e.class} - #{e.message}"
           puts e.backtrace.first(10).join("\n")
@@ -938,7 +935,7 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
   # Test 13: :set_equals, :eq_array, :not_set_equals with pointer + date constraints
   # ==========================================================================
   def test_set_equals_with_pointer_and_date_constraints
-    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
 
     with_parse_server do
       puts "\n=== Testing :set_equals with Pointer + Date Constraints ==="
@@ -995,7 +992,7 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
           puts "\n--- Test: set_equals + pointer constraint ---"
           results_set = ReportTest210.query(
             project: project,
-            :topics.set_equals => ["B", "A"]  # Should match ["A", "B"] and ["B", "A"]
+            :topics.set_equals => ["B", "A"], # Should match ["A", "B"] and ["B", "A"]
           ).all
           names_set = results_set.map(&:name).sort
           puts "Query: project=#{project.id}, :topics.set_equals => ['B', 'A']"
@@ -1018,7 +1015,7 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
           results_set_date = ReportTest210.query(
             project: project,
             :topics.set_equals => ["A", "B"],
-            :created_at.lt => reference_time
+            :created_at.lt => reference_time,
           ).all
           names_set_date = results_set_date.map(&:name).sort
           puts "Query: project=#{project.id}, :topics.set_equals => ['A', 'B'], :created_at.lt => #{reference_time}"
@@ -1031,7 +1028,7 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
           count_set_date = ReportTest210.query(
             project: project,
             :topics.set_equals => ["A", "B"],
-            :created_at.lt => reference_time
+            :created_at.lt => reference_time,
           ).count
           puts "Count: #{count_set_date}"
           assert_equal results_set_date.count, count_set_date, "count should match for set_equals+date"
@@ -1042,7 +1039,7 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
           puts "\n--- Test: not_set_equals + pointer constraint ---"
           results_not_set = ReportTest210.query(
             project: project,
-            :topics.not_set_equals => ["A", "B"]  # Should NOT match ["A", "B"] or ["B", "A"]
+            :topics.not_set_equals => ["A", "B"], # Should NOT match ["A", "B"] or ["B", "A"]
           ).all
           names_not_set = results_not_set.map(&:name).sort
           puts "Query: project=#{project.id}, :topics.not_set_equals => ['A', 'B']"
@@ -1065,7 +1062,7 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
           results_not_set_date = ReportTest210.query(
             project: project,
             :topics.not_set_equals => ["A", "B"],
-            :created_at.lt => reference_time
+            :created_at.lt => reference_time,
           ).all
           names_not_set_date = results_not_set_date.map(&:name).sort
           puts "Query: project=#{project.id}, :topics.not_set_equals => ['A', 'B'], :created_at.lt => #{reference_time}"
@@ -1078,7 +1075,7 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
           count_not_set_date = ReportTest210.query(
             project: project,
             :topics.not_set_equals => ["A", "B"],
-            :created_at.lt => reference_time
+            :created_at.lt => reference_time,
           ).count
           puts "Count: #{count_not_set_date}"
           assert_equal results_not_set_date.count, count_not_set_date, "count should match for not_set_equals+date"
@@ -1086,7 +1083,6 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
           puts "✅ not_set_equals + pointer + date works!"
 
           puts "\n✅ All set_equals/not_set_equals tests with pointer + date passed!"
-
         rescue => e
           puts "❌ Test failed: #{e.class} - #{e.message}"
           puts e.backtrace.first(10).join("\n")
@@ -1100,7 +1096,7 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
   # Test 14: :eq_array (order dependent) with pointer + date constraints
   # ==========================================================================
   def test_eq_array_with_pointer_and_date_constraints
-    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
 
     with_parse_server do
       puts "\n=== Testing :eq_array with Pointer + Date Constraints ==="
@@ -1153,7 +1149,7 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
           puts "\n--- Test: eq_array + pointer constraint ---"
           results_eq = ReportTest210.query(
             project: project,
-            :topics.eq_array => ["A", "B"]  # Order matters - should only match ["A", "B"]
+            :topics.eq_array => ["A", "B"], # Order matters - should only match ["A", "B"]
           ).all
           names_eq = results_eq.map(&:name).sort
           puts "Query: project=#{project.id}, :topics.eq_array => ['A', 'B']"
@@ -1176,7 +1172,7 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
           results_eq_date = ReportTest210.query(
             project: project,
             :topics.eq_array => ["A", "B"],
-            :created_at.lt => reference_time
+            :created_at.lt => reference_time,
           ).all
           names_eq_date = results_eq_date.map(&:name).sort
           puts "Query: project=#{project.id}, :topics.eq_array => ['A', 'B'], :created_at.lt => #{reference_time}"
@@ -1190,7 +1186,7 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
           count_eq_date = ReportTest210.query(
             project: project,
             :topics.eq_array => ["A", "B"],
-            :created_at.lt => reference_time
+            :created_at.lt => reference_time,
           ).count
           puts "Count: #{count_eq_date}"
           assert_equal results_eq_date.count, count_eq_date, "count should match for eq_array+date"
@@ -1198,7 +1194,6 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
           puts "✅ eq_array + pointer + date works!"
 
           puts "\n✅ All eq_array tests with pointer + date passed!"
-
         rescue => e
           puts "❌ Test failed: #{e.class} - #{e.message}"
           puts e.backtrace.first(10).join("\n")
@@ -1212,7 +1207,7 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
   # Test 15: group_by aggregation with pointer + date + array constraints
   # ==========================================================================
   def test_group_by_with_pointer_and_array_constraints
-    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
 
     with_parse_server do
       puts "\n=== Testing group_by with Pointer + Array Constraints ==="
@@ -1284,7 +1279,7 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
           puts "\n--- Test: group_by status + pointer + empty_or_nil ---"
           query2 = ReportTest210.query(
             project: project,
-            :topics.empty_or_nil => true
+            :topics.empty_or_nil => true,
           )
           results_empty = query2.group_by(:status).count
           puts "Query: project=#{project.id}, :topics.empty_or_nil => true, group_by(:status).count"
@@ -1303,7 +1298,7 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
           query3 = ReportTest210.query(
             project: project,
             :topics.empty_or_nil => true,
-            :created_at.lt => reference_time
+            :created_at.lt => reference_time,
           )
           results_empty_date = query3.group_by(:status).count
           puts "Query: project=#{project.id}, :topics.empty_or_nil => true, :created_at.lt => #{reference_time}, group_by(:status).count"
@@ -1323,7 +1318,7 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
           # by using count_distinct instead
           query4 = ReportTest210.query(
             project: project,
-            :topics.empty_or_nil => true
+            :topics.empty_or_nil => true,
           )
           distinct_count = query4.count_distinct(:status)
           puts "Query: project=#{project.id}, :topics.empty_or_nil => true, count_distinct(:status)"
@@ -1334,7 +1329,6 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
           puts "✅ count_distinct + pointer + empty_or_nil works!"
 
           puts "\n✅ All group_by tests with pointer + array constraints passed!"
-
         rescue => e
           puts "❌ Test failed: #{e.class} - #{e.message}"
           puts e.backtrace.first(10).join("\n")
@@ -1367,7 +1361,7 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
   # Test 16: Array of pointers - :size constraint
   # ==========================================================================
   def test_pointer_array_size_constraint
-    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
 
     with_parse_server do
       puts "\n=== Testing :size with Array of Pointers ==="
@@ -1422,7 +1416,7 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
           puts "\n--- Test: size(2) + project constraint ---"
           results = TeamWithMembers210.query(
             project: project,
-            :members.size => 2
+            :members.size => 2,
           ).all
           names = results.map(&:name).sort
           puts "Query: project=#{project.id}, :members.size => 2"
@@ -1443,7 +1437,7 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
           puts "\n--- Test: size(0) + project constraint ---"
           results_empty = TeamWithMembers210.query(
             project: project,
-            :members.size => 0
+            :members.size => 0,
           ).all
           names_empty = results_empty.map(&:name).sort
           puts "Query: project=#{project.id}, :members.size => 0"
@@ -1453,7 +1447,6 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
           assert_equal 1, results_empty.count, "Should have exactly 1 result"
 
           puts "✅ size(0) works for pointer arrays!"
-
         rescue => e
           puts "❌ Test failed: #{e.class} - #{e.message}"
           puts e.backtrace.first(10).join("\n")
@@ -1467,7 +1460,7 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
   # Test 17: Array of pointers - :empty_or_nil and :arr_empty constraints
   # ==========================================================================
   def test_pointer_array_empty_constraints
-    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
 
     with_parse_server do
       puts "\n=== Testing :empty_or_nil with Array of Pointers ==="
@@ -1517,7 +1510,7 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
           puts "\n--- Test: empty_or_nil + project constraint ---"
           results = TeamWithMembers210.query(
             project: project,
-            :members.empty_or_nil => true
+            :members.empty_or_nil => true,
           ).all
           names = results.map(&:name).sort
           puts "Query: project=#{project.id}, :members.empty_or_nil => true"
@@ -1538,7 +1531,7 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
           puts "\n--- Test: arr_empty + project constraint ---"
           results_empty = TeamWithMembers210.query(
             project: project,
-            :members.arr_empty => true
+            :members.arr_empty => true,
           ).all
           names_empty = results_empty.map(&:name).sort
           puts "Query: project=#{project.id}, :members.arr_empty => true"
@@ -1557,7 +1550,7 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
           puts "\n--- Test: not_empty + project constraint ---"
           results_not_empty = TeamWithMembers210.query(
             project: project,
-            :members.not_empty => true
+            :members.not_empty => true,
           ).all
           names_not_empty = results_not_empty.map(&:name).sort
           puts "Query: project=#{project.id}, :members.not_empty => true"
@@ -1568,7 +1561,6 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
           refute_includes names_not_empty, "team_nil_members", "Should NOT match nil team"
 
           puts "✅ not_empty works for pointer arrays!"
-
         rescue => e
           puts "❌ Test failed: #{e.class} - #{e.message}"
           puts e.backtrace.first(10).join("\n")
@@ -1582,7 +1574,7 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
   # Test 18: Array of pointers - :contains_all constraint
   # ==========================================================================
   def test_pointer_array_contains_all_constraint
-    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
 
     with_parse_server do
       puts "\n=== Testing :contains_all with Array of Pointers ==="
@@ -1630,7 +1622,7 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
           puts "\n--- Test: contains_all([member1]) + project ---"
           results_one = TeamWithMembers210.query(
             project: project,
-            :members.contains_all => [members[0]]
+            :members.contains_all => [members[0]],
           ).all
           names_one = results_one.map(&:name).sort
           puts "Query: project=#{project.id}, :members.contains_all => [member1]"
@@ -1651,7 +1643,7 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
           puts "\n--- Test: contains_all([member1, member2]) + project ---"
           results_two = TeamWithMembers210.query(
             project: project,
-            :members.contains_all => [members[0], members[1]]
+            :members.contains_all => [members[0], members[1]],
           ).all
           names_two = results_two.map(&:name).sort
           puts "Query: project=#{project.id}, :members.contains_all => [member1, member2]"
@@ -1667,7 +1659,6 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
           assert_equal results_two.count, count_two
 
           puts "✅ contains_all([multiple]) works for pointer arrays!"
-
         rescue => e
           puts "❌ Test failed: #{e.class} - #{e.message}"
           puts e.backtrace.first(10).join("\n")
@@ -1681,7 +1672,7 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
   # Test 19: Array of pointers - :any (contains any) constraint
   # ==========================================================================
   def test_pointer_array_any_constraint
-    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
 
     with_parse_server do
       puts "\n=== Testing :any with Array of Pointers ==="
@@ -1729,7 +1720,7 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
           puts "\n--- Test: any([member1, member2]) + project ---"
           results = TeamWithMembers210.query(
             project: project,
-            :members.any => [members[0], members[1]]
+            :members.any => [members[0], members[1]],
           ).all
           names = results.map(&:name).sort
           puts "Query: project=#{project.id}, :members.any => [member1, member2]"
@@ -1745,7 +1736,6 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
           assert_equal results.count, count
 
           puts "✅ any works for pointer arrays!"
-
         rescue => e
           puts "❌ Test failed: #{e.class} - #{e.message}"
           puts e.backtrace.first(10).join("\n")
@@ -1759,7 +1749,7 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
   # Test 20: Array of pointers - :set_equals constraint (exact match, order independent)
   # ==========================================================================
   def test_pointer_array_set_equals_constraint
-    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
 
     with_parse_server do
       puts "\n=== Testing :set_equals with Array of Pointers ==="
@@ -1807,7 +1797,7 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
           puts "\n--- Test: set_equals([A,B]) + project ---"
           results = TeamWithMembers210.query(
             project: project,
-            :members.set_equals => [members[1], members[0]]  # Pass in B,A order
+            :members.set_equals => [members[1], members[0]], # Pass in B,A order
           ).all
           names = results.map(&:name).sort
           puts "Query: project=#{project.id}, :members.set_equals => [B, A]"
@@ -1828,7 +1818,7 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
           puts "\n--- Test: not_set_equals([A,B]) + project ---"
           results_not = TeamWithMembers210.query(
             project: project,
-            :members.not_set_equals => [members[0], members[1]]
+            :members.not_set_equals => [members[0], members[1]],
           ).all
           names_not = results_not.map(&:name).sort
           puts "Query: project=#{project.id}, :members.not_set_equals => [A, B]"
@@ -1840,7 +1830,6 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
           assert_includes names_not, "team_AC", "Should match team with A,C"
 
           puts "✅ not_set_equals works for pointer arrays!"
-
         rescue => e
           puts "❌ Test failed: #{e.class} - #{e.message}"
           puts e.backtrace.first(10).join("\n")
@@ -1854,7 +1843,7 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
   # Test 21: Combined - pointer array constraints with date and other pointer
   # ==========================================================================
   def test_pointer_array_with_date_and_pointer_constraints
-    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
 
     with_parse_server do
       puts "\n=== Testing Pointer Array + Date + Pointer Constraints ==="
@@ -1916,7 +1905,7 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
           results = TeamWithMembers210.query(
             project: project,
             :members.empty_or_nil => true,
-            :created_at.lt => reference_time
+            :created_at.lt => reference_time,
           ).all
           names = results.map(&:name).sort
           puts "Query: project, :members.empty_or_nil => true, :created_at.lt => ref"
@@ -1930,7 +1919,7 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
           count = TeamWithMembers210.query(
             project: project,
             :members.empty_or_nil => true,
-            :created_at.lt => reference_time
+            :created_at.lt => reference_time,
           ).count
           puts "Count: #{count}"
           assert_equal results.count, count
@@ -1942,7 +1931,7 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
           results_ne = TeamWithMembers210.query(
             project: project,
             :members.not_empty => true,
-            :created_at.lt => reference_time
+            :created_at.lt => reference_time,
           ).all
           names_ne = results_ne.map(&:name).sort
           puts "Query: project, :members.not_empty => true, :created_at.lt => ref"
@@ -1958,7 +1947,7 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
           puts "\n--- Test: group_by + empty_or_nil ---"
           results_group = TeamWithMembers210.query(
             project: project,
-            :members.empty_or_nil => true
+            :members.empty_or_nil => true,
           ).group_by(:status).count
           puts "Query: project, :members.empty_or_nil => true, group_by(:status).count"
           puts "Results: #{results_group.inspect}"
@@ -1967,7 +1956,6 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
           assert_equal 2, results_group["active"], "Should have 2 active empty teams"
 
           puts "✅ group_by with pointer array constraints works!"
-
         rescue => e
           puts "❌ Test failed: #{e.class} - #{e.message}"
           puts e.backtrace.first(10).join("\n")
@@ -1982,7 +1970,7 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
   # e.g., find teams where team.project.status == "active"
   # ==========================================================================
   def test_lookup_filter_by_related_object_property
-    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
 
     with_parse_server do
       puts "\n=== Testing Lookup Filter by Related Object Property ==="
@@ -2077,7 +2065,7 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
           puts "Raw results debug (first doc):"
           if raw_results.first
             puts "  Keys: #{raw_results.first.keys.inspect}"
-            puts "  project field: #{raw_results.first['project'].inspect}"
+            puts "  project field: #{raw_results.first["project"].inspect}"
           end
 
           # Debug: Try various field access patterns using $addFields only
@@ -2087,19 +2075,19 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
                 "test_project" => "$project",
                 "test_p_project" => "$_p_project",
                 # Try with objectToArray to see all fields
-                "test_fields" => { "$objectToArray" => "$$ROOT" }
-              }
-            }
+                "test_fields" => { "$objectToArray" => "$$ROOT" },
+              },
+            },
           ]
           extract_results = TeamWithMembers210.query.aggregate(extract_debug).raw
           puts "\nExtract debug (first doc):"
           if extract_results.first
             r = extract_results.first
-            puts "  test_project: #{r['test_project'].inspect}"
-            puts "  test_p_project: #{r['test_p_project'].inspect}"
+            puts "  test_project: #{r["test_project"].inspect}"
+            puts "  test_p_project: #{r["test_p_project"].inspect}"
             # Show field names from objectToArray
-            if r['test_fields'].is_a?(Array)
-              puts "  Available fields: #{r['test_fields'].map { |f| f['k'] }.inspect}"
+            if r["test_fields"].is_a?(Array)
+              puts "  Available fields: #{r["test_fields"].map { |f| f["k"] }.inspect}"
             end
           end
 
@@ -2110,14 +2098,14 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
                 "name" => 1,
                 "status" => 1,
                 "objectId" => 1,
-                "_id" => 1
-              }
-            }
+                "_id" => 1,
+              },
+            },
           ]
           project_results = ProjectTest210.query.aggregate(project_debug).results
           puts "\nProject debug:"
           project_results.each do |r|
-            puts "  #{r['name']}: _id=#{r['_id'].inspect}, objectId=#{r['objectId'].inspect}, status=#{r['status']}"
+            puts "  #{r["name"]}: _id=#{r["_id"].inspect}, objectId=#{r["objectId"].inspect}, status=#{r["status"]}"
           end
 
           # Parse Server returns pointer as: {"__type"=>"Pointer", "className"=>"ProjectTest210", "objectId"=>"xxx"}
@@ -2125,21 +2113,21 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
           pointer_lookup = [
             {
               "$addFields" => {
-                "projectId" => "$project.objectId"
-              }
+                "projectId" => "$project.objectId",
+              },
             },
             {
               "$lookup" => {
                 "from" => "ProjectTest210",
                 "localField" => "projectId",
                 "foreignField" => "objectId",
-                "as" => "projectData"
-              }
-            }
+                "as" => "projectData",
+              },
+            },
           ]
           pointer_results = TeamWithMembers210.query.aggregate(pointer_lookup).raw
           puts "\nPointer lookup (project.objectId -> objectId): #{pointer_results.length} results"
-          pointer_results.each { |r| puts "  #{r['name']}: projectId=#{r['projectId']}, projectData=#{r['projectData']&.length || 0} items" }
+          pointer_results.each { |r| puts "  #{r["name"]}: projectId=#{r["projectId"]}, projectData=#{r["projectData"]&.length || 0} items" }
 
           # Also try direct join with pipeline syntax
           pipeline_lookup = [
@@ -2148,15 +2136,15 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
                 "from" => "ProjectTest210",
                 "let" => { "projId" => "$project.objectId" },
                 "pipeline" => [
-                  { "$match" => { "$expr" => { "$eq" => ["$objectId", "$$projId"] } } }
+                  { "$match" => { "$expr" => { "$eq" => ["$objectId", "$$projId"] } } },
                 ],
-                "as" => "projectData"
-              }
-            }
+                "as" => "projectData",
+              },
+            },
           ]
           pipeline_results = TeamWithMembers210.query.aggregate(pipeline_lookup).raw
           puts "\nPipeline lookup (let projId = project.objectId): #{pipeline_results.length} results"
-          pipeline_results.each { |r| puts "  #{r['name']}: projectData=#{r['projectData']&.length || 0} items" }
+          pipeline_results.each { |r| puts "  #{r["name"]}: projectData=#{r["projectData"]&.length || 0} items" }
 
           # Test step by step - copy exact same pattern as extract_debug
           step0 = [
@@ -2164,14 +2152,14 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
               "$addFields" => {
                 "test_project" => "$project",
                 "test_p_project" => "$_p_project",
-                "test_fields" => { "$objectToArray" => "$$ROOT" }
-              }
-            }
+                "test_fields" => { "$objectToArray" => "$$ROOT" },
+              },
+            },
           ]
           step0_results = TeamWithMembers210.query.aggregate(step0).raw
           puts "\nStep 0 (same as extract_debug): #{step0_results.length} results"
           step0_results.each do |r|
-            puts "  #{r['name']}: test_p_project=#{r['test_p_project'].inspect}"
+            puts "  #{r["name"]}: test_p_project=#{r["test_p_project"].inspect}"
           end
 
           # ============================================================
@@ -2179,8 +2167,8 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
           # ============================================================
           puts "\n--- Testing via MongoDB Direct ---"
           begin
-            require 'mongo'
-            require_relative '../../../lib/parse/mongodb'
+            require "mongo"
+            require_relative "../../../lib/parse/mongodb"
             Parse::MongoDB.configure(uri: "mongodb://admin:password@localhost:27019/parse?authSource=admin", enabled: true)
 
             # Test $split via MongoDB direct using $literal to escape the dollar sign
@@ -2188,15 +2176,15 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
               {
                 "$addFields" => {
                   "_extracted_id" => {
-                    "$arrayElemAt" => [{ "$split" => ["$_p_project", { "$literal" => "$" }] }, 1]
-                  }
-                }
-              }
+                    "$arrayElemAt" => [{ "$split" => ["$_p_project", { "$literal" => "$" }] }, 1],
+                  },
+                },
+              },
             ]
             mongo_split_results = Parse::MongoDB.aggregate("TeamWithMembers210", mongo_split_pipeline)
             puts "\nMongoDB Direct ($split with $literal): #{mongo_split_results.length} results"
             mongo_split_results.each do |r|
-              puts "  #{r['name']}: _extracted_id=#{r['_extracted_id'].inspect}"
+              puts "  #{r["name"]}: _extracted_id=#{r["_extracted_id"].inspect}"
             end
 
             # Test $lookup with $split via MongoDB direct
@@ -2204,23 +2192,23 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
               {
                 "$addFields" => {
                   "_extracted_id" => {
-                    "$arrayElemAt" => [{ "$split" => ["$_p_project", { "$literal" => "$" }] }, 1]
-                  }
-                }
+                    "$arrayElemAt" => [{ "$split" => ["$_p_project", { "$literal" => "$" }] }, 1],
+                  },
+                },
               },
               {
                 "$lookup" => {
                   "from" => "ProjectTest210",
                   "localField" => "_extracted_id",
                   "foreignField" => "_id",
-                  "as" => "_projectData"
-                }
-              }
+                  "as" => "_projectData",
+                },
+              },
             ]
             mongo_lookup_results = Parse::MongoDB.aggregate("TeamWithMembers210", mongo_lookup_pipeline)
             puts "\nMongoDB Direct ($split + $lookup): #{mongo_lookup_results.length} results"
             mongo_lookup_results.each do |r|
-              puts "  #{r['name']}: _extracted_id=#{r['_extracted_id'].inspect}, _projectData=#{r['_projectData']&.length || 0} items"
+              puts "  #{r["name"]}: _extracted_id=#{r["_extracted_id"].inspect}, _projectData=#{r["_projectData"]&.length || 0} items"
             end
 
             # Test with where filter on lookup (in_query equivalent)
@@ -2228,9 +2216,9 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
               {
                 "$addFields" => {
                   "_extracted_id" => {
-                    "$arrayElemAt" => [{ "$split" => ["$_p_project", { "$literal" => "$" }] }, 1]
-                  }
-                }
+                    "$arrayElemAt" => [{ "$split" => ["$_p_project", { "$literal" => "$" }] }, 1],
+                  },
+                },
               },
               {
                 "$lookup" => {
@@ -2238,19 +2226,19 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
                   "let" => { "projId" => "$_extracted_id" },
                   "pipeline" => [
                     { "$match" => { "$expr" => { "$eq" => ["$_id", "$$projId"] } } },
-                    { "$match" => { "status" => "active" } }
+                    { "$match" => { "status" => "active" } },
                   ],
-                  "as" => "_projectData"
-                }
+                  "as" => "_projectData",
+                },
               },
               {
-                "$match" => { "_projectData" => { "$ne" => [] } }
-              }
+                "$match" => { "_projectData" => { "$ne" => [] } },
+              },
             ]
             mongo_inquery_results = Parse::MongoDB.aggregate("TeamWithMembers210", mongo_inquery_pipeline)
             puts "\nMongoDB Direct (in_query equivalent): #{mongo_inquery_results.length} results"
             mongo_inquery_results.each do |r|
-              puts "  #{r['name']}"
+              puts "  #{r["name"]}"
             end
 
             # Don't reset MongoDB - keep it enabled for auto-detection in combo test
@@ -2270,14 +2258,14 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
               "$project" => {
                 "name" => 1,
                 "members" => 1,
-                "_extracted_id" => { "$substr" => ["$_p_project", 16, -1] }
-              }
-            }
+                "_extracted_id" => { "$substr" => ["$_p_project", 16, -1] },
+              },
+            },
           ]
           step1_results = TeamWithMembers210.query.aggregate(step1).raw
           puts "\nStep 1 via Parse Server ($project + $substr): #{step1_results.length} results"
           step1_results.each do |r|
-            puts "  #{r['name']}: _extracted_id=#{r['_extracted_id'].inspect}"
+            puts "  #{r["name"]}: _extracted_id=#{r["_extracted_id"].inspect}"
           end
 
           # Now add the $lookup via Parse Server
@@ -2285,23 +2273,23 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
             {
               "$addFields" => {
                 "_extracted_id" => {
-                  "$arrayElemAt" => [{ "$split" => ["$_p_project", "$"] }, 1]
-                }
-              }
+                  "$arrayElemAt" => [{ "$split" => ["$_p_project", "$"] }, 1],
+                },
+              },
             },
             {
               "$lookup" => {
                 "from" => "ProjectTest210",
                 "localField" => "_extracted_id",
                 "foreignField" => "_id",
-                "as" => "_projectData"
-              }
-            }
+                "as" => "_projectData",
+              },
+            },
           ]
           step2_results = TeamWithMembers210.query.aggregate(step2).raw
           puts "\nStep 2 via Parse Server ($split + $lookup): #{step2_results.length} results"
           step2_results.each do |r|
-            puts "  #{r['name']}: _extracted_id=#{r['_extracted_id'].inspect}, _projectData=#{r['_projectData']&.length || 0} items"
+            puts "  #{r["name"]}: _extracted_id=#{r["_extracted_id"].inspect}, _projectData=#{r["_projectData"]&.length || 0} items"
           end
 
           # Test in_query through aggregation mode
@@ -2313,11 +2301,11 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
           agg = in_query_agg.aggregate_from_query([], verbose: true)
           puts "Aggregation mongo_direct: #{agg.instance_variable_get(:@mongo_direct)}"
           agg_results = agg.results
-          puts "in_query via aggregate_from_query: #{agg_results.map { |r| r.respond_to?(:name) ? r.name : r['name'] }.inspect}"
+          puts "in_query via aggregate_from_query: #{agg_results.map { |r| r.respond_to?(:name) ? r.name : r["name"] }.inspect}"
 
           query_combo = TeamWithMembers210.query(
             :project.in_query => active_projects_query,
-            :members.empty_or_nil => true
+            :members.empty_or_nil => true,
           )
           puts "Compiled where: #{query_combo.compile_where.to_json}"
           puts "Pipeline: #{JSON.pretty_generate(query_combo.send(:build_aggregation_pipeline))}"
@@ -2332,7 +2320,7 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
 
           count_combo = TeamWithMembers210.query(
             :project.in_query => active_projects_query,
-            :members.empty_or_nil => true
+            :members.empty_or_nil => true,
           ).count
           puts "Count: #{count_combo}"
           assert_equal results_combo.count, count_combo
@@ -2342,7 +2330,7 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
           # Test not_in_query: find teams where project.status != "active"
           puts "\n--- Test: not_in_query (project.status != 'active') ---"
           results_not = TeamWithMembers210.query(
-            :project.not_in_query => active_projects_query
+            :project.not_in_query => active_projects_query,
           ).all
           names_not = results_not.map(&:name).sort
           puts "Query: :project.not_in_query => (status == 'active')"
@@ -2358,7 +2346,7 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
           puts "\n--- Test: in_query + not_empty ---"
           results_not_empty = TeamWithMembers210.query(
             :project.in_query => active_projects_query,
-            :members.not_empty => true
+            :members.not_empty => true,
           ).all
           names_not_empty = results_not_empty.map(&:name).sort
           puts "Query: :project.in_query => (active), :members.not_empty => true"
@@ -2373,7 +2361,7 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
           # Test group_by with lookup + array constraint
           puts "\n--- Test: group_by with in_query + array constraint ---"
           results_group = TeamWithMembers210.query(
-            :project.in_query => active_projects_query
+            :project.in_query => active_projects_query,
           ).group_by(:status).count
           puts "Query: :project.in_query => (active), group_by(:status).count"
           puts "Results: #{results_group.inspect}"
@@ -2382,7 +2370,6 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
           assert_equal 2, results_group["active"], "Should have 2 active teams under active project"
 
           puts "✅ group_by with lookup works!"
-
         rescue => e
           puts "❌ Test failed: #{e.class} - #{e.message}"
           puts e.backtrace.first(10).join("\n")
@@ -2397,7 +2384,7 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
   # e.g., find teams that have at least one member with role == "admin"
   # ==========================================================================
   def test_lookup_filter_by_array_member_property
-    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
 
     with_parse_server do
       puts "\n=== Testing Lookup Filter by Array Member Property ==="
@@ -2451,7 +2438,7 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
           puts "\n--- Test: contains_all with admin member ---"
           results = TeamWithMembers210.query(
             project: project,
-            :members.contains_all => [admin]
+            :members.contains_all => [admin],
           ).all
           names = results.map(&:name).sort
           puts "Query: project, :members.contains_all => [admin]"
@@ -2472,7 +2459,7 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
           puts "\n--- Test: any with specific members ---"
           results_any = TeamWithMembers210.query(
             project: project,
-            :members.any => [admin, developers[0]]
+            :members.any => [admin, developers[0]],
           ).all
           names_any = results_any.map(&:name).sort
           puts "Query: project, :members.any => [admin, dev1]"
@@ -2490,7 +2477,7 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
           results_combo = TeamWithMembers210.query(
             project: project,
             status: "active",
-            :members.contains_all => [admin]
+            :members.contains_all => [admin],
           ).all
           names_combo = results_combo.map(&:name).sort
           puts "Query: project, status: 'active', :members.contains_all => [admin]"
@@ -2502,13 +2489,12 @@ class ArrayConstraints210IntegrationTest < Minitest::Test
           count_combo = TeamWithMembers210.query(
             project: project,
             status: "active",
-            :members.contains_all => [admin]
+            :members.contains_all => [admin],
           ).count
           puts "Count: #{count_combo}"
           assert_equal results_combo.count, count_combo
 
           puts "✅ contains_all + project + status combo works!"
-
         rescue => e
           puts "❌ Test failed: #{e.class} - #{e.message}"
           puts e.backtrace.first(10).join("\n")

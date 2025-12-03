@@ -173,7 +173,7 @@ module Parse
             seconds_since_activity: seconds_since_activity,
             seconds_since_pong: seconds_since_pong,
             ping_interval: @ping_interval,
-            pong_timeout: @pong_timeout
+            pong_timeout: @pong_timeout,
           }
         end
       end

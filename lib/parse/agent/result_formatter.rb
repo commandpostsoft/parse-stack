@@ -29,7 +29,7 @@ module Parse
         "Relation" => "relation (many-to-many)",
         "Bytes" => "binary data",
         "Polygon" => "polygon (geo shape)",
-        "ACL" => "access control list"
+        "ACL" => "access control list",
       }.freeze
 
       # Format multiple schemas for display (compact summary)
@@ -49,7 +49,7 @@ module Parse
 
           info = {
             name: class_name,
-            fields: fields.size - 4 # exclude objectId, createdAt, updatedAt, ACL
+            fields: fields.size - 4, # exclude objectId, createdAt, updatedAt, ACL
           }
 
           # Include description if present (compact)
@@ -69,7 +69,7 @@ module Parse
           total: schemas.size,
           note: "Use get_schema(class_name) for detailed field info",
           built_in: built_in,
-          custom: custom
+          custom: custom,
         }
       end
 
@@ -86,7 +86,7 @@ module Parse
 
         result = {
           class_name: class_name,
-          type: class_type(class_name)
+          type: class_type(class_name),
         }
 
         # Include class description if present
@@ -114,10 +114,10 @@ module Parse
         truncated = total > MAX_RESULTS_DISPLAY
 
         displayed_results = if truncated
-                              results.first(MAX_RESULTS_DISPLAY)
-                            else
-                              results
-                            end
+            results.first(MAX_RESULTS_DISPLAY)
+          else
+            results
+          end
 
         {
           class_name: class_name,
@@ -125,11 +125,11 @@ module Parse
           pagination: {
             limit: limit,
             skip: skip,
-            has_more: total >= limit
+            has_more: total >= limit,
           },
           truncated: truncated,
           truncated_note: truncated ? "Showing first #{MAX_RESULTS_DISPLAY} of #{total} results" : nil,
-          results: displayed_results.map { |obj| simplify_object(obj) }
+          results: displayed_results.map { |obj| simplify_object(obj) },
         }.compact
       end
 
@@ -144,7 +144,7 @@ module Parse
           object_id: object["objectId"],
           created_at: object["createdAt"],
           updated_at: object["updatedAt"],
-          object: simplify_object(object)
+          object: simplify_object(object),
         }
       end
 
@@ -181,7 +181,7 @@ module Parse
           field_info = {
             name: name,
             type: type_name(config),
-            required: config["required"] || false
+            required: config["required"] || false,
           }
 
           # Add field description if present (from agent metadata)
@@ -211,7 +211,7 @@ module Parse
           {
             name: name,
             fields: definition.keys,
-            unique: name.include?("unique") || definition.values.include?("unique")
+            unique: name.include?("unique") || definition.values.include?("unique"),
           }
         end
       end
@@ -284,29 +284,29 @@ module Parse
           {
             _type: "Pointer",
             class: hash["className"],
-            id: hash["objectId"]
+            id: hash["objectId"],
           }
         when "File"
           {
             _type: "File",
             name: hash["name"],
-            url: hash["url"]
+            url: hash["url"],
           }
         when "GeoPoint"
           {
             _type: "GeoPoint",
             latitude: hash["latitude"],
-            longitude: hash["longitude"]
+            longitude: hash["longitude"],
           }
         when "Bytes"
           {
             _type: "Bytes",
-            base64: hash["base64"]&.slice(0, 50)&.then { |s| "#{s}..." }
+            base64: hash["base64"]&.slice(0, 50)&.then { |s| "#{s}..." },
           }
         when "Relation"
           {
             _type: "Relation",
-            class: hash["className"]
+            class: hash["className"],
           }
         else
           # Regular object or unknown type - recurse

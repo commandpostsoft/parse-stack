@@ -84,7 +84,7 @@ module Parse
 
         raise InvalidOperatorError.new(
           "Constraints must be a Hash, got #{constraints.class}",
-          operator: nil
+          operator: nil,
         ) unless constraints.is_a?(Hash)
 
         constraints.transform_keys(&:to_s).each_with_object({}) do |(key, value), result|
@@ -117,7 +117,7 @@ module Parse
       def translate_value(value, depth:)
         raise InvalidOperatorError.new(
           "Query exceeds maximum depth of #{MAX_QUERY_DEPTH}",
-          operator: nil
+          operator: nil,
         ) if depth > MAX_QUERY_DEPTH
 
         case value
@@ -169,7 +169,7 @@ module Parse
             "SECURITY: Operator '#{op_str}' is blocked - it allows arbitrary code execution. " \
             "This operator is not allowed regardless of permission level.",
             operator: op_str,
-            reason: :code_execution
+            reason: :code_execution,
           )
         end
 
@@ -177,8 +177,8 @@ module Parse
         unless ALLOWED_OPERATORS.include?(op_str)
           raise InvalidOperatorError.new(
             "Unknown query operator '#{op_str}' is not allowed. " \
-            "Allowed operators: #{ALLOWED_OPERATORS.join(', ')}",
-            operator: op_str
+            "Allowed operators: #{ALLOWED_OPERATORS.join(", ")}",
+            operator: op_str,
           )
         end
       end

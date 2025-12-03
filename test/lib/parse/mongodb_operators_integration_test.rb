@@ -52,8 +52,8 @@ class MongoDBOperatorsIntegrationTest < Minitest::Test
 
         # Configure MongoDB direct
         begin
-          require 'mongo'
-          require_relative '../../../lib/parse/mongodb'
+          require "mongo"
+          require_relative "../../../lib/parse/mongodb"
           Parse::MongoDB.configure(uri: "mongodb://admin:password@localhost:27019/parse?authSource=admin", enabled: true)
           puts "MongoDB direct enabled: #{Parse::MongoDB.enabled?}"
         rescue LoadError => e
@@ -182,8 +182,8 @@ class MongoDBOperatorsIntegrationTest < Minitest::Test
 
         # Configure MongoDB direct
         begin
-          require 'mongo'
-          require_relative '../../../lib/parse/mongodb'
+          require "mongo"
+          require_relative "../../../lib/parse/mongodb"
           Parse::MongoDB.configure(uri: "mongodb://admin:password@localhost:27019/parse?authSource=admin", enabled: true)
         rescue LoadError => e
           skip "MongoDB gem not available: #{e.message}"
@@ -288,8 +288,8 @@ class MongoDBOperatorsIntegrationTest < Minitest::Test
 
         # Configure MongoDB direct
         begin
-          require 'mongo'
-          require_relative '../../../lib/parse/mongodb'
+          require "mongo"
+          require_relative "../../../lib/parse/mongodb"
           Parse::MongoDB.configure(uri: "mongodb://admin:password@localhost:27019/parse?authSource=admin", enabled: true)
         rescue LoadError => e
           skip "MongoDB gem not available: #{e.message}"

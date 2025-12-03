@@ -84,17 +84,17 @@ module Parse
       def validate!(pipeline)
         raise PipelineSecurityError.new(
           "Pipeline must be an array",
-          reason: :invalid_type
+          reason: :invalid_type,
         ) unless pipeline.is_a?(Array)
 
         raise PipelineSecurityError.new(
           "Pipeline cannot be empty",
-          reason: :empty_pipeline
+          reason: :empty_pipeline,
         ) if pipeline.empty?
 
         raise PipelineSecurityError.new(
           "Pipeline exceeds maximum #{MAX_STAGES} stages (got #{pipeline.size})",
-          reason: :too_many_stages
+          reason: :too_many_stages,
         ) if pipeline.size > MAX_STAGES
 
         pipeline.each_with_index do |stage, idx|
@@ -122,13 +122,13 @@ module Parse
         raise PipelineSecurityError.new(
           "Stage #{idx} must be a Hash, got #{stage.class}",
           stage: idx,
-          reason: :invalid_stage_type
+          reason: :invalid_stage_type,
         ) unless stage.is_a?(Hash)
 
         raise PipelineSecurityError.new(
           "Stage #{idx} exceeds maximum nesting depth of #{MAX_PIPELINE_DEPTH}",
           stage: idx,
-          reason: :max_depth_exceeded
+          reason: :max_depth_exceeded,
         ) if depth > MAX_PIPELINE_DEPTH
 
         stage.each do |key, value|
@@ -140,18 +140,18 @@ module Parse
               "SECURITY: Stage '#{key_str}' is blocked - it can write data or execute code. " \
               "This stage is not allowed regardless of permission level.",
               stage: idx,
-              reason: :blocked_stage
+              reason: :blocked_stage,
             )
           end
 
           # Whitelist check for top-level stage operators
-          if key_str.start_with?('$') && depth == 0
+          if key_str.start_with?("$") && depth == 0
             unless ALLOWED_STAGES.include?(key_str)
               raise PipelineSecurityError.new(
                 "Unknown aggregation stage '#{key_str}' is not in the allowed whitelist. " \
-                "Allowed stages: #{ALLOWED_STAGES.join(', ')}",
+                "Allowed stages: #{ALLOWED_STAGES.join(", ")}",
                 stage: idx,
-                reason: :unknown_stage
+                reason: :unknown_stage,
               )
             end
           end
@@ -166,7 +166,7 @@ module Parse
         raise PipelineSecurityError.new(
           "Stage #{stage_idx} exceeds maximum nesting depth of #{MAX_PIPELINE_DEPTH}",
           stage: stage_idx,
-          reason: :max_depth_exceeded
+          reason: :max_depth_exceeded,
         ) if depth > MAX_PIPELINE_DEPTH
 
         case value
@@ -180,7 +180,7 @@ module Parse
                 "SECURITY: Nested operator '#{key_str}' is blocked in stage #{stage_idx}. " \
                 "Blocked operators cannot be used anywhere in the pipeline.",
                 stage: stage_idx,
-                reason: :nested_blocked_stage
+                reason: :nested_blocked_stage,
               )
             end
 

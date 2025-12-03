@@ -15,7 +15,7 @@ class TestLiveQuerySubscription < Minitest::Test
       class_name: "Song",
       query: { "artist" => "Beatles" },
       fields: ["title", "plays"],
-      session_token: "r:abc123"
+      session_token: "r:abc123",
     )
   end
 
@@ -73,7 +73,7 @@ class TestLiveQuerySubscription < Minitest::Test
     subscription = Parse::LiveQuery::Subscription.new(
       client: @mock_client,
       class_name: "Song",
-      query: {}
+      query: {},
     )
 
     message = subscription.to_subscribe_message

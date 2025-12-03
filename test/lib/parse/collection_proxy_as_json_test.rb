@@ -77,7 +77,7 @@ class CollectionProxyAsJsonTest < Minitest::Test
 
     expected = [
       { "__type" => "Pointer", "className" => "CollectionTestSong", "objectId" => "song123" },
-      { "__type" => "Pointer", "className" => "CollectionTestSong", "objectId" => "song456" }
+      { "__type" => "Pointer", "className" => "CollectionTestSong", "objectId" => "song456" },
     ]
     assert_equal expected, result
   end
@@ -99,7 +99,7 @@ class CollectionProxyAsJsonTest < Minitest::Test
     result = proxy.as_json(pointers_only: true)
 
     expected = [
-      { "__type" => "Pointer", "className" => "CollectionTestSong", "objectId" => "song789" }
+      { "__type" => "Pointer", "className" => "CollectionTestSong", "objectId" => "song789" },
     ]
     assert_equal expected, result
   end

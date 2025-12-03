@@ -146,8 +146,8 @@ class TestClientAdapter < Minitest::Test
       connection_pooling: {
         pool_size: 10,
         idle_timeout: 60,
-        keep_alive: 30
-      }
+        keep_alive: 30,
+      },
     )
 
     # Should not raise any errors

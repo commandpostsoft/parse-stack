@@ -98,10 +98,10 @@ class AtlasSearchIntegrationTest < Minitest::Test
     # Results should have scores attached - either via method or hash key
     first = result.first
     score = if first.respond_to?(:search_score)
-      first.search_score
-    elsif first.is_a?(Hash)
-      first["_score"] || first[:_score]
-    end
+        first.search_score
+      elsif first.is_a?(Hash)
+        first["_score"] || first[:_score]
+      end
     assert score.is_a?(Numeric), "search_score should be numeric (got #{score.class})"
     assert score > 0, "search_score should be positive"
   end
@@ -160,7 +160,7 @@ class AtlasSearchIntegrationTest < Minitest::Test
 
   def test_faceted_search_basic
     facets = {
-      genre: { type: :string, path: :genre, num_buckets: 10 }
+      genre: { type: :string, path: :genre, num_buckets: 10 },
     }
 
     result = Parse::AtlasSearch.faceted_search("Song", "love", facets, limit: 5)
@@ -180,7 +180,7 @@ class AtlasSearchIntegrationTest < Minitest::Test
 
   def test_faceted_search_with_total_count
     facets = {
-      genre: { type: :string, path: :genre }
+      genre: { type: :string, path: :genre },
     }
 
     result = Parse::AtlasSearch.faceted_search("Song", "love", facets)
@@ -270,10 +270,9 @@ class AtlasSearchIntegrationTest < Minitest::Test
   def test_search_with_filter
     # Search with a filter constraint
     result = Parse::AtlasSearch.search("Song", "love",
-      filter: { "genre" => "Pop" },
-      limit: 10,
-      raw: true
-    )
+                                       filter: { "genre" => "Pop" },
+                                       limit: 10,
+                                       raw: true)
 
     assert result.is_a?(Parse::AtlasSearch::SearchResult)
     # If we have results with the filter, they should match the genre
@@ -287,10 +286,9 @@ class AtlasSearchIntegrationTest < Minitest::Test
   def test_search_with_numeric_filter
     # Search with a numeric filter using MongoDB operators
     result = Parse::AtlasSearch.search("Song", "love",
-      filter: { "plays" => { "$gte" => 0 } },
-      limit: 10,
-      raw: true
-    )
+                                       filter: { "plays" => { "$gte" => 0 } },
+                                       limit: 10,
+                                       raw: true)
 
     assert result.is_a?(Parse::AtlasSearch::SearchResult)
   end
@@ -365,9 +363,8 @@ class AtlasSearchIntegrationTest < Minitest::Test
 
   def test_search_multiple_fields
     result = Parse::AtlasSearch.search("Song", "love",
-      fields: [:title, :artist, :genre],
-      limit: 10
-    )
+                                       fields: [:title, :artist, :genre],
+                                       limit: 10)
 
     assert result.is_a?(Parse::AtlasSearch::SearchResult)
     # Should search across all specified fields

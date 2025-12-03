@@ -125,19 +125,19 @@ module Parse
         @health_monitor = HealthMonitor.new(
           client: self,
           ping_interval: cfg.ping_interval,
-          pong_timeout: cfg.pong_timeout
+          pong_timeout: cfg.pong_timeout,
         )
 
         @circuit_breaker = CircuitBreaker.new(
           failure_threshold: cfg.circuit_failure_threshold,
           reset_timeout: cfg.circuit_reset_timeout,
-          on_state_change: method(:on_circuit_state_change)
+          on_state_change: method(:on_circuit_state_change),
         )
 
         @event_queue = EventQueue.new(
           max_size: cfg.event_queue_size,
           strategy: cfg.backpressure_strategy,
-          on_drop: method(:on_event_dropped)
+          on_drop: method(:on_event_dropped),
         )
 
         Logging.info("LiveQuery client initialized", url: @url, application_id: @application_id)
@@ -262,7 +262,7 @@ module Parse
           max_message_size: @max_message_size,
           health_monitor: @health_monitor.health_info,
           circuit_breaker: @circuit_breaker.info,
-          event_queue: @event_queue.stats
+          event_queue: @event_queue.stats,
         }
       end
 
@@ -290,7 +290,7 @@ module Parse
           class_name: class_name,
           query: where,
           fields: fields,
-          session_token: session_token
+          session_token: session_token,
         )
 
         @monitor.synchronize do
@@ -373,7 +373,7 @@ module Parse
 
         uri = URI.parse(server_url)
         scheme = uri.scheme == "https" ? "wss" : "ws"
-        "#{scheme}://#{uri.host}:#{uri.port || (scheme == 'wss' ? 443 : 80)}"
+        "#{scheme}://#{uri.host}:#{uri.port || (scheme == "wss" ? 443 : 80)}"
       end
 
       # Establish TCP/SSL connection and perform WebSocket handshake
@@ -426,7 +426,7 @@ module Parse
           "Sec-WebSocket-Key: #{key}",
           "Sec-WebSocket-Version: 13",
           "Sec-WebSocket-Protocol: graphql-ws",
-          ""
+          "",
         ].join("\r\n") + "\r\n"
 
         @socket.write(handshake)
@@ -630,7 +630,7 @@ module Parse
           object_data: message["object"],
           original_data: message["original"],
           request_id: request_id,
-          raw: message
+          raw: message,
         )
 
         # Route through event queue for backpressure handling
@@ -746,7 +746,7 @@ module Parse
       def send_connect_message
         message = {
           op: "connect",
-          applicationId: @application_id
+          applicationId: @application_id,
         }
 
         message[:clientKey] = @client_key if @client_key

@@ -43,8 +43,8 @@ module Parse
         operator = {
           "text" => {
             "query" => query,
-            "path" => normalize_path(path)
-          }
+            "path" => normalize_path(path),
+          },
         }
 
         if fuzzy
@@ -67,8 +67,8 @@ module Parse
         operator = {
           "phrase" => {
             "query" => query,
-            "path" => normalize_path(path)
-          }
+            "path" => normalize_path(path),
+          },
         }
 
         operator["phrase"]["slop"] = slop if slop
@@ -87,14 +87,14 @@ module Parse
         operator = {
           "autocomplete" => {
             "query" => query,
-            "path" => path.to_s
-          }
+            "path" => path.to_s,
+          },
         }
 
         if fuzzy
           operator["autocomplete"]["fuzzy"] = fuzzy.is_a?(Hash) ? fuzzy : {
             "maxEdits" => 1,
-            "prefixLength" => 1
+            "prefixLength" => 1,
           }
         end
 
@@ -113,8 +113,8 @@ module Parse
         operator = {
           "wildcard" => {
             "query" => query,
-            "path" => normalize_path(path)
-          }
+            "path" => normalize_path(path),
+          },
         }
 
         operator["wildcard"]["allowAnalyzedField"] = allow_analyzed_field unless allow_analyzed_field.nil?
@@ -132,8 +132,8 @@ module Parse
         operator = {
           "regex" => {
             "query" => query,
-            "path" => normalize_path(path)
-          }
+            "path" => normalize_path(path),
+          },
         }
 
         operator["regex"]["allowAnalyzedField"] = allow_analyzed_field unless allow_analyzed_field.nil?
@@ -152,8 +152,8 @@ module Parse
       def range(path:, gt: nil, gte: nil, lt: nil, lte: nil)
         operator = {
           "range" => {
-            "path" => path.to_s
-          }
+            "path" => path.to_s,
+          },
         }
 
         operator["range"]["gt"] = format_range_value(gt) if gt
@@ -182,7 +182,7 @@ module Parse
         @fuzzy_config = {
           "maxEdits" => max_edits,
           "prefixLength" => prefix_length,
-          "maxExpansions" => max_expansions
+          "maxExpansions" => max_expansions,
         }
         self
       end
@@ -254,8 +254,8 @@ module Parse
         search_stage = {
           "$search" => {
             "index" => @index_name,
-            "compound" => compound
-          }
+            "compound" => compound,
+          },
         }
 
         search_stage["$search"]["highlight"] = @highlight_config if @highlight_config

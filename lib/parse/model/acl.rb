@@ -266,7 +266,8 @@ module Parse
       end
 
       permissions
-    end; 
+    end
+
     alias_method :add, :apply
 
     # Apply a {Parse::Role} to this ACL.
@@ -281,7 +282,8 @@ module Parse
     def apply_role(name, read = nil, write = nil)
       name = name.name if name.is_a?(Parse::Role)
       apply("role:#{name}", read, write)
-    end; 
+    end
+
     alias_method :add_role, :apply_role
 
     # Used for object conversion when formatting the input/output value in
@@ -344,7 +346,8 @@ module Parse
     def master_key_only!
       will_change!
       @permissions = {}
-    end; 
+    end
+
     alias_method :clear!, :master_key_only!
 
     # Grants read permission on all existing users and roles attached to this object.
@@ -446,6 +449,7 @@ module Parse
     def writeable_by
       permissions.select { |k, v| v.write }.keys
     end
+
     alias_method :writable_by, :writeable_by
 
     # Checks if a specific user or role (or any in an array) has read access to this object.
@@ -464,9 +468,9 @@ module Parse
       if user_or_role.is_a?(Array)
         # For arrays, just check each string value directly (no User object expansion)
         return user_or_role.any? do |item|
-          key = normalize_permission_key(item)
-          key && permissions[key]&.read == true
-        end
+                 key = normalize_permission_key(item)
+                 key && permissions[key]&.read == true
+               end
       end
 
       # Handle Parse::Pointer to User - expand to include user ID and roles
@@ -544,9 +548,9 @@ module Parse
       if user_or_role.is_a?(Array)
         # For arrays, just check each string value directly (no User object expansion)
         return user_or_role.any? do |item|
-          key = normalize_permission_key(item)
-          key && permissions[key]&.write == true
-        end
+                 key = normalize_permission_key(item)
+                 key && permissions[key]&.write == true
+               end
       end
 
       # Handle Parse::Pointer to User - expand to include user ID and roles
@@ -607,6 +611,7 @@ module Parse
       return false unless key
       permissions[key]&.write == true
     end
+
     alias_method :writable_by?, :writeable_by?
     alias_method :can_read?, :readable_by?
     alias_method :can_write?, :writeable_by?
@@ -669,11 +674,11 @@ module Parse
       if user_or_role.is_a?(Array)
         # For arrays, just check each string value directly (no User object expansion)
         return user_or_role.any? do |item|
-          key = normalize_permission_key(item)
-          next false unless key
-          perm = permissions[key]
-          perm&.read == true && perm&.write == true
-        end
+                 key = normalize_permission_key(item)
+                 next false unless key
+                 perm = permissions[key]
+                 perm&.read == true && perm&.write == true
+               end
       end
 
       # Handle Parse::Pointer to User - expand to include user ID and roles
@@ -741,6 +746,7 @@ module Parse
     def empty?
       permissions.empty? || permissions.values.none? { |v| v.present? }
     end
+
     alias_method :master_key_only?, :empty?
     alias_method :master_only?, :empty?
 

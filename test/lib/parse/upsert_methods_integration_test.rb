@@ -1,9 +1,9 @@
-require_relative '../../test_helper_integration'
+require_relative "../../test_helper_integration"
 
 # Test models for upsert method integration testing
 class TestUser < Parse::Object
   parse_class "TestUser"
-  
+
   property :email, :string
   property :name, :string
   property :age, :integer
@@ -13,7 +13,7 @@ end
 
 class TestProduct < Parse::Object
   parse_class "TestProduct"
-  
+
   property :sku, :string
   property :name, :string
   property :price, :float
@@ -33,7 +33,7 @@ class UpsertMethodsIntegrationTest < Minitest::Test
   end
 
   def test_first_or_create_finds_existing_object_unchanged
-    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
 
     with_parse_server do
       with_timeout(15, "first_or_create finds existing test") do
@@ -46,14 +46,14 @@ class UpsertMethodsIntegrationTest < Minitest::Test
 
         # Use first_or_create with different resource_attrs
         found_user = TestUser.first_or_create(
-          { email: "existing@example.com" }, 
+          { email: "existing@example.com" },
           { name: "Different Name", age: 30, status: "inactive" }
         )
 
         # Verify object was found, not created
         assert_equal original_id, found_user.id, "Should find existing user"
         assert_equal "Original Name", found_user.name, "Name should be unchanged"
-        assert_equal 25, found_user.age, "Age should be unchanged" 
+        assert_equal 25, found_user.age, "Age should be unchanged"
         assert_equal "active", found_user.status, "Status should be unchanged"
         refute found_user.new?, "Found user should not be new"
 
@@ -63,7 +63,7 @@ class UpsertMethodsIntegrationTest < Minitest::Test
   end
 
   def test_first_or_create_creates_new_object_unsaved
-    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
 
     with_parse_server do
       with_timeout(15, "first_or_create creates new unsaved test") do
@@ -71,7 +71,7 @@ class UpsertMethodsIntegrationTest < Minitest::Test
 
         # Use first_or_create for non-existing user
         new_user = TestUser.first_or_create(
-          { email: "new@example.com" }, 
+          { email: "new@example.com" },
           { name: "New User", age: 35, status: "pending" }
         )
 
@@ -93,7 +93,7 @@ class UpsertMethodsIntegrationTest < Minitest::Test
   end
 
   def test_first_or_create_bang_finds_existing_unchanged
-    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
 
     with_parse_server do
       with_timeout(15, "first_or_create! finds existing test") do
@@ -106,7 +106,7 @@ class UpsertMethodsIntegrationTest < Minitest::Test
 
         # Use first_or_create! with different resource_attrs
         found_product = TestProduct.first_or_create!(
-          { sku: "PROD-001" }, 
+          { sku: "PROD-001" },
           { name: "Different Product", price: 29.99, category: "electronics" }
         )
 
@@ -123,7 +123,7 @@ class UpsertMethodsIntegrationTest < Minitest::Test
   end
 
   def test_first_or_create_bang_creates_and_saves_new_object
-    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
 
     with_parse_server do
       with_timeout(15, "first_or_create! creates and saves test") do
@@ -131,7 +131,7 @@ class UpsertMethodsIntegrationTest < Minitest::Test
 
         # Use first_or_create! for non-existing product
         new_product = TestProduct.first_or_create!(
-          { sku: "PROD-NEW" }, 
+          { sku: "PROD-NEW" },
           { name: "New Product", price: 49.99, category: "gadgets" }
         )
 
@@ -155,7 +155,7 @@ class UpsertMethodsIntegrationTest < Minitest::Test
   end
 
   def test_create_or_update_bang_finds_and_updates_existing
-    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
 
     with_parse_server do
       with_timeout(15, "create_or_update! updates existing test") do
@@ -168,7 +168,7 @@ class UpsertMethodsIntegrationTest < Minitest::Test
 
         # Use create_or_update! to update existing user
         updated_user = TestUser.create_or_update!(
-          { email: "update@example.com" }, 
+          { email: "update@example.com" },
           { name: "Updated Name", age: 30, last_login: Time.now }
         )
 
@@ -191,7 +191,7 @@ class UpsertMethodsIntegrationTest < Minitest::Test
   end
 
   def test_create_or_update_bang_creates_new_object
-    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
 
     with_parse_server do
       with_timeout(15, "create_or_update! creates new test") do
@@ -199,7 +199,7 @@ class UpsertMethodsIntegrationTest < Minitest::Test
 
         # Use create_or_update! for non-existing user
         new_user = TestUser.create_or_update!(
-          { email: "create@example.com" }, 
+          { email: "create@example.com" },
           { name: "Created User", age: 28, status: "pending" }
         )
 
@@ -222,7 +222,7 @@ class UpsertMethodsIntegrationTest < Minitest::Test
   end
 
   def test_create_or_update_bang_no_save_when_no_changes
-    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
 
     with_parse_server do
       with_timeout(15, "create_or_update! no changes test") do
@@ -238,8 +238,8 @@ class UpsertMethodsIntegrationTest < Minitest::Test
 
         # Use create_or_update! with identical values
         result_product = TestProduct.create_or_update!(
-          { sku: "NO-CHANGE" }, 
-          { name: "Same Product", price: 15.50 }  # Identical values
+          { sku: "NO-CHANGE" },
+          { name: "Same Product", price: 15.50 } # Identical values
         )
 
         # Verify no save occurred (updated_at unchanged)
@@ -254,7 +254,7 @@ class UpsertMethodsIntegrationTest < Minitest::Test
   end
 
   def test_create_or_update_bang_empty_resource_attrs
-    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
 
     with_parse_server do
       with_timeout(15, "create_or_update! empty resource_attrs test") do
@@ -270,8 +270,8 @@ class UpsertMethodsIntegrationTest < Minitest::Test
 
         # Use create_or_update! with empty resource_attrs
         result_user = TestUser.create_or_update!(
-          { email: "empty@example.com" }, 
-          {}  # Empty resource_attrs
+          { email: "empty@example.com" },
+          {} # Empty resource_attrs
         )
 
         # Verify no modifications or saves occurred
@@ -286,7 +286,7 @@ class UpsertMethodsIntegrationTest < Minitest::Test
   end
 
   def test_performance_comparison_across_methods
-    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
 
     with_parse_server do
       with_timeout(20, "performance comparison test") do
@@ -336,7 +336,7 @@ class UpsertMethodsIntegrationTest < Minitest::Test
         # Verify performance optimizations
         # Allow some tolerance for natural variation in execution times
         performance_tolerance = 0.05 # 50ms tolerance
-        assert (first_or_create_time <= first_or_create_bang_time + performance_tolerance), 
+        assert (first_or_create_time <= first_or_create_bang_time + performance_tolerance),
                "first_or_create should be roughly as fast or faster (no save). Got #{(first_or_create_time * 1000).round(2)}ms vs #{(first_or_create_bang_time * 1000).round(2)}ms"
         assert create_or_update_no_change_time < create_or_update_with_change_time, "No-change should be faster than with-change"
 
@@ -346,20 +346,20 @@ class UpsertMethodsIntegrationTest < Minitest::Test
   end
 
   def test_complex_upsert_workflow
-    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
 
     with_parse_server do
       with_timeout(15, "complex upsert workflow test") do
         puts "\n=== Testing Complex Upsert Workflow ==="
 
         # Workflow: User registration and profile updates
-        
+
         # Step 1: Try to find existing user, create if not found (unsaved)
         user = TestUser.first_or_create(
           { email: "workflow@example.com" },
           { name: "Workflow User", age: 25, status: "pending" }
         )
-        
+
         assert user.new?, "User should be new and unsaved"
         assert_equal "pending", user.status, "Should have pending status"
 
@@ -381,11 +381,11 @@ class UpsertMethodsIntegrationTest < Minitest::Test
         # Step 4: Subsequent login (no changes needed)
         login_user = TestUser.create_or_update!(
           { email: "workflow@example.com" },
-          { age: 26 }  # Same age, should not save
+          { age: 26 } # Same age, should not save
         )
 
         assert_equal updated_user.id, login_user.id, "Should be the same user"
-        
+
         puts "✅ Complex upsert workflow completed successfully"
       end
     end

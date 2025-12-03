@@ -110,7 +110,7 @@ module Parse
 
       # Class methods applied to Parse::Object subclasses.
       module ClassMethods
-        
+
         # Execute a set of operations as an atomic transaction.
         # All operations will be executed in sequence, and if any fail,
         # the entire transaction will be rolled back.
@@ -120,7 +120,7 @@ module Parse
         #     user = User.first
         #     user.username = "new_username"
         #     batch.add(user)
-        #     
+        #
         #     post = Post.new(author: user, title: "New Post")
         #     batch.add(post)
         #   end
@@ -129,10 +129,10 @@ module Parse
         #   results = Parse::Object.transaction do
         #     user1 = User.first
         #     user1.score = 100
-        #     
+        #
         #     user2 = User.first(username: "player2")
         #     user2.score = 200
-        #     
+        #
         #     [user1, user2]  # Return array of objects to save
         #   end
         #
@@ -142,13 +142,13 @@ module Parse
         # @raise [Parse::Error] if the transaction fails
         def transaction(retries: 5, &block)
           raise ArgumentError, "Block required for transaction" unless block_given?
-          
+
           batch = Parse::BatchOperation.new(nil, transaction: true)
-          
+
           # Store original state of objects for rollback
           original_states = {}
           tracked_objects = []
-          
+
           # Wrap the batch to capture objects being added
           batch_wrapper = Object.new
           batch_wrapper.define_singleton_method(:is_a?) do |klass|
@@ -168,33 +168,33 @@ module Parse
                 changed_attributes: obj.instance_variable_get(:@changed_attributes)&.dup || {},
                 id: obj.id,
                 mutations_from_database: obj.instance_variable_get(:@mutations_from_database),
-                mutations_before_last_save: obj.instance_variable_get(:@mutations_before_last_save)
+                mutations_before_last_save: obj.instance_variable_get(:@mutations_before_last_save),
               }
               tracked_objects << obj
             end
             batch.add(obj)
           end
-          
+
           # Forward other methods to the real batch
           batch_wrapper.define_singleton_method(:method_missing) do |method, *args, &block|
             batch.send(method, *args, &block)
           end
-          
+
           result = yield(batch_wrapper)
-          
+
           # If block returns objects, add them to batch
           if result.respond_to?(:change_requests)
             batch_wrapper.add(result)
           elsif result.is_a?(Array)
             result.each { |obj| batch_wrapper.add(obj) if obj.respond_to?(:change_requests) }
           end
-          
+
           # Submit with retry logic for transaction conflicts
           attempts = 0
           begin
             attempts += 1
             responses = batch.submit
-            
+
             # Check for success
             if responses.all?(&:success?)
               # Update tracked objects with data from successful responses
@@ -235,7 +235,7 @@ module Parse
             else
               # Find first error
               error_response = responses.find { |r| !r.success? }
-              
+
               # Rollback local object states
               original_states.each do |obj, state|
                 obj.instance_variable_set(:@attributes, state[:attributes])
@@ -245,17 +245,16 @@ module Parse
                 obj.instance_variable_set(:@mutations_from_database, state[:mutations_from_database])
                 obj.instance_variable_set(:@mutations_before_last_save, state[:mutations_before_last_save])
               end
-              
+
               raise Parse::Error, "Transaction failed: #{error_response.error}"
             end
-            
           rescue Parse::Error => e
             # Retry on transaction conflict (error code 251)
             if e.message.include?("251") && attempts < retries
               sleep(0.1 * attempts) # Exponential backoff
               retry
             end
-            
+
             # Rollback local object states on final failure
             original_states.each do |obj, state|
               obj.instance_variable_set(:@attributes, state[:attributes])
@@ -265,10 +264,11 @@ module Parse
               obj.instance_variable_set(:@mutations_from_database, state[:mutations_from_database])
               obj.instance_variable_set(:@mutations_before_last_save, state[:mutations_before_last_save])
             end
-            
+
             raise e
           end
         end
+
         # @!attribute raise_on_save_failure
         # By default, we return `true` or `false` for save and destroy operations.
         # If you prefer to have `Parse::Object` raise an exception instead, you
@@ -317,7 +317,7 @@ module Parse
             obj = self.new merged_attrs
           end
           # If object exists, return it as-is without any modifications
-          
+
           obj
         end
 
@@ -351,7 +351,7 @@ module Parse
           obj
         end
 
-        # Finds the first object matching the query conditions and updates it with the attributes, 
+        # Finds the first object matching the query conditions and updates it with the attributes,
         # or creates a new *saved* object with the attributes. Saves new objects or existing objects with changes.
         # @example
         #   Parse::User.create_or_update!({ ..query conditions..}, {.. resource_attrs ..})
@@ -382,7 +382,7 @@ module Parse
               end
             end
           end
-          
+
           obj
         end
 
@@ -780,7 +780,7 @@ module Parse
 
           unless validation_passed
             if self.class.raise_on_save_failure || autoraise.present?
-              raise Parse::RecordNotSaved.new(self), "Validation failed: #{errors.full_messages.join(', ')}"
+              raise Parse::RecordNotSaved.new(self), "Validation failed: #{errors.full_messages.join(", ")}"
             end
             return false
           end

@@ -171,7 +171,7 @@ module Parse
             enqueued_count: @enqueued_count,
             processed_count: @processed_count,
             dropped_count: @dropped_count,
-            utilization: @max_size > 0 ? (@queue.size.to_f / @max_size * 100).round(1) : 0
+            utilization: @max_size > 0 ? (@queue.size.to_f / @max_size * 100).round(1) : 0,
           }
         end
       end
@@ -246,7 +246,6 @@ module Parse
           else
             false
           end
-
         when :drop_oldest
           dropped = @queue.shift
           @dropped_count += 1
@@ -254,7 +253,6 @@ module Parse
           @queue << event
           @enqueued_count += 1
           true
-
         when :drop_newest
           @dropped_count += 1
           notify_drop(event, :newest)

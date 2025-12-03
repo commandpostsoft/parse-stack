@@ -67,22 +67,22 @@ module Parse
     extend ::ActiveModel::Callbacks
     include Parse::Client::Connectable
     include Enumerable
-    
+
     # Known Parse classes for fast validation - dynamically loaded from schema
     def self.known_parse_classes
       @known_parse_classes ||= begin
-        # Get all classes from Parse schema
-        response = Parse.client.schemas
-        schema_classes = response.success? ? response.result.dig("results")&.map { |cls| cls["className"] } || [] : []
-        # Add built-in Parse classes
-        built_in_classes = %w[_User _Role _Session _Installation _Audience User Role Session Installation Audience]
-        (built_in_classes + schema_classes).uniq.freeze
-      rescue
-        # Fallback to built-in classes if schema query fails (e.g., during testing without server)
-        %w[_User _Role _Session _Installation _Audience User Role Session Installation Audience].freeze
-      end
+          # Get all classes from Parse schema
+          response = Parse.client.schemas
+          schema_classes = response.success? ? response.result.dig("results")&.map { |cls| cls["className"] } || [] : []
+          # Add built-in Parse classes
+          built_in_classes = %w[_User _Role _Session _Installation _Audience User Role Session Installation Audience]
+          (built_in_classes + schema_classes).uniq.freeze
+        rescue
+          # Fallback to built-in classes if schema query fails (e.g., during testing without server)
+          %w[_User _Role _Session _Installation _Audience User Role Session Installation Audience].freeze
+        end
     end
-    
+
     # Allow resetting the cached known classes (useful for testing)
     def self.reset_known_parse_classes!
       @known_parse_classes = nil
@@ -242,7 +242,7 @@ module Parse
         nested_map = {}
 
         keys.each do |key_path|
-          parts = key_path.to_s.split('.')
+          parts = key_path.to_s.split(".")
           # Skip keys without dots - they're top-level fields, not nested
           next if parts.length < 2
 
@@ -287,7 +287,7 @@ module Parse
           #puts "Merging Subclause: #{subclause.as_json}"
 
           subclause_json = subclause.as_json || {}
-          
+
           # Special handling for aggregation pipeline constraints
           # Instead of overwriting, concatenate the pipeline arrays
           if clause.key?("__aggregation_pipeline") && subclause_json.key?("__aggregation_pipeline")
@@ -298,7 +298,7 @@ module Parse
           else
             clause.deep_merge!(subclause_json)
           end
-          
+
           clause
         end
       end
@@ -417,7 +417,7 @@ module Parse
           self.session_token = value
         elsif expr_sym == :read_preference
           self.read_preference = value
-        # ACL convenience query options
+          # ACL convenience query options
         elsif expr_sym == :readable_by
           readable_by(value)
         elsif expr_sym == :writable_by
@@ -500,6 +500,7 @@ module Parse
       @results = nil if fields.count > 0
       self # chaining
     end
+
     alias_method :select_fields, :keys
 
     # Extract values for a specific field from all matching objects.
@@ -511,11 +512,11 @@ module Parse
     #   # Get all asset names
     #   Asset.query.pluck(:name)
     #   # => ["video1.mp4", "image1.jpg", "audio1.mp3"]
-    #   
+    #
     #   # Get all author team IDs
     #   Asset.query.pluck(:author_team)
     #   # => [{"__type"=>"Pointer", "className"=>"Team", "objectId"=>"abc123"}, ...]
-    #   
+    #
     #   # Get created dates
     #   Asset.query.pluck(:created_at)
     #   # => [2024-11-24 10:30:00 UTC, 2024-11-25 14:20:00 UTC, ...]
@@ -526,11 +527,11 @@ module Parse
 
       # Use keys to select only the field we want for efficiency
       query_with_field = self.dup.keys(field)
-      
+
       # Get the results and extract the field values
       objects = query_with_field.results
       formatted_field = Query.format_field(field)
-      
+
       objects.map do |obj|
         if obj.respond_to?(:attributes)
           # For Parse objects, get the attribute value
@@ -818,13 +819,13 @@ module Parse
 
       # Format field for aggregation
       formatted_field = format_aggregation_field(field)
-      
+
       # Build the aggregation pipeline for distinct values
       pipeline = [
         { "$group" => { "_id" => "$#{formatted_field}" } },
-        { "$project" => { "_id" => 0, "value" => "$_id" } }
+        { "$project" => { "_id" => 0, "value" => "$_id" } },
       ]
-      
+
       # Add match stage if there are where conditions
       compiled_where = compile_where
       if compiled_where.present?
@@ -833,18 +834,18 @@ module Parse
         stringified_where = convert_dates_for_aggregation(aggregation_where)
         pipeline.unshift({ "$match" => stringified_where })
       end
-      
+
       # Use the Aggregation class to execute
       aggregation = aggregate(pipeline, verbose: @verbose_aggregate)
       raw_results = aggregation.raw
-      
+
       # Extract values from the results
       values = raw_results.map { |item| item["value"] }.compact
-      
+
       # Use schema-based approach to handle pointer field results
       parse_class = Parse::Model.const_get(@table) rescue nil
       is_pointer = parse_class && is_pointer_field?(parse_class, field, formatted_field)
-      
+
       if is_pointer && values.any?
         # Convert all values using schema information
         converted_values = values.map do |value|
@@ -853,17 +854,17 @@ module Parse
         converted_values
       elsif return_pointers
         # Explicit conversion requested - try to convert using schema or fallback to string detection
-        if values.any? && values.first.is_a?(String) && values.first.include?('$')
+        if values.any? && values.first.is_a?(String) && values.first.include?("$")
           to_pointers(values, field)
         else
           values.map { |value| convert_pointer_value_with_schema(value, field, return_pointers: true) }
         end
       else
         # Fallback to original string detection for backward compatibility
-        if values.any? && values.first.is_a?(String) && values.first.include?('$') && values.first.match(/^[A-Za-z]\w*\$\w+$/)
-          first_class_name = values.first.split('$', 2)[0]
+        if values.any? && values.first.is_a?(String) && values.first.include?("$") && values.first.match(/^[A-Za-z]\w*\$\w+$/)
+          first_class_name = values.first.split("$", 2)[0]
           if values.all? { |v| v.is_a?(String) && v.start_with?("#{first_class_name}$") }
-            values.map { |value| value.split('$', 2)[1] }
+            values.map { |value| value.split("$", 2)[1] }
           else
             values
           end
@@ -952,25 +953,25 @@ module Parse
       # Format field name according to Parse conventions
       # Handle special MongoDB field mappings for aggregation
       formatted_field = case field.to_s
-                        when 'created_at', 'createdAt'
-                          '_created_at'
-                        when 'updated_at', 'updatedAt'  
-                          '_updated_at'
-                        else
-                          Query.format_field(field)
-                        end
-      
+        when "created_at", "createdAt"
+          "_created_at"
+        when "updated_at", "updatedAt"
+          "_updated_at"
+        else
+          Query.format_field(field)
+        end
+
       # Build the aggregation pipeline
       pipeline = [
         { "$group" => { "_id" => "$#{formatted_field}" } },
-        { "$count" => "distinctCount" }
+        { "$count" => "distinctCount" },
       ]
 
       # Use the Aggregation class to execute
       # The aggregate method will automatically handle where conditions
       aggregation = aggregate(pipeline, verbose: @verbose_aggregate)
       raw_results = aggregation.raw
-      
+
       # Extract the count from the response
       if raw_results.is_a?(Array) && raw_results.first
         raw_results.first["distinctCount"] || 0
@@ -1080,12 +1081,12 @@ module Parse
     def get(object_id)
       parse_class = Object.const_get(@table) if Object.const_defined?(@table)
       parse_class ||= Parse::Object
-      
+
       response = client.fetch_object(@table, object_id)
       if response.error?
         raise Parse::Error.new(response.error_code, response.message)
       end
-      
+
       Parse::Object.build(response.result, parse_class)
     end
 
@@ -1115,12 +1116,12 @@ module Parse
 
         items = response.results
         items = if raw
-                  items
-                elsif return_pointers
-                  to_pointers(items)
-                else
-                  decode(items)
-                end
+            items
+          elsif return_pointers
+            to_pointers(items)
+          else
+            decode(items)
+          end
         # if a block is provided, we do not keep the results after processing.
         if block_given?
           items.each(&block)
@@ -1168,17 +1169,17 @@ module Parse
         pref = read_preference.to_s.upcase.gsub("_", " ").split.join("_")
         # Normalize common formats
         pref = case pref
-        when "PRIMARY" then "PRIMARY"
-        when "PRIMARY_PREFERRED", "PRIMARYPREFERRED" then "PRIMARY_PREFERRED"
-        when "SECONDARY" then "SECONDARY"
-        when "SECONDARY_PREFERRED", "SECONDARYPREFERRED" then "SECONDARY_PREFERRED"
-        when "NEAREST" then "NEAREST"
-        else pref
-        end
+          when "PRIMARY" then "PRIMARY"
+          when "PRIMARY_PREFERRED", "PRIMARYPREFERRED" then "PRIMARY_PREFERRED"
+          when "SECONDARY" then "SECONDARY"
+          when "SECONDARY_PREFERRED", "SECONDARYPREFERRED" then "SECONDARY_PREFERRED"
+          when "NEAREST" then "NEAREST"
+          else pref
+          end
         if Parse::Protocol::READ_PREFERENCES.include?(pref)
           headers[Parse::Protocol::READ_PREFERENCE] = pref
         else
-          warn "[ParseQuery] Invalid read preference: #{read_preference}. Valid values: #{Parse::Protocol::READ_PREFERENCES.join(', ')}"
+          warn "[ParseQuery] Invalid read preference: #{read_preference}. Valid values: #{Parse::Protocol::READ_PREFERENCES.join(", ")}"
         end
       end
       headers
@@ -1247,12 +1248,12 @@ module Parse
             response = fetch!(compile)
             return [] if response.error?
             items = if raw
-                      response.results
-                    elsif return_pointers
-                      to_pointers(response.results)
-                    else
-                      decode(response.results)
-                    end
+                response.results
+              elsif return_pointers
+                to_pointers(response.results)
+              else
+                decode(response.results)
+              end
             return items.each(&block) if block_given?
             @results = items
           end
@@ -1267,14 +1268,14 @@ module Parse
     # @return [Boolean] true if aggregation pipeline is required
     def requires_aggregation_pipeline?
       return false if @where.empty?
-      
+
       compiled_where = compile_where
-      
+
       # Check if the compiled where itself has aggregation pipeline marker
       return true if compiled_where.key?("__aggregation_pipeline")
-      
+
       # Check if any of the constraint values has aggregation pipeline marker
-      compiled_where.values.any? { |constraint| 
+      compiled_where.values.any? { |constraint|
         constraint.is_a?(Hash) && constraint.key?("__aggregation_pipeline")
       }
     end
@@ -1791,7 +1792,7 @@ module Parse
           "_id" => 1,
           "_created_at" => 1,
           "_updated_at" => 1,
-          "_acl" => 1
+          "_acl" => 1,
         }
         @keys.each do |key|
           mongo_field = convert_field_for_direct_mongodb(key.to_s)
@@ -1816,7 +1817,7 @@ module Parse
       includes.each do |field|
         # Handle nested includes (e.g., 'artist.label') - only process first level
         field_str = field.to_s
-        base_field = field_str.split('.').first.to_sym
+        base_field = field_str.split(".").first.to_sym
 
         # Get target class from model references
         target_class = get_pointer_target_class(base_field)
@@ -1834,10 +1835,10 @@ module Parse
             lookup_id_field => {
               "$arrayElemAt" => [
                 { "$split" => ["$#{mongo_pointer_field}", { "$literal" => "$" }] },
-                1
-              ]
-            }
-          }
+                1,
+              ],
+            },
+          },
         }
 
         # Stage 2: $lookup to join with target collection
@@ -1846,21 +1847,21 @@ module Parse
             "from" => target_class,
             "localField" => lookup_id_field,
             "foreignField" => "_id",
-            "as" => lookup_result_field
-          }
+            "as" => lookup_result_field,
+          },
         }
 
         # Stage 3: Unwind the array (since $lookup returns array, but we want single object)
         stages << {
           "$unwind" => {
             "path" => "$#{lookup_result_field}",
-            "preserveNullAndEmptyArrays" => true
-          }
+            "preserveNullAndEmptyArrays" => true,
+          },
         }
 
         # Stage 4: Clean up temporary lookup ID field
         stages << {
-          "$unset" => lookup_id_field
+          "$unset" => lookup_id_field,
         }
       end
 
@@ -2166,7 +2167,7 @@ module Parse
         @table,
         where: compile_where,
         fields: fields,
-        session_token: session_token || @session_token
+        session_token: session_token || @session_token,
       )
     end
 
@@ -2210,7 +2211,7 @@ module Parse
     #   results = aggregation.results
     #   raw_results = aggregation.raw
     #   pointer_results = aggregation.result_pointers
-    #   
+    #
     #   # With verbose output
     #   aggregation = Asset.query.aggregate(pipeline, verbose: true)
     #   # With MongoDB direct (required for $inQuery constraints in aggregation)
@@ -2303,7 +2304,7 @@ module Parse
 
       # Append the provided pipeline stages
       complete_pipeline.concat(pipeline)
-      
+
       # Add $sort stage from order constraints if any exist
       unless @order.empty?
         sort_stage = {}
@@ -2315,17 +2316,17 @@ module Parse
         end
         complete_pipeline << { "$sort" => sort_stage } if sort_stage.any?
       end
-      
+
       # Add $skip stage if specified
       if @skip > 0
         complete_pipeline << { "$skip" => @skip }
       end
-      
+
       # Add $limit stage if specified
       if @limit.is_a?(Numeric) && @limit > 0
         complete_pipeline << { "$limit" => @limit }
       end
-      
+
       # Auto-detect if mongo_direct is needed (when $inQuery constraints are present and MongoDB is available)
       use_mongo_direct = mongo_direct
       if use_mongo_direct.nil? && lookup_stages && lookup_stages.any? && defined?(Parse::MongoDB) && Parse::MongoDB.enabled?
@@ -2412,7 +2413,7 @@ module Parse
         end
       end
 
-      # Add $sort stage from order constraints  
+      # Add $sort stage from order constraints
       unless @order.empty?
         sort_stage = {}
         @order.each do |order_obj|
@@ -2455,7 +2456,7 @@ module Parse
         if constraints.keys == [:__type, :iso] && constraints[:__type] == "Date"
           return constraints[:iso]
         end
-        
+
         # Check if this is a Parse Pointer hash and convert to MongoDB format
         if constraints.keys.sort == [:__type, :className, :objectId].sort && constraints[:__type] == "Pointer"
           return "#{constraints[:className]}$#{constraints[:objectId]}"
@@ -2463,7 +2464,7 @@ module Parse
         if constraints.keys.sort == ["__type", "className", "objectId"].sort && constraints["__type"] == "Pointer"
           return "#{constraints["className"]}$#{constraints["objectId"]}"
         end
-        
+
         result = {}
         constraints.each do |key, value|
           result[key] = convert_for_aggregation(value)
@@ -2682,16 +2683,16 @@ module Parse
               lookup_id_field => {
                 "$arrayElemAt" => [
                   { "$split" => ["$#{mongo_pointer_field}", { "$literal" => "$" }] },
-                  1
-                ]
-              }
-            }
+                  1,
+                ],
+              },
+            },
           }
 
           # Stage 2: $lookup to join with the related collection
           # Build pipeline to match on _id and apply where conditions
           lookup_pipeline = [
-            { "$match" => { "$expr" => { "$eq" => ["$_id", "$$lookupId"] } } }
+            { "$match" => { "$expr" => { "$eq" => ["$_id", "$$lookupId"] } } },
           ]
 
           # Add where conditions to lookup pipeline if present
@@ -2706,8 +2707,8 @@ module Parse
               "from" => class_name,
               "let" => { "lookupId" => "$#{lookup_id_field}" },
               "pipeline" => lookup_pipeline,
-              "as" => lookup_result_field
-            }
+              "as" => lookup_result_field,
+            },
           }
 
           # Match based on whether lookup returned results
@@ -2827,7 +2828,7 @@ module Parse
         inc_str = inc.to_s
 
         # Skip includes with dots - these are internal references (e.g., "project.owner")
-        next if inc_str.include?('.')
+        next if inc_str.include?(".")
 
         inc_sym = inc_str.to_sym
         field_type = fields[inc_sym]
@@ -2850,6 +2851,7 @@ module Parse
         end
       end
     end
+
     private :validate_includes_vs_keys
 
     # Builds Parse::Pointer objects based on the set of Parse JSON hashes in an array.
@@ -2863,9 +2865,9 @@ module Parse
           converted = convert_pointer_value_with_schema(m, field, return_pointers: true)
           if converted.is_a?(Parse::Pointer)
             converted
-          elsif m.is_a?(String) && m.include?('$')
+          elsif m.is_a?(String) && m.include?("$")
             # Fallback to string parsing if schema conversion didn't work
-            class_name, object_id = m.split('$', 2)
+            class_name, object_id = m.split("$", 2)
             if class_name && object_id
               Parse::Pointer.new(class_name, object_id)
             end
@@ -2882,9 +2884,9 @@ module Parse
               # Standard Parse object with objectId - use the query table name
               Parse::Pointer.new(@table, m["objectId"])
             end
-          elsif m.is_a?(String) && m.include?('$')
+          elsif m.is_a?(String) && m.include?("$")
             # Handle MongoDB pointer string format: "ClassName$objectId"
-            class_name, object_id = m.split('$', 2)
+            class_name, object_id = m.split("$", 2)
             if class_name && object_id
               Parse::Pointer.new(class_name, object_id)
             end
@@ -2950,7 +2952,7 @@ module Parse
     # @return [Array] the aggregation pipeline stages, or empty array if no pipeline needed
     def pipeline
       pipeline_stages = []
-      
+
       # Check if any constraints generate aggregation pipelines
       @where.each do |constraint|
         if constraint.respond_to?(:as_json)
@@ -2960,10 +2962,10 @@ module Parse
           end
         end
       end
-      
+
       pipeline_stages
     end
-    
+
     # Check if this query requires aggregation pipeline execution
     # @return [Boolean] true if the query contains pipeline-based constraints
     def requires_aggregation?
@@ -2986,10 +2988,10 @@ module Parse
 
       # Format field name according to Parse conventions
       formatted_field = format_aggregation_field(field)
-      
+
       # Build the aggregation pipeline
       pipeline = [
-        { "$group" => { "_id" => nil, "total" => { "$sum" => "$#{formatted_field}" } } }
+        { "$group" => { "_id" => nil, "total" => { "$sum" => "$#{formatted_field}" } } },
       ]
 
       execute_basic_aggregation(pipeline, "sum", field, "total")
@@ -3005,14 +3007,15 @@ module Parse
 
       # Format field name according to Parse conventions
       formatted_field = format_aggregation_field(field)
-      
+
       # Build the aggregation pipeline
       pipeline = [
-        { "$group" => { "_id" => nil, "avg" => { "$avg" => "$#{formatted_field}" } } }
+        { "$group" => { "_id" => nil, "avg" => { "$avg" => "$#{formatted_field}" } } },
       ]
 
       execute_basic_aggregation(pipeline, "average", field, "avg")
     end
+
     alias_method :avg, :average
 
     # Find the minimum value for a specific field.
@@ -3025,10 +3028,10 @@ module Parse
 
       # Format field name according to Parse conventions
       formatted_field = format_aggregation_field(field)
-      
+
       # Build the aggregation pipeline
       pipeline = [
-        { "$group" => { "_id" => nil, "min" => { "$min" => "$#{formatted_field}" } } }
+        { "$group" => { "_id" => nil, "min" => { "$min" => "$#{formatted_field}" } } },
       ]
 
       execute_basic_aggregation(pipeline, "min", field, "min")
@@ -3044,10 +3047,10 @@ module Parse
 
       # Format field name according to Parse conventions
       formatted_field = format_aggregation_field(field)
-      
+
       # Build the aggregation pipeline
       pipeline = [
-        { "$group" => { "_id" => nil, "max" => { "$max" => "$#{formatted_field}" } } }
+        { "$group" => { "_id" => nil, "max" => { "$max" => "$#{formatted_field}" } } },
       ]
 
       execute_basic_aggregation(pipeline, "max", field, "max")
@@ -3064,17 +3067,17 @@ module Parse
     #   Asset.group_by(:category).count
     #   Asset.where(:status => "active").group_by(:project).sum(:file_size)
     #   Asset.group_by(:media_format).average(:duration)
-    #   
+    #
     #   # Array flattening example:
     #   # Record 1: tags = ["a", "b"]
-    #   # Record 2: tags = ["b", "c"] 
+    #   # Record 2: tags = ["b", "c"]
     #   Asset.group_by(:tags, flatten_arrays: true).count
     #   # => {"a" => 1, "b" => 2, "c" => 1}
-    #   
+    #
     #   # Sortable results:
     #   Asset.group_by(:category, sortable: true).count.sort_by_value_desc
     #   # => [["video", 45], ["image", 23], ["audio", 12]]
-    #   
+    #
     #   # Return Parse::Pointer objects for pointer fields:
     #   Asset.group_by(:author_team, return_pointers: true).count
     #   # => {#<Parse::Pointer @parse_class="Team" @id="team1"> => 5, ...}
@@ -3106,7 +3109,7 @@ module Parse
     #   #   "image" => [#<Asset:image1>, #<Asset:image2>, ...],
     #   #   "audio" => [#<Asset:audio1>, ...]
     #   # }
-    #   
+    #
     #   # Get Parse::Pointer objects instead (memory efficient)
     #   Asset.query.group_objects_by(:category, return_pointers: true)
     #   # => {
@@ -3121,40 +3124,40 @@ module Parse
 
       # Fetch all objects that match the query
       objects = results(return_pointers: return_pointers)
-      
+
       # Group objects by the specified field value
       grouped = {}
       objects.each do |obj|
         # Get the field value for grouping
         field_value = if obj.respond_to?(:attributes)
-                        # For Parse objects, try multiple field access patterns
-                        obj.attributes[field.to_s] || 
-                        obj.attributes[Query.format_field(field).to_s] ||
-                        (obj.respond_to?(field) ? obj.send(field) : nil)
-                      elsif obj.is_a?(Hash)
-                        # For raw JSON objects, try multiple field access patterns
-                        obj[field.to_s] || 
-                        obj[Query.format_field(field).to_s] ||
-                        obj[field.to_sym] ||
-                        obj[Query.format_field(field).to_sym]
-                      else
-                        # Fallback - try to access as method
-                        obj.respond_to?(field) ? obj.send(field) : nil
-                      end
-        
+            # For Parse objects, try multiple field access patterns
+            obj.attributes[field.to_s] ||
+            obj.attributes[Query.format_field(field).to_s] ||
+            (obj.respond_to?(field) ? obj.send(field) : nil)
+          elsif obj.is_a?(Hash)
+            # For raw JSON objects, try multiple field access patterns
+            obj[field.to_s] ||
+            obj[Query.format_field(field).to_s] ||
+            obj[field.to_sym] ||
+            obj[Query.format_field(field).to_sym]
+          else
+            # Fallback - try to access as method
+            obj.respond_to?(field) ? obj.send(field) : nil
+          end
+
         # Handle nil field values
         group_key = field_value.nil? ? "null" : field_value
-        
+
         # Convert Parse pointer values to readable format for grouping key
         if group_key.is_a?(Hash) && group_key["__type"] == "Pointer"
-          group_key = "#{group_key['className']}##{group_key['objectId']}"
+          group_key = "#{group_key["className"]}##{group_key["objectId"]}"
         end
-        
+
         # Initialize array if this is the first object for this group
         grouped[group_key] ||= []
         grouped[group_key] << obj
       end
-      
+
       grouped
     end
 
@@ -3169,7 +3172,7 @@ module Parse
     # @example
     #   # Basic usage with object fields
     #   Project.query.to_table([:object_id, :name, :address])
-    #   
+    #
     #   # With dot notation for related objects
     #   Asset.query.to_table([
     #     :object_id,
@@ -3177,7 +3180,7 @@ module Parse
     #     "project.team.name",   # Access team name through project->team relationship
     #     :file_size
     #   ])
-    #   
+    #
     #   # With custom headers and calculated columns
     #   Project.query.to_table([
     #     { field: :object_id, header: "ID" },
@@ -3185,7 +3188,7 @@ module Parse
     #     { field: :address, header: "Project Address" },
     #     { block: ->(proj) { proj.notes.count }, header: "Note Count" }
     #   ])
-    #   
+    #
     #   # Your specific example:
     #   Project.query.to_table([
     #     :object_id,
@@ -3196,20 +3199,20 @@ module Parse
     def to_table(columns = nil, format: :ascii, headers: nil, sort_by: nil, sort_order: :asc)
       objects = results
       return format_empty_table(format) if objects.empty?
-      
+
       # Auto-detect columns if not provided
       if columns.nil?
         columns = auto_detect_columns(objects.first)
       end
-      
+
       # Build table data
       table_data = build_table_data(objects, columns, headers)
-      
+
       # Sort table data if sort_by is specified
       if sort_by
         sort_table_data!(table_data, sort_by, sort_order)
       end
-      
+
       # Format based on requested format
       case format
       when :ascii
@@ -3234,7 +3237,7 @@ module Parse
     #   Capture.group_by_date(:created_at, :day).count
     #   Asset.group_by_date(:created_at, :month).sum(:file_size)
     #   Capture.where(:project => project_id).group_by_date(:created_at, :week).average(:duration)
-    #   
+    #
     #   # Sortable date results:
     #   Asset.group_by_date(:created_at, :day, sortable: true).count.sort_by_value_desc
     #   # => [["2024-11-25", 45], ["2024-11-24", 23], ...]
@@ -3264,7 +3267,7 @@ module Parse
     #   # Basic usage (returns raw values for non-pointer fields)
     #   Asset.query.distinct_objects(:media_format)
     #   # => ["video", "audio", "photo"]
-    #   
+    #
     #   # Auto-populate Parse pointer objects (much faster than manual conversion)
     #   Asset.query.distinct_objects(:author_team)
     #   # => [#<Team:0x123 @attributes={"name"=>"Team A", ...}>, ...]
@@ -3286,7 +3289,7 @@ module Parse
       if obj.respond_to?(:attributes)
         # Parse object - use common fields
         common_fields = [:object_id]
-        obj.attributes.keys.reject { |k| k.start_with?('_') }.each do |key|
+        obj.attributes.keys.reject { |k| k.start_with?("_") }.each do |key|
           common_fields << key.to_sym
         end
         common_fields.first(5) # Limit to first 5 fields
@@ -3300,7 +3303,7 @@ module Parse
 
     # Build table data structure with headers and rows.
     # @param objects [Array] array of objects to convert
-    # @param columns [Array] column definitions  
+    # @param columns [Array] column definitions
     # @param headers [Array<String>] custom headers
     # @return [Hash] { headers: [...], rows: [[...], [...]] }
     def build_table_data(objects, columns, headers)
@@ -3308,11 +3311,11 @@ module Parse
       table_headers = headers || columns.map do |col|
         case col
         when Symbol, String
-          col.to_s.gsub('_', ' ').split.map(&:capitalize).join(' ')
+          col.to_s.gsub("_", " ").split.map(&:capitalize).join(" ")
         when Hash
-          col[:header] || col[:field]&.to_s&.gsub('_', ' ')&.split&.map(&:capitalize)&.join(' ') || 'Custom'
+          col[:header] || col[:field]&.to_s&.gsub("_", " ")&.split&.map(&:capitalize)&.join(" ") || "Custom"
         else
-          'Unknown'
+          "Unknown"
         end
       end
 
@@ -3332,24 +3335,24 @@ module Parse
     # @return [String] formatted column value
     def extract_column_value(obj, col)
       value = case col
-              when Symbol, String
-                extract_field_value(obj, col)
-              when Hash
-                if col[:block]
-                  # Custom block evaluation
-                  begin
-                    col[:block].call(obj)
-                  rescue => e
-                    "Error: #{e.message}"
-                  end
-                elsif col[:field]
-                  extract_field_value(obj, col[:field])
-                else
-                  'N/A'
-                end
-              else
-                'Unknown'
-              end
+        when Symbol, String
+          extract_field_value(obj, col)
+        when Hash
+          if col[:block]
+            # Custom block evaluation
+            begin
+              col[:block].call(obj)
+            rescue => e
+              "Error: #{e.message}"
+            end
+          elsif col[:field]
+            extract_field_value(obj, col[:field])
+          else
+            "N/A"
+          end
+        else
+          "Unknown"
+        end
 
       # Format the value for display
       format_table_value(value)
@@ -3361,17 +3364,17 @@ module Parse
     # @param field [Symbol, String] field name or dot-notation path
     # @return [Object] field value
     def extract_field_value(obj, field)
-      field_path = field.to_s.split('.')
+      field_path = field.to_s.split(".")
       current_obj = obj
-      
+
       field_path.each do |segment|
         current_obj = extract_single_field_value(current_obj, segment)
         break if current_obj.nil?
       end
-      
+
       current_obj
     end
-    
+
     # Extract a single field value from an object (no dot notation).
     # @param obj [Object] object to extract from
     # @param field [String] single field name
@@ -3379,18 +3382,18 @@ module Parse
     def extract_single_field_value(obj, field)
       if obj.respond_to?(:attributes)
         # Parse objects - try multiple access patterns
-        value = obj.attributes[field] || 
+        value = obj.attributes[field] ||
                 obj.attributes[Query.format_field(field)] ||
                 (obj.respond_to?(field) ? obj.send(field) : nil)
-        
+
         # If it's a Parse pointer, try to resolve it
-        if value.is_a?(Hash) && value['__type'] == 'Pointer'
+        if value.is_a?(Hash) && value["__type"] == "Pointer"
           resolve_parse_pointer(value)
         else
           value
         end
       elsif obj.is_a?(Hash)
-        # Hash objects  
+        # Hash objects
         obj[field] || obj[field.to_sym] ||
         obj[Query.format_field(field)] || obj[Query.format_field(field).to_sym]
       else
@@ -3398,24 +3401,24 @@ module Parse
         obj.respond_to?(field) ? obj.send(field) : nil
       end
     end
-    
+
     # Attempt to resolve a Parse pointer to the actual object.
     # @param pointer [Hash] Parse pointer hash
     # @return [Object] resolved object or pointer hash if resolution fails
     def resolve_parse_pointer(pointer)
-      return pointer unless pointer['className'] && pointer['objectId']
-      
+      return pointer unless pointer["className"] && pointer["objectId"]
+
       begin
         # Try to find the model class and fetch the object
-        model_class = Object.const_get(pointer['className'])
+        model_class = Object.const_get(pointer["className"])
         if model_class < Parse::Object
-          resolved_obj = model_class.find(pointer['objectId'])
+          resolved_obj = model_class.find(pointer["objectId"])
           return resolved_obj if resolved_obj
         end
       rescue NameError, Parse::Error
         # If we can't resolve, fall back to displaying pointer info
       end
-      
+
       # Return pointer representation if resolution failed
       pointer
     end
@@ -3427,62 +3430,62 @@ module Parse
     def sort_table_data!(table_data, sort_by, sort_order)
       headers = table_data[:headers]
       rows = table_data[:rows]
-      
+
       # Find the column index to sort by
       sort_index = case sort_by
-      when Integer
-        raise ArgumentError, "Column index #{sort_by} out of range" if sort_by < 0 || sort_by >= headers.size
-        sort_by
-      when String, Symbol
-        # Try to find by header name first
-        index = headers.find_index { |h| h.downcase == sort_by.to_s.downcase }
-        
-        # If not found by header, try by formatted field name
-        if index.nil?
-          formatted_sort_by = sort_by.to_s.gsub('_', ' ').split.map(&:capitalize).join(' ')
-          index = headers.find_index { |h| h.downcase == formatted_sort_by.downcase }
+        when Integer
+          raise ArgumentError, "Column index #{sort_by} out of range" if sort_by < 0 || sort_by >= headers.size
+          sort_by
+        when String, Symbol
+          # Try to find by header name first
+          index = headers.find_index { |h| h.downcase == sort_by.to_s.downcase }
+
+          # If not found by header, try by formatted field name
+          if index.nil?
+            formatted_sort_by = sort_by.to_s.gsub("_", " ").split.map(&:capitalize).join(" ")
+            index = headers.find_index { |h| h.downcase == formatted_sort_by.downcase }
+          end
+
+          if index.nil?
+            raise ArgumentError, "Column '#{sort_by}' not found. Available columns: #{headers.join(", ")}"
+          end
+
+          index
+        else
+          raise ArgumentError, "sort_by must be a column name, header text, or column index"
         end
-        
-        if index.nil?
-          raise ArgumentError, "Column '#{sort_by}' not found. Available columns: #{headers.join(', ')}"
-        end
-        
-        index
-      else
-        raise ArgumentError, "sort_by must be a column name, header text, or column index"
-      end
-      
+
       # Sort rows by the specified column
       sorted_rows = rows.sort do |a, b|
         val_a = a[sort_index]
         val_b = b[sort_index]
-        
+
         # Handle different data types for comparison
         comparison = compare_table_values(val_a, val_b)
         sort_order == :desc ? -comparison : comparison
       end
-      
+
       table_data[:rows] = sorted_rows
     end
 
     # Compare two values for table sorting.
     # @param a [Object] first value
-    # @param b [Object] second value  
+    # @param b [Object] second value
     # @return [Integer] -1, 0, or 1 for comparison
     def compare_table_values(a, b)
       # Handle nil values
       return 0 if a.nil? && b.nil?
       return -1 if a.nil?
       return 1 if b.nil?
-      
+
       # Convert to strings and try numeric comparison first
       a_str = a.to_s
       b_str = b.to_s
-      
+
       # Try to parse as numbers for proper numeric sorting
       a_num = Float(a_str) rescue nil
       b_num = Float(b_str) rescue nil
-      
+
       if a_num && b_num
         a_num <=> b_num
       else
@@ -3496,19 +3499,19 @@ module Parse
     def format_table_value(value)
       case value
       when nil
-        'null'
+        "null"
       when String
         value.length > 50 ? "#{value[0..47]}..." : value
       when Parse::Pointer
         "#{value.parse_class}##{value.id}"
       when Hash
-        if value['__type'] == 'Pointer'
-          "#{value['className']}##{value['objectId']}"
+        if value["__type"] == "Pointer"
+          "#{value["className"]}##{value["objectId"]}"
         else
           value.to_s.length > 50 ? "#{value.to_s[0..47]}..." : value.to_s
         end
       when Time, DateTime
-        value.strftime('%Y-%m-%d %H:%M')
+        value.strftime("%Y-%m-%d %H:%M")
       when Numeric
         value.to_s
       when Array
@@ -3524,63 +3527,63 @@ module Parse
     def format_ascii_table(data)
       headers = data[:headers]
       rows = data[:rows]
-      
+
       # Calculate column widths
       col_widths = headers.map.with_index do |header, i|
         max_width = [header.length, *rows.map { |row| row[i].to_s.length }].max
         [max_width, 3].max # Minimum width of 3
       end
-      
+
       # Build table
       result = []
-      
+
       # Top border
       result << "+" + col_widths.map { |w| "-" * (w + 2) }.join("+") + "+"
-      
+
       # Headers
       header_row = "|" + headers.map.with_index { |h, i| " #{h.ljust(col_widths[i])} " }.join("|") + "|"
       result << header_row
-      
+
       # Header separator
       result << "+" + col_widths.map { |w| "-" * (w + 2) }.join("+") + "+"
-      
+
       # Rows
       rows.each do |row|
         row_str = "|" + row.map.with_index { |cell, i| " #{cell.to_s.ljust(col_widths[i])} " }.join("|") + "|"
         result << row_str
       end
-      
+
       # Bottom border
       result << "+" + col_widths.map { |w| "-" * (w + 2) }.join("+") + "+"
-      
+
       result.join("\n")
     end
 
     # Format CSV table.
-    # @param data [Hash] table data with headers and rows  
+    # @param data [Hash] table data with headers and rows
     # @return [String] CSV formatted string
     def format_csv_table(data)
-      require 'csv'
-      
+      require "csv"
+
       csv_string = CSV.generate do |csv|
         csv << data[:headers]
         data[:rows].each { |row| csv << row }
       end
-      
+
       csv_string
     end
 
     # Format JSON table.
     # @param data [Hash] table data with headers and rows
-    # @return [String] JSON formatted string  
+    # @return [String] JSON formatted string
     def format_json_table(data)
       headers = data[:headers]
       rows = data[:rows]
-      
+
       table_objects = rows.map do |row|
         headers.zip(row).to_h
       end
-      
+
       JSON.pretty_generate(table_objects)
     end
 
@@ -3605,37 +3608,36 @@ module Parse
     def execute_distinct_with_population(field, return_pointers: false)
       # First get the distinct pointer values using regular distinct
       distinct_values = distinct(field, return_pointers: true)
-      
+
       # Filter out non-pointer values (e.g., nil, scalar values)
       pointer_values = distinct_values.select { |v| v.is_a?(Parse::Pointer) }
-      
+
       if return_pointers
         # Return the pointers directly
         pointer_values
       else
         # Fetch the full objects for each distinct pointer
         return [] if pointer_values.empty?
-        
+
         # Group pointers by class to fetch efficiently
         pointers_by_class = pointer_values.group_by(&:parse_class)
-        
+
         objects = []
         pointers_by_class.each do |class_name, pointers|
           puts "Fetching #{pointers.size} objects for class #{class_name}" if @verbose_aggregate
           # Get the Parse class
           klass = Parse::Model.find_class(class_name)
           next unless klass
-          
+
           # Fetch all objects for this class in one query
           object_ids = pointers.map(&:id)
           fetched = klass.all(:objectId.in => object_ids)
           objects.concat(fetched)
         end
-        
+
         objects
       end
     end
-
 
     # Execute a basic aggregation pipeline and extract the result
     # @param pipeline [Array] the base pipeline stages (without $match)
@@ -3656,7 +3658,7 @@ module Parse
       # Use the Aggregation class to execute
       aggregation = aggregate(pipeline, verbose: @verbose_aggregate)
       raw_results = aggregation.raw
-      
+
       # Extract the result from the response
       if raw_results.is_a?(Array) && raw_results.first
         raw_results.first[result_key]
@@ -3670,13 +3672,13 @@ module Parse
     # @return [String] the formatted field name
     def format_aggregation_field(field)
       case field.to_s
-      when 'created_at', 'createdAt'
-        'createdAt'  # Parse Server uses createdAt for aggregation
-      when 'updated_at', 'updatedAt'  
-        'updatedAt'  # Parse Server uses updatedAt for aggregation
+      when "created_at", "createdAt"
+        "createdAt"  # Parse Server uses createdAt for aggregation
+      when "updated_at", "updatedAt"
+        "updatedAt"  # Parse Server uses updatedAt for aggregation
       else
         # If field already has _p_ prefix, it's already in aggregation format
-        if field.to_s.start_with?('_p_')
+        if field.to_s.start_with?("_p_")
           field.to_s
         else
           formatted = Query.format_field(field)
@@ -3699,27 +3701,27 @@ module Parse
     # @return [Boolean] true if the field is a pointer field
     def is_pointer_field?(parse_class, field, formatted_field)
       return false unless parse_class.respond_to?(:fields)
-      
+
       # Check both the original field name and the formatted field name
       fields_to_check = [field.to_s, field.to_sym, formatted_field.to_s, formatted_field.to_sym]
-      
+
       fields_to_check.any? do |f|
         parse_class.fields[f] == :pointer
       end
     end
-    
+
     # Get the target class name for a pointer field from the schema
     # @param parse_class [Class] the Parse::Object subclass
     # @param field [Symbol, String] the field name
     # @return [String, nil] the target class name or nil if not found
     def get_pointer_target_class_for(parse_class, field)
       return nil unless parse_class.respond_to?(:fields) && parse_class.respond_to?(:references)
-      
+
       # Check both the original field name and formatted versions
       fields_to_check = [field.to_s, field.to_sym]
       formatted_field = Query.format_field(field)
       fields_to_check += [formatted_field.to_s, formatted_field.to_sym]
-      
+
       fields_to_check.each do |f|
         # Check if it's a pointer field
         if parse_class.fields[f.to_sym] == :pointer
@@ -3728,7 +3730,7 @@ module Parse
           return target_class if target_class
         end
       end
-      
+
       nil
     end
 
@@ -3739,19 +3741,19 @@ module Parse
       begin
         parse_class = Parse::Model.const_get(@table)
         return false unless parse_class.respond_to?(:fields)
-        
+
         # If the field already has _p_ prefix, strip it to get the original field name
-        original_field = field.to_s.start_with?('_p_') ? field.to_s[3..-1] : field
-        
+        original_field = field.to_s.start_with?("_p_") ? field.to_s[3..-1] : field
+
         # Check both the original field name and formatted versions
         fields_to_check = [original_field.to_s, original_field.to_sym]
         formatted_field = Query.format_field(original_field)
         fields_to_check += [formatted_field.to_s, formatted_field.to_sym]
-        
+
         fields_to_check.each do |f|
           return true if parse_class.fields[f.to_sym] == :pointer
         end
-        
+
         false
       rescue NameError
         # If the model class doesn't exist, fall back to checking the server schema
@@ -3775,7 +3777,7 @@ module Parse
       # Direct pointer object or hash
       return true if value.is_a?(Parse::Pointer)
       return true if value.is_a?(Hash) && value["__type"] == "Pointer"
-      
+
       # Check nested operators (like $in, $ne, etc.)
       if value.is_a?(Hash)
         value.each do |op, op_value|
@@ -3787,7 +3789,7 @@ module Parse
           end
         end
       end
-      
+
       false
     end
 
@@ -3800,11 +3802,11 @@ module Parse
     # @return [Object] converted value or original value if no conversion needed
     def convert_pointer_value_with_schema(value, field_name, **options)
       return value unless value # nil/empty values pass through
-      
+
       parse_class = Parse::Model.const_get(@table) rescue nil
       is_pointer = parse_class && is_pointer_field?(parse_class, field_name, Query.format_field(field_name))
       target_class = parse_class ? get_pointer_target_class_for(parse_class, field_name) : nil
-      
+
       case value
       when Parse::Pointer
         if options[:to_mongodb_format]
@@ -3814,11 +3816,10 @@ module Parse
         else
           value.id # Just return the object ID
         end
-        
       when Hash
         if value["__type"] == "Pointer" && value["className"] && value["objectId"]
           if options[:to_mongodb_format]
-            "#{value['className']}$#{value['objectId']}"
+            "#{value["className"]}$#{value["objectId"]}"
           elsif options[:return_pointers]
             Parse::Pointer.new(value["className"], value["objectId"])
           else
@@ -3827,22 +3828,21 @@ module Parse
         else
           value # Not a pointer hash
         end
-        
       when String
         # Handle MongoDB format strings ("ClassName$objectId") first - regardless of schema
-        if value.include?('$') && value.match(/^[A-Za-z_]\w*\$\w+$/)
-          class_name, object_id = value.split('$', 2)
-          
+        if value.include?("$") && value.match(/^[A-Za-z_]\w*\$\w+$/)
+          class_name, object_id = value.split("$", 2)
+
           # Validate that the class_name is a known Parse class
           is_valid_class = self.class.known_parse_classes.include?(class_name) ||
-            begin
-              # Only do expensive lookup if not in known set
-              Parse::Model.find_class(class_name) || 
-              class_name.constantize.ancestors.include?(Parse::Object)
-            rescue NameError, TypeError
-              false
-            end
-          
+                           begin
+                             # Only do expensive lookup if not in known set
+                             Parse::Model.find_class(class_name) ||
+                             class_name.constantize.ancestors.include?(Parse::Object)
+                           rescue NameError, TypeError
+                             false
+                           end
+
           if is_valid_class
             if options[:to_mongodb_format]
               value # Already in MongoDB format
@@ -3867,7 +3867,6 @@ module Parse
         else
           value # Not recognizable as pointer or not a pointer field
         end
-        
       else
         value # Unknown type, pass through
       end
@@ -3878,18 +3877,18 @@ module Parse
     # @return [Hash] the converted constraints with aggregation-compatible field names
     def convert_constraints_for_aggregation(constraints)
       return constraints unless constraints.is_a?(Hash)
-      
+
       result = {}
       constraints.each do |field, value|
         # Skip special Parse operators
-        if field.to_s.start_with?('$')
+        if field.to_s.start_with?("$")
           result[field] = value
           next
         end
-        
-        # Convert field name to aggregation format 
+
+        # Convert field name to aggregation format
         # If field already has _p_ prefix, don't reformat it
-        if field.to_s.start_with?('_p_')
+        if field.to_s.start_with?("_p_")
           aggregation_field = field.to_s
         else
           # Check if we can detect this is a pointer field from the values
@@ -3901,29 +3900,29 @@ module Parse
             aggregation_field = format_aggregation_field(field)
           end
         end
-        
+
         # Convert pointer values to MongoDB format (ClassName$objectId)
         if value.is_a?(Hash) && value["__type"] == "Pointer"
-          result[aggregation_field] = "#{value['className']}$#{value['objectId']}"
-        # Handle Parse::Pointer objects
+          result[aggregation_field] = "#{value["className"]}$#{value["objectId"]}"
+          # Handle Parse::Pointer objects
         elsif value.is_a?(Parse::Pointer)
           result[aggregation_field] = "#{value.parse_class}$#{value.id}"
-        # Handle nested constraint operators (like $in, $ne, etc.)
+          # Handle nested constraint operators (like $in, $ne, etc.)
         elsif value.is_a?(Hash)
           converted_value = {}
           value.each do |op, op_value|
             if op_value.is_a?(Hash) && op_value["__type"] == "Pointer"
-              converted_value[op] = "#{op_value['className']}$#{op_value['objectId']}"
+              converted_value[op] = "#{op_value["className"]}$#{op_value["objectId"]}"
             elsif op_value.is_a?(Parse::Pointer)
               converted_value[op] = "#{op_value.parse_class}$#{op_value.id}"
             elsif op_value.is_a?(Array) && (op.to_s == "$in" || op.to_s == "$nin")
               # Handle arrays of pointers for $in and $nin operators
               # Check if the original field is a pointer field using schema or values
               is_pointer_field = field_is_pointer?(field) || detect_pointer_field_from_values(value)
-              
+
               converted_value[op] = op_value.map do |item|
                 if item.is_a?(Hash) && item["__type"] == "Pointer"
-                  "#{item['className']}$#{item['objectId']}"
+                  "#{item["className"]}$#{item["objectId"]}"
                 elsif item.is_a?(Parse::Pointer)
                   "#{item.parse_class}$#{item.id}"
                 elsif is_pointer_field && item.is_a?(String)
@@ -3932,13 +3931,13 @@ module Parse
                   # 2. Other Parse::Pointer objects in the same array
                   # 3. Other pointer hash objects in the same array
                   class_name = nil
-                  
+
                   # First try to get it from the schema
                   parse_class = Parse::Model.const_get(@table) rescue nil
                   if parse_class
                     class_name = get_pointer_target_class_for(parse_class, field)
                   end
-                  
+
                   # If not found in schema, try to infer from other items in the array
                   if class_name.nil?
                     op_value.each do |v|
@@ -3951,7 +3950,7 @@ module Parse
                       end
                     end
                   end
-                  
+
                   if class_name
                     "#{class_name}$#{item}"
                   else
@@ -3971,7 +3970,7 @@ module Parse
           result[aggregation_field] = value
         end
       end
-      
+
       result
     end
 
@@ -4015,21 +4014,21 @@ module Parse
     def self.or(*queries)
       queries = queries.flatten.compact
       return nil if queries.empty?
-      
+
       # Get the table from the first query
       table = queries.first.table
-      
+
       # Ensure all queries are for the same table
       unless queries.all? { |q| q.table == table }
         raise ArgumentError, "All queries passed to Parse::Query.or must be for the same Parse class."
       end
-      
+
       # Start with an empty query for this table
       result = self.new(table)
-      
+
       # Filter to only queries that have constraints
       queries = queries.filter { |q| q.where.present? && !q.where.empty? }
-      
+
       # Add each query's complete constraint set as an OR branch
       queries.each do |query|
         # Compile the where constraints to check if they result in empty conditions
@@ -4038,7 +4037,7 @@ module Parse
           result.or_where(query.where)
         end
       end
-      
+
       result
     end
 
@@ -4050,21 +4049,21 @@ module Parse
     def self.and(*queries)
       queries = queries.flatten.compact
       return nil if queries.empty?
-      
+
       # Get the table from the first query
       table = queries.first.table
-      
+
       # Ensure all queries are for the same table
       unless queries.all? { |q| q.table == table }
         raise ArgumentError, "All queries passed to Parse::Query.and must be for the same Parse class."
       end
-      
+
       # Start with an empty query for this table
       result = self.new(table)
-      
+
       # Filter to only queries that have constraints
       queries = queries.filter { |q| q.where.present? && !q.where.empty? }
-      
+
       # Add each query's complete constraint set with AND logic
       # Multiple constraints in a query are implicitly ANDed together by Parse
       queries.each do |query|
@@ -4076,7 +4075,7 @@ module Parse
           result.instance_variable_get(:@where).concat(query.where)
         end
       end
-      
+
       result
     end
 
@@ -4229,6 +4228,7 @@ module Parse
     def privately_readable(mongo_direct: nil)
       readable_by("none", mongo_direct: mongo_direct)
     end
+
     alias_method :master_key_read_only, :privately_readable
 
     # Find objects with no write permissions (master key only).
@@ -4242,6 +4242,7 @@ module Parse
     def privately_writable(mongo_direct: nil)
       writable_by("none", mongo_direct: mongo_direct)
     end
+
     alias_method :master_key_write_only, :privately_writable
 
     # Find objects with completely private ACL (no read AND no write permissions).
@@ -4256,6 +4257,7 @@ module Parse
       privately_readable(mongo_direct: mongo_direct)
       privately_writable(mongo_direct: mongo_direct)
     end
+
     alias_method :master_key_only, :private_acl
 
     # Find objects that are NOT publicly readable.
@@ -4398,7 +4400,7 @@ module Parse
           @query.instance_variable_get(:@table),
           @pipeline,
           headers: {},
-          **@query.send(:_opts)
+          **@query.send(:_opts),
         )
       end
 
@@ -4477,7 +4479,7 @@ module Parse
     def raw(&block)
       response = execute!
       return [] if response.respond_to?(:error?) && response.error?
-      
+
       items = response.respond_to?(:result) ? response.result : response
       items = [] unless items.is_a?(Array)
       return items.each(&block) if block_given?
@@ -4637,36 +4639,36 @@ module Parse
         {
           "$group" => {
             "_id" => "$#{formatted_group_field}",
-            "count" => { "$sum" => 1 }
-          }
+            "count" => { "$sum" => 1 },
+          },
         },
         {
           "$project" => {
             "_id" => 0,
             "objectId" => "$_id",
-            "count" => 1
-          }
-        }
+            "count" => 1,
+          },
+        },
       ])
 
       pipeline
     end
 
-    # Returns raw unprocessed aggregation results 
+    # Returns raw unprocessed aggregation results
     # @param operation [String] the aggregation operation
     # @param aggregation_expr [Hash] the MongoDB aggregation expression
     # @return [Array<Hash>] raw aggregation results
     def raw(operation, aggregation_expr)
       formatted_group_field = @query.send(:format_aggregation_field, @group_field)
       pipeline = build_pipeline(formatted_group_field, aggregation_expr)
-      
+
       response = @query.client.aggregate_pipeline(
-        @query.instance_variable_get(:@table), 
-        pipeline, 
-        headers: {}, 
-        **@query.send(:_opts)
+        @query.instance_variable_get(:@table),
+        pipeline,
+        headers: {},
+        **@query.send(:_opts),
       )
-      
+
       response.result || []
     end
 
@@ -4689,7 +4691,7 @@ module Parse
       if field.nil? || !field.respond_to?(:to_s)
         raise ArgumentError, "Invalid field name passed to `sum`."
       end
-      
+
       formatted_field = @query.send(:format_aggregation_field, field)
       execute_group_aggregation("sum", { "$sum" => "$#{formatted_field}" })
     end
@@ -4704,10 +4706,11 @@ module Parse
       if field.nil? || !field.respond_to?(:to_s)
         raise ArgumentError, "Invalid field name passed to `average`."
       end
-      
+
       formatted_field = @query.send(:format_aggregation_field, field)
       execute_group_aggregation("average", { "$avg" => "$#{formatted_field}" })
     end
+
     alias_method :avg, :average
 
     # Find minimum value of a field for each group.
@@ -4717,7 +4720,7 @@ module Parse
       if field.nil? || !field.respond_to?(:to_s)
         raise ArgumentError, "Invalid field name passed to `min`."
       end
-      
+
       formatted_field = @query.send(:format_aggregation_field, field)
       execute_group_aggregation("min", { "$min" => "$#{formatted_field}" })
     end
@@ -4729,7 +4732,7 @@ module Parse
       if field.nil? || !field.respond_to?(:to_s)
         raise ArgumentError, "Invalid field name passed to `max`."
       end
-      
+
       formatted_field = @query.send(:format_aggregation_field, field)
       execute_group_aggregation("max", { "$max" => "$#{formatted_field}" })
     end
@@ -4764,22 +4767,22 @@ module Parse
         {
           "$group" => {
             "_id" => "$#{formatted_group_field}",
-            "count" => aggregation_expr
-          }
+            "count" => aggregation_expr,
+          },
         },
         {
           "$project" => {
             "_id" => 0,
             "objectId" => "$_id",
-            "count" => 1
-          }
-        }
+            "count" => 1,
+          },
+        },
       ])
 
       # Use the Aggregation class to execute
       aggregation = @query.aggregate(pipeline, verbose: @query.instance_variable_get(:@verbose_aggregate))
       raw_results = aggregation.raw
-      
+
       # Convert array of results to hash
       if raw_results.is_a?(Array)
         result_hash = {}
@@ -4787,7 +4790,7 @@ module Parse
           # Parse Server returns group key as "objectId" with $project stage
           key = item["objectId"]
           value = item["count"]
-          
+
           # Handle null/nil group keys
           if key.nil?
             key = "null"
@@ -4800,7 +4803,7 @@ module Parse
               key = Parse::Pointer.new(key["className"], key["objectId"])
             end
           end
-          
+
           result_hash[key] = value
         end
         result_hash
@@ -4853,16 +4856,16 @@ module Parse
         {
           "$group" => {
             "_id" => "$#{mongo_group_field}",
-            "count" => converted_expr
-          }
+            "count" => converted_expr,
+          },
         },
         {
           "$project" => {
             "_id" => 0,
             "value" => "$_id",
-            "count" => 1
-          }
-        }
+            "count" => 1,
+          },
+        },
       ])
 
       # Execute directly on MongoDB
@@ -4913,54 +4916,54 @@ module Parse
   # in ascending or descending order.
   class GroupedResult
     include Enumerable
-    
+
     # @param results [Hash] the grouped results hash
     def initialize(results)
       @results = results
     end
-    
+
     # Return the raw hash results
     # @return [Hash] the grouped results
     def to_h
       @results
     end
-    
+
     # Iterate over each key-value pair
     def each(&block)
       @results.each(&block)
     end
-    
+
     # Sort by keys (group names) in ascending order
     # @return [Array<Array>] array of [key, value] pairs sorted by key ascending
     def sort_by_key_asc
       @results.sort_by { |k, v| k }
     end
-    
+
     # Sort by keys (group names) in descending order
     # @return [Array<Array>] array of [key, value] pairs sorted by key descending
     def sort_by_key_desc
       @results.sort_by { |k, v| k }.reverse
     end
-    
+
     # Sort by values (aggregation results) in ascending order
     # @return [Array<Array>] array of [key, value] pairs sorted by value ascending
     def sort_by_value_asc
       @results.sort_by { |k, v| v }
     end
-    
+
     # Sort by values (aggregation results) in descending order
     # @return [Array<Array>] array of [key, value] pairs sorted by value descending
     def sort_by_value_desc
       @results.sort_by { |k, v| v }.reverse
     end
-    
+
     # Convert sorted results back to a hash
     # @param sorted_pairs [Array<Array>] array of [key, value] pairs
     # @return [Hash] sorted results as hash
     def to_sorted_hash(sorted_pairs)
       sorted_pairs.to_h
     end
-    
+
     # Convert grouped results to a formatted table.
     # @param format [Symbol] output format (:ascii, :csv, :json)
     # @param headers [Array<String>] custom headers (default: ["Group", "Count"])
@@ -4970,13 +4973,13 @@ module Parse
     #   Asset.group_by(:category).sum(:file_size).to_table(headers: ["Category", "Total Size"])
     def to_table(format: :ascii, headers: ["Group", "Count"])
       pairs = @results.to_a
-      
+
       # Build table data
       table_data = {
         headers: headers,
-        rows: pairs.map { |key, value| [format_group_key(key), format_group_value(value)] }
+        rows: pairs.map { |key, value| [format_group_key(key), format_group_value(value)] },
       }
-      
+
       # Format based on requested format
       case format
       when :ascii
@@ -4989,9 +4992,9 @@ module Parse
         raise ArgumentError, "Unsupported format: #{format}. Use :ascii, :csv, or :json"
       end
     end
-    
+
     private
-    
+
     # Format group key for display
     def format_group_key(key)
       case key
@@ -5003,7 +5006,7 @@ module Parse
         key.to_s
       end
     end
-    
+
     # Format group value for display
     def format_group_value(value)
       case value
@@ -5015,64 +5018,64 @@ module Parse
         value.to_s
       end
     end
-    
+
     # Format ASCII table for grouped results
     def format_grouped_ascii_table(data)
       headers = data[:headers]
       rows = data[:rows]
-      
+
       return "No results found." if rows.empty?
-      
+
       # Calculate column widths
       col_widths = headers.map.with_index do |header, i|
         max_width = [header.length, *rows.map { |row| row[i].to_s.length }].max
         [max_width, 3].max
       end
-      
+
       # Build table
       result = []
-      
+
       # Top border
       result << "+" + col_widths.map { |w| "-" * (w + 2) }.join("+") + "+"
-      
+
       # Headers
       header_row = "|" + headers.map.with_index { |h, i| " #{h.ljust(col_widths[i])} " }.join("|") + "|"
       result << header_row
-      
+
       # Header separator
       result << "+" + col_widths.map { |w| "-" * (w + 2) }.join("+") + "+"
-      
+
       # Rows
       rows.each do |row|
         row_str = "|" + row.map.with_index { |cell, i| " #{cell.to_s.ljust(col_widths[i])} " }.join("|") + "|"
         result << row_str
       end
-      
+
       # Bottom border
       result << "+" + col_widths.map { |w| "-" * (w + 2) }.join("+") + "+"
-      
+
       result.join("\n")
     end
-    
+
     # Format CSV table for grouped results
     def format_grouped_csv_table(data)
-      require 'csv'
-      
+      require "csv"
+
       CSV.generate do |csv|
         csv << data[:headers]
         data[:rows].each { |row| csv << row }
       end
     end
-    
+
     # Format JSON table for grouped results
     def format_grouped_json_table(data)
       headers = data[:headers]
       rows = data[:rows]
-      
+
       table_objects = rows.map do |row|
         headers.zip(row).to_h
       end
-      
+
       JSON.pretty_generate(table_objects)
     end
   end
@@ -5102,6 +5105,7 @@ module Parse
       results = super
       GroupedResult.new(results)
     end
+
     alias_method :avg, :average
 
     # Find minimum value of a field for each group.
@@ -5147,10 +5151,10 @@ module Parse
     def pipeline
       # Format the date field name
       formatted_date_field = @query.send(:format_aggregation_field, @date_field)
-      
+
       # Build the aggregation pipeline (same logic as execute_date_aggregation)
       pipeline = []
-      
+
       # Add match stage if there are where conditions
       compiled_where = @query.send(:compile_where)
       if compiled_where.present?
@@ -5159,27 +5163,27 @@ module Parse
         stringified_where = @query.send(:convert_dates_for_aggregation, aggregation_where)
         pipeline << { "$match" => stringified_where }
       end
-      
+
       # Create date grouping expression based on interval using shared method
       date_expr = build_date_group_expression(formatted_date_field)
-      
+
       # Add group and project stages (using count as example aggregation)
       pipeline.concat([
-        { 
-          "$group" => { 
-            "_id" => date_expr, 
-            "count" => { "$sum" => 1 } 
-          } 
+        {
+          "$group" => {
+            "_id" => date_expr,
+            "count" => { "$sum" => 1 },
+          },
         },
         {
           "$project" => {
             "_id" => 0,
             "objectId" => "$_id",
-            "count" => 1
-          }
-        }
+            "count" => 1,
+          },
+        },
       ])
-      
+
       pipeline
     end
 
@@ -5202,7 +5206,7 @@ module Parse
       if field.nil? || !field.respond_to?(:to_s)
         raise ArgumentError, "Invalid field name passed to `sum`."
       end
-      
+
       formatted_field = @query.send(:format_aggregation_field, field)
       execute_date_aggregation("sum", { "$sum" => "$#{formatted_field}" })
     end
@@ -5214,10 +5218,11 @@ module Parse
       if field.nil? || !field.respond_to?(:to_s)
         raise ArgumentError, "Invalid field name passed to `average`."
       end
-      
+
       formatted_field = @query.send(:format_aggregation_field, field)
       execute_date_aggregation("average", { "$avg" => "$#{formatted_field}" })
     end
+
     alias_method :avg, :average
 
     # Find minimum value of a field for each time period.
@@ -5227,7 +5232,7 @@ module Parse
       if field.nil? || !field.respond_to?(:to_s)
         raise ArgumentError, "Invalid field name passed to `min`."
       end
-      
+
       formatted_field = @query.send(:format_aggregation_field, field)
       execute_date_aggregation("min", { "$min" => "$#{formatted_field}" })
     end
@@ -5239,7 +5244,7 @@ module Parse
       if field.nil? || !field.respond_to?(:to_s)
         raise ArgumentError, "Invalid field name passed to `max`."
       end
-      
+
       formatted_field = @query.send(:format_aggregation_field, field)
       execute_date_aggregation("max", { "$max" => "$#{formatted_field}" })
     end
@@ -5267,8 +5272,8 @@ module Parse
         {
           "$group" => {
             "_id" => date_group_expr,
-            "count" => aggregation_expr
-          }
+            "count" => aggregation_expr,
+          },
         },
         # Sort by date to get chronological order
         { "$sort" => { "_id" => 1 } },
@@ -5276,9 +5281,9 @@ module Parse
           "$project" => {
             "_id" => 0,
             "objectId" => "$_id",
-            "count" => 1
-          }
-        }
+            "count" => 1,
+          },
+        },
       ]
 
       # Add match stage if there are where conditions
@@ -5301,7 +5306,7 @@ module Parse
         @query.instance_variable_get(:@table),
         pipeline,
         headers: {},
-        **@query.send(:_opts)
+        **@query.send(:_opts),
       )
 
       if @query.instance_variable_get(:@verbose_aggregate)
@@ -5370,17 +5375,17 @@ module Parse
         {
           "$group" => {
             "_id" => date_group_expr,
-            "count" => converted_expr
-          }
+            "count" => converted_expr,
+          },
         },
         { "$sort" => { "_id" => 1 } },
         {
           "$project" => {
             "_id" => 0,
             "value" => "$_id",
-            "count" => 1
-          }
-        }
+            "count" => 1,
+          },
+        },
       ])
 
       # Execute directly on MongoDB
@@ -5418,25 +5423,25 @@ module Parse
       when :month
         {
           "year" => date_op.call("$year"),
-          "month" => date_op.call("$month")
+          "month" => date_op.call("$month"),
         }
       when :week
         {
           "year" => date_op.call("$year"),
-          "week" => date_op.call("$week")
+          "week" => date_op.call("$week"),
         }
       when :day
         {
           "year" => date_op.call("$year"),
           "month" => date_op.call("$month"),
-          "day" => date_op.call("$dayOfMonth")
+          "day" => date_op.call("$dayOfMonth"),
         }
       when :hour
         {
           "year" => date_op.call("$year"),
           "month" => date_op.call("$month"),
           "day" => date_op.call("$dayOfMonth"),
-          "hour" => date_op.call("$hour")
+          "hour" => date_op.call("$hour"),
         }
       when :minute
         {
@@ -5444,7 +5449,7 @@ module Parse
           "month" => date_op.call("$month"),
           "day" => date_op.call("$dayOfMonth"),
           "hour" => date_op.call("$hour"),
-          "minute" => date_op.call("$minute")
+          "minute" => date_op.call("$minute"),
         }
       when :second
         {
@@ -5453,14 +5458,14 @@ module Parse
           "day" => date_op.call("$dayOfMonth"),
           "hour" => date_op.call("$hour"),
           "minute" => date_op.call("$minute"),
-          "second" => date_op.call("$second")
+          "second" => date_op.call("$second"),
         }
       else
         # Default to day if unknown interval
         {
           "year" => date_op.call("$year"),
           "month" => date_op.call("$month"),
-          "day" => date_op.call("$dayOfMonth")
+          "day" => date_op.call("$dayOfMonth"),
         }
       end
     end
@@ -5503,25 +5508,25 @@ module Parse
       when :month
         {
           "year" => date_op.call("$year"),
-          "month" => date_op.call("$month")
+          "month" => date_op.call("$month"),
         }
       when :week
         {
           "year" => date_op.call("$year"),
-          "week" => date_op.call("$week")
+          "week" => date_op.call("$week"),
         }
       when :day
         {
           "year" => date_op.call("$year"),
           "month" => date_op.call("$month"),
-          "day" => date_op.call("$dayOfMonth")
+          "day" => date_op.call("$dayOfMonth"),
         }
       when :hour
         {
           "year" => date_op.call("$year"),
           "month" => date_op.call("$month"),
           "day" => date_op.call("$dayOfMonth"),
-          "hour" => date_op.call("$hour")
+          "hour" => date_op.call("$hour"),
         }
       when :minute
         {
@@ -5529,7 +5534,7 @@ module Parse
           "month" => date_op.call("$month"),
           "day" => date_op.call("$dayOfMonth"),
           "hour" => date_op.call("$hour"),
-          "minute" => date_op.call("$minute")
+          "minute" => date_op.call("$minute"),
         }
       when :second
         {
@@ -5538,7 +5543,7 @@ module Parse
           "day" => date_op.call("$dayOfMonth"),
           "hour" => date_op.call("$hour"),
           "minute" => date_op.call("$minute"),
-          "second" => date_op.call("$second")
+          "second" => date_op.call("$second"),
         }
       end
     end
@@ -5625,6 +5630,7 @@ module Parse
       results = super
       GroupedResult.new(results)
     end
+
     alias_method :avg, :average
 
     # Find minimum value of a field for each time period.

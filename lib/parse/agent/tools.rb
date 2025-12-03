@@ -30,7 +30,7 @@ module Parse
         get_schema: 10,
         count_objects: 20,
         get_object: 10,
-        get_sample_objects: 15
+        get_sample_objects: 15,
       }.freeze
 
       # Tool definitions in OpenAI function calling format
@@ -39,7 +39,7 @@ module Parse
         get_all_schemas: {
           name: "get_all_schemas",
           description: "List all classes with field counts",
-          parameters: { type: "object", properties: {}, required: [] }
+          parameters: { type: "object", properties: {}, required: [] },
         },
 
         get_schema: {
@@ -48,10 +48,10 @@ module Parse
           parameters: {
             type: "object",
             properties: {
-              class_name: { type: "string" }
+              class_name: { type: "string" },
             },
-            required: ["class_name"]
-          }
+            required: ["class_name"],
+          },
         },
 
         query_class: {
@@ -66,10 +66,10 @@ module Parse
               skip: { type: "integer" },
               order: { type: "string" },
               keys: { type: "array", items: { type: "string" } },
-              include: { type: "array", items: { type: "string" } }
+              include: { type: "array", items: { type: "string" } },
             },
-            required: ["class_name"]
-          }
+            required: ["class_name"],
+          },
         },
 
         count_objects: {
@@ -79,10 +79,10 @@ module Parse
             type: "object",
             properties: {
               class_name: { type: "string" },
-              where: { type: "object" }
+              where: { type: "object" },
             },
-            required: ["class_name"]
-          }
+            required: ["class_name"],
+          },
         },
 
         get_object: {
@@ -93,10 +93,10 @@ module Parse
             properties: {
               class_name: { type: "string" },
               object_id: { type: "string" },
-              include: { type: "array", items: { type: "string" } }
+              include: { type: "array", items: { type: "string" } },
             },
-            required: ["class_name", "object_id"]
-          }
+            required: ["class_name", "object_id"],
+          },
         },
 
         get_sample_objects: {
@@ -106,10 +106,10 @@ module Parse
             type: "object",
             properties: {
               class_name: { type: "string" },
-              limit: { type: "integer" }
+              limit: { type: "integer" },
             },
-            required: ["class_name"]
-          }
+            required: ["class_name"],
+          },
         },
 
         aggregate: {
@@ -119,10 +119,10 @@ module Parse
             type: "object",
             properties: {
               class_name: { type: "string" },
-              pipeline: { type: "array", items: { type: "object" } }
+              pipeline: { type: "array", items: { type: "object" } },
             },
-            required: ["class_name", "pipeline"]
-          }
+            required: ["class_name", "pipeline"],
+          },
         },
 
         explain_query: {
@@ -132,10 +132,10 @@ module Parse
             type: "object",
             properties: {
               class_name: { type: "string" },
-              where: { type: "object" }
+              where: { type: "object" },
             },
-            required: ["class_name"]
-          }
+            required: ["class_name"],
+          },
         },
 
         call_method: {
@@ -147,11 +147,11 @@ module Parse
               class_name: { type: "string" },
               method_name: { type: "string" },
               object_id: { type: "string" },
-              arguments: { type: "object" }
+              arguments: { type: "object" },
             },
-            required: ["class_name", "method_name"]
-          }
-        }
+            required: ["class_name", "method_name"],
+          },
+        },
       }.freeze
 
       # Get tool definitions for allowed tools
@@ -177,7 +177,7 @@ module Parse
         {
           name: definition[:name],
           description: definition[:description],
-          inputSchema: definition[:parameters]
+          inputSchema: definition[:parameters],
         }
       end
 
@@ -240,7 +240,7 @@ module Parse
       # @return [Hash] query results
       # @raise [ConstraintTranslator::ConstraintSecurityError] if blocked operators are used
       def query_class(agent, class_name:, where: nil, limit: nil, skip: nil,
-                      order: nil, keys: nil, include: nil, **_kwargs)
+                             order: nil, keys: nil, include: nil, **_kwargs)
         limit = [limit || Agent::DEFAULT_LIMIT, Agent::MAX_LIMIT].min
 
         # Build query hash
@@ -292,7 +292,7 @@ module Parse
         {
           class_name: class_name,
           count: response.count,
-          constraints: where || {}
+          constraints: where || {},
         }
       end
 
@@ -330,7 +330,7 @@ module Parse
 
         query = {
           limit: limit,
-          order: "-createdAt"
+          order: "-createdAt",
         }
 
         response = agent.client.find_objects(class_name, query, **agent.request_opts)
@@ -345,7 +345,7 @@ module Parse
           class_name: class_name,
           sample_count: results.size,
           samples: results.map { |obj| ResultFormatter.format_object(class_name, obj)[:object] },
-          note: "These are the #{results.size} most recently created objects"
+          note: "These are the #{results.size} most recently created objects",
         }
       end
 
@@ -378,7 +378,7 @@ module Parse
             class_name: class_name,
             pipeline_stages: pipeline.size,
             result_count: results.size,
-            results: results
+            results: results,
           }
         end
       end
@@ -405,7 +405,7 @@ module Parse
         {
           class_name: class_name,
           constraints: where || {},
-          explanation: response.result
+          explanation: response.result,
         }
       end
 
@@ -448,19 +448,19 @@ module Parse
         # Execute with timeout - user methods could be slow
         with_timeout(:call_method) do
           result = if method_info[:type] == :instance
-                     raise "object_id required for instance method '#{method_name}'" unless object_id
-                     obj = klass.find(object_id)
-                     raise "Object not found: #{class_name}##{object_id}" unless obj
-                     call_with_args(obj, method_sym, args)
-                   else
-                     call_with_args(klass, method_sym, args)
-                   end
+              raise "object_id required for instance method '#{method_name}'" unless object_id
+              obj = klass.find(object_id)
+              raise "Object not found: #{class_name}##{object_id}" unless obj
+              call_with_args(obj, method_sym, args)
+            else
+              call_with_args(klass, method_sym, args)
+            end
 
           {
             class_name: class_name,
             method: method_name,
             object_id: object_id,
-            result: serialize_result(result)
+            result: serialize_result(result),
           }
         end
       end

@@ -152,7 +152,7 @@ module Parse
           url: config.url,
           application_id: config.application_id,
           client_key: config.client_key,
-          master_key: config.master_key
+          master_key: config.master_key,
         }
       end
     end

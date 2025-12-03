@@ -1,6 +1,6 @@
-require_relative '../../test_helper'
-require_relative '../../test_helper_integration'
-require 'minitest/autorun'
+require_relative "../../test_helper"
+require_relative "../../test_helper_integration"
+require "minitest/autorun"
 
 # Test model that uses before_validation on: :create to set defaults
 class ProjectTask < Parse::Object
@@ -44,7 +44,7 @@ class ValidationContextIntegrationTest < Minitest::Test
   end
 
   def test_before_validation_on_create_sets_defaults_for_new_object
-    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
 
     with_parse_server do
       with_timeout(10, "before_validation on: :create test") do
@@ -66,7 +66,7 @@ class ValidationContextIntegrationTest < Minitest::Test
         assert task.before_validation_create_called,
                "before_validation on: :create should be called on new object"
         assert_nil task.before_validation_update_called,
-               "before_validation on: :update should NOT be called on new object"
+                   "before_validation on: :update should NOT be called on new object"
 
         # Verify saved to server
         assert task.id.present?, "Task should have an ID after save"
@@ -83,7 +83,7 @@ class ValidationContextIntegrationTest < Minitest::Test
   end
 
   def test_before_validation_on_create_not_called_on_update
-    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
 
     with_parse_server do
       with_timeout(10, "before_validation on: :create not called on update test") do
@@ -91,7 +91,7 @@ class ValidationContextIntegrationTest < Minitest::Test
         task = ProjectTask.new(
           name: "Task for Update Test",
           status: "active",
-          priority: 5
+          priority: 5,
         )
         assert task.save, "Task should save successfully"
 
@@ -105,7 +105,7 @@ class ValidationContextIntegrationTest < Minitest::Test
 
         # on: :create callback should NOT be called on update
         assert_nil task.before_validation_create_called,
-               "before_validation on: :create should NOT be called on update"
+                   "before_validation on: :create should NOT be called on update"
         assert task.before_validation_update_called,
                "before_validation on: :update should be called on update"
 
@@ -121,7 +121,7 @@ class ValidationContextIntegrationTest < Minitest::Test
   end
 
   def test_defaults_not_overwritten_when_explicitly_set
-    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
 
     with_parse_server do
       with_timeout(10, "defaults not overwritten test") do
@@ -129,7 +129,7 @@ class ValidationContextIntegrationTest < Minitest::Test
         task = ProjectTask.new(
           name: "Explicit Values Task",
           status: "completed",
-          priority: 10
+          priority: 10,
         )
 
         assert task.save, "Task should save successfully"
@@ -149,7 +149,7 @@ class ValidationContextIntegrationTest < Minitest::Test
   end
 
   def test_validation_context_with_conditional_validations
-    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
 
     with_parse_server do
       with_timeout(10, "validation context with conditional validations test") do

@@ -1,4 +1,4 @@
-require_relative '../../test_helper'
+require_relative "../../test_helper"
 
 # Test model for validation context
 class ValidationContextTestModel < Parse::Object
@@ -49,14 +49,13 @@ class DefaultsTestModel < Parse::Object
 end
 
 class ValidationContextTest < Minitest::Test
-
   def test_before_validation_on_create_only_runs_for_new_objects
     puts "\n=== Testing before_validation on: :create ==="
 
     model = ValidationContextTestModel.new(
       name: "Test",
       create_only_field: "value",
-      always_required_field: "value"
+      always_required_field: "value",
     )
 
     # Simulate a new object validation (what save does)
@@ -65,7 +64,7 @@ class ValidationContextTest < Minitest::Test
     assert model.before_validation_create_called,
            "before_validation with on: :create should be called for new objects"
     assert_nil model.before_validation_update_called,
-           "before_validation with on: :update should NOT be called for new objects"
+               "before_validation with on: :update should NOT be called for new objects"
     assert model.before_validation_always_called,
            "before_validation without :on should always be called"
 
@@ -80,7 +79,7 @@ class ValidationContextTest < Minitest::Test
     model = ValidationContextTestModel.new(
       name: "Test",
       update_only_field: "value",
-      always_required_field: "value"
+      always_required_field: "value",
     )
     # Simulate an existing object by setting an id
     model.instance_variable_set(:@id, "existingId123")
@@ -90,7 +89,7 @@ class ValidationContextTest < Minitest::Test
     model.valid?(:update)
 
     assert_nil model.before_validation_create_called,
-           "before_validation with on: :create should NOT be called for existing objects"
+               "before_validation with on: :create should NOT be called for existing objects"
     assert model.before_validation_update_called,
            "before_validation with on: :update should be called for existing objects"
     assert model.before_validation_always_called,
@@ -107,7 +106,7 @@ class ValidationContextTest < Minitest::Test
     # New object without create_only_field should fail
     model = ValidationContextTestModel.new(
       name: "Test",
-      always_required_field: "value"
+      always_required_field: "value",
       # create_only_field is missing
     )
 
@@ -138,7 +137,7 @@ class ValidationContextTest < Minitest::Test
     model = ValidationContextTestModel.new(
       name: "Test",
       create_only_field: "value",
-      always_required_field: "value"
+      always_required_field: "value",
       # update_only_field is missing
     )
 
@@ -188,7 +187,7 @@ class ValidationContextTest < Minitest::Test
     model = DefaultsTestModel.new(
       name: "Test Item",
       status: "active",
-      counter: 5
+      counter: 5,
     )
 
     # Run validation with :create context
@@ -228,7 +227,7 @@ class ValidationContextTest < Minitest::Test
     model = ValidationContextTestModel.new(
       name: "Test",
       create_only_field: "value",
-      always_required_field: "value"
+      always_required_field: "value",
     )
 
     # Determine context that save() would use
@@ -241,7 +240,7 @@ class ValidationContextTest < Minitest::Test
     assert model.before_validation_create_called,
            "before_validation on: :create should be called for new object"
     assert_nil model.before_validation_update_called,
-           "before_validation on: :update should NOT be called for new object"
+               "before_validation on: :update should NOT be called for new object"
 
     puts "  validation_context: #{validation_context}"
     puts "  before_validation_create_called: #{model.before_validation_create_called}"
@@ -254,7 +253,7 @@ class ValidationContextTest < Minitest::Test
     model = ValidationContextTestModel.new(
       name: "Test",
       update_only_field: "value",
-      always_required_field: "value"
+      always_required_field: "value",
     )
     model.instance_variable_set(:@id, "existingId123")
     model.disable_autofetch!
@@ -267,7 +266,7 @@ class ValidationContextTest < Minitest::Test
     model.valid?(validation_context)
 
     assert_nil model.before_validation_create_called,
-           "before_validation on: :create should NOT be called for existing object"
+               "before_validation on: :create should NOT be called for existing object"
     assert model.before_validation_update_called,
            "before_validation on: :update should be called for existing object"
 

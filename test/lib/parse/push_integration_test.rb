@@ -1,16 +1,15 @@
 # encoding: UTF-8
 # frozen_string_literal: true
 
-require_relative '../../test_helper'
+require_relative "../../test_helper"
 
 # Integration tests for Parse::Push functionality
 # These tests require Parse Server to be running
 #
 # Run with: PARSE_TEST_USE_DOCKER=true ruby -Itest test/lib/parse/push_integration_test.rb
 class PushIntegrationTest < Minitest::Test
-
   def setup
-    skip "Integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER']
+    skip "Integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"]
 
     # Ensure we have a valid connection
     begin
@@ -495,13 +494,13 @@ class PushIntegrationTest < Minitest::Test
         en: "New notification!",
         fr: "Nouvelle notification!",
         de: "Neue Benachrichtigung!",
-        es: "Nueva notificacion!"
+        es: "Nueva notificacion!",
       )
       .with_localized_titles(
         en: "Alert",
         fr: "Alerte",
         de: "Warnung",
-        es: "Alerta"
+        es: "Alerta",
       )
       .increment_badge
       .with_sound("multilang.caf")

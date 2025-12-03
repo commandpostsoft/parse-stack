@@ -1,7 +1,7 @@
 # encoding: UTF-8
 # frozen_string_literal: true
 
-require_relative '../../test_helper'
+require_relative "../../test_helper"
 
 # Unit tests for Parse::Installation management functionality
 class InstallationManagementTest < Minitest::Test

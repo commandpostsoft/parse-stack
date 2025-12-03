@@ -52,7 +52,7 @@ class AgentIntegrationTest < Minitest::Test
       { title: "Country Road", artist: "Country Singer", plays: 3500, duration: 200, genre: "Country", album: @album1 },
       { title: "Classical Suite", artist: "Orchestra", plays: 1500, duration: 600, genre: "Classical", album: @album2 },
       { title: "Hip Hop Flow", artist: "MC Rapper", plays: 12000, duration: 195, genre: "Hip Hop", album: @album1 },
-      { title: "Blues Morning", artist: "Blues Man", plays: 2500, duration: 270, genre: "Blues", album: @album2 }
+      { title: "Blues Morning", artist: "Blues Man", plays: 2500, duration: 270, genre: "Blues", album: @album2 },
     ]
 
     @songs = []
@@ -168,9 +168,8 @@ class AgentIntegrationTest < Minitest::Test
 
       with_timeout(3, "query with where") do
         result = agent.execute(:query_class,
-          class_name: "Song",
-          where: { "plays" => { "$gte" => 5000 } }
-        )
+                               class_name: "Song",
+                               where: { "plays" => { "$gte" => 5000 } })
 
         assert result[:success], "Should succeed: #{result[:error]}"
         assert_equal 4, result[:data][:result_count], "Should have 4 songs with plays >= 5000"
@@ -195,12 +194,11 @@ class AgentIntegrationTest < Minitest::Test
 
       with_timeout(3, "query with multiple constraints") do
         result = agent.execute(:query_class,
-          class_name: "Song",
-          where: {
-            "plays" => { "$gte" => 2000 },
-            "genre" => "Rock"
-          }
-        )
+                               class_name: "Song",
+                               where: {
+                                 "plays" => { "$gte" => 2000 },
+                                 "genre" => "Rock",
+                               })
 
         assert result[:success], "Should succeed: #{result[:error]}"
         assert_equal 1, result[:data][:result_count]
@@ -222,11 +220,10 @@ class AgentIntegrationTest < Minitest::Test
       with_timeout(3, "query with pagination") do
         # First page
         result1 = agent.execute(:query_class,
-          class_name: "Song",
-          limit: 3,
-          skip: 0,
-          order: "title"
-        )
+                                class_name: "Song",
+                                limit: 3,
+                                skip: 0,
+                                order: "title")
 
         assert result1[:success], "Should succeed: #{result1[:error]}"
         assert_equal 3, result1[:data][:results].size
@@ -234,11 +231,10 @@ class AgentIntegrationTest < Minitest::Test
 
         # Second page
         result2 = agent.execute(:query_class,
-          class_name: "Song",
-          limit: 3,
-          skip: 3,
-          order: "title"
-        )
+                                class_name: "Song",
+                                limit: 3,
+                                skip: 3,
+                                order: "title")
 
         assert result2[:success], "Should succeed: #{result2[:error]}"
         assert_equal 3, result2[:data][:results].size
@@ -263,10 +259,9 @@ class AgentIntegrationTest < Minitest::Test
 
       with_timeout(3, "query with descending order") do
         result = agent.execute(:query_class,
-          class_name: "Song",
-          order: "-plays",
-          limit: 3
-        )
+                               class_name: "Song",
+                               order: "-plays",
+                               limit: 3)
 
         assert result[:success], "Should succeed: #{result[:error]}"
         plays = result[:data][:results].map { |s| s["plays"] }
@@ -288,10 +283,9 @@ class AgentIntegrationTest < Minitest::Test
 
       with_timeout(3, "query with field selection") do
         result = agent.execute(:query_class,
-          class_name: "Song",
-          keys: ["title", "artist"],
-          limit: 1
-        )
+                               class_name: "Song",
+                               keys: ["title", "artist"],
+                               limit: 1)
 
         assert result[:success], "Should succeed: #{result[:error]}"
         song = result[:data][:results].first
@@ -340,9 +334,8 @@ class AgentIntegrationTest < Minitest::Test
 
       with_timeout(3, "count with constraint") do
         result = agent.execute(:count_objects,
-          class_name: "Song",
-          where: { "genre" => "Rock" }
-        )
+                               class_name: "Song",
+                               where: { "genre" => "Rock" })
 
         assert result[:success], "Should succeed: #{result[:error]}"
         assert_equal 1, result[:data][:count]
@@ -367,9 +360,8 @@ class AgentIntegrationTest < Minitest::Test
 
       with_timeout(3, "get object by id") do
         result = agent.execute(:get_object,
-          class_name: "Song",
-          object_id: target_song.id
-        )
+                               class_name: "Song",
+                               object_id: target_song.id)
 
         assert result[:success], "Should succeed: #{result[:error]}"
         assert_equal target_song.id, result[:data][:object_id]
@@ -387,9 +379,8 @@ class AgentIntegrationTest < Minitest::Test
 
       with_timeout(3, "get nonexistent object") do
         result = agent.execute(:get_object,
-          class_name: "Song",
-          object_id: "nonexistent123"
-        )
+                               class_name: "Song",
+                               object_id: "nonexistent123")
 
         refute result[:success], "Should fail for nonexistent object"
         assert_match(/not found/i, result[:error])
@@ -439,12 +430,11 @@ class AgentIntegrationTest < Minitest::Test
 
       with_timeout(5, "aggregate group by genre") do
         result = agent.execute(:aggregate,
-          class_name: "Song",
-          pipeline: [
-            { "$group" => { "_id" => "$genre", "count" => { "$sum" => 1 } } },
-            { "$sort" => { "count" => -1 } }
-          ]
-        )
+                               class_name: "Song",
+                               pipeline: [
+                                 { "$group" => { "_id" => "$genre", "count" => { "$sum" => 1 } } },
+                                 { "$sort" => { "count" => -1 } },
+                               ])
 
         assert result[:success], "Should succeed: #{result[:error]}"
         assert result[:data][:results].size >= 1, "Should have aggregation results"
@@ -469,11 +459,10 @@ class AgentIntegrationTest < Minitest::Test
 
       with_timeout(5, "aggregate sum of plays") do
         result = agent.execute(:aggregate,
-          class_name: "Song",
-          pipeline: [
-            { "$group" => { "_id" => nil, "totalPlays" => { "$sum" => "$plays" } } }
-          ]
-        )
+                               class_name: "Song",
+                               pipeline: [
+                                 { "$group" => { "_id" => nil, "totalPlays" => { "$sum" => "$plays" } } },
+                               ])
 
         assert result[:success], "Should succeed: #{result[:error]}"
         assert_equal 1, result[:data][:results].size
@@ -496,9 +485,8 @@ class AgentIntegrationTest < Minitest::Test
 
       with_timeout(3, "attempt write with readonly") do
         result = agent.execute(:create_object,
-          class_name: "Song",
-          data: { title: "New Song" }
-        )
+                               class_name: "Song",
+                               data: { title: "New Song" })
 
         refute result[:success], "Should deny write operation"
         assert_match(/permission denied/i, result[:error])
@@ -522,7 +510,7 @@ class AgentIntegrationTest < Minitest::Test
       user = Parse::User.new(
         username: "agent_test_user_#{Time.now.to_i}",
         password: "test_password_123",
-        email: "agent_test_#{Time.now.to_i}@example.com"
+        email: "agent_test_#{Time.now.to_i}@example.com",
       )
       assert user.signup!, "Should create test user"
 
@@ -553,9 +541,8 @@ class AgentIntegrationTest < Minitest::Test
 
       with_timeout(3, "explain query") do
         result = agent.execute(:explain_query,
-          class_name: "Song",
-          where: { "plays" => { "$gte" => 5000 } }
-        )
+                               class_name: "Song",
+                               where: { "plays" => { "$gte" => 5000 } })
 
         assert result[:success], "Should succeed: #{result[:error]}"
         assert_equal "Song", result[:data][:class_name]

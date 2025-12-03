@@ -89,7 +89,7 @@ module Parse
       digits: 6,
       period: 30,
       algorithm: "SHA1",
-      secret_length: 20  # Minimum required by Parse Server
+      secret_length: 20,  # Minimum required by Parse Server
     }.freeze
 
     class << self
@@ -155,7 +155,7 @@ module Parse
           secret,
           issuer: issuer || config[:issuer],
           interval: config[:period],
-          digits: config[:digits]
+          digits: config[:digits],
         )
       end
 
@@ -224,7 +224,7 @@ module Parse
             color: "000",
             shape_rendering: "crispEdges",
             module_size: 4,
-            standalone: true
+            standalone: true,
           )
         when :png
           qr.as_png(size: 300)
@@ -244,8 +244,8 @@ module Parse
         {
           mfa: {
             secret: secret,
-            token: token
-          }
+            token: token,
+          },
         }
       end
 
@@ -256,8 +256,8 @@ module Parse
       def build_login_auth_data(token:)
         {
           mfa: {
-            token: token
-          }
+            token: token,
+          },
         }
       end
 
@@ -268,8 +268,8 @@ module Parse
       def build_sms_setup_auth_data(mobile:)
         {
           mfa: {
-            mobile: mobile
-          }
+            mobile: mobile,
+          },
         }
       end
 
@@ -282,8 +282,8 @@ module Parse
         {
           mfa: {
             mobile: mobile,
-            token: token
-          }
+            token: token,
+          },
         }
       end
 

@@ -24,7 +24,7 @@ module Parse
       /\{(\d{3,}|\d+,\d{3,})\}/,                     # Large repetition counts {1000} or {1,1000}
       /(\.\*|\.\+)\s*(\.\*|\.\+)/,                   # Consecutive .* or .+ patterns
       /\([^)]*(\+|\*)[^)]*\)\s*(\+|\*)/,             # Nested quantifiers like (a+)+
-      /\(\?[^)]*\([^)]*(\+|\*)[^)]*\)[^)]*(\+|\*)\)/ # More complex nested quantifiers
+      /\(\?[^)]*\([^)]*(\+|\*)[^)]*\)[^)]*(\+|\*)\)/, # More complex nested quantifiers
     ].freeze
 
     class << self
@@ -542,7 +542,7 @@ module Parse
         lt: "$lt",
         lte: "$lte",
         ne: "$ne",
-        eq: "$eq"
+        eq: "$eq",
       }.freeze
 
       # @return [Hash] the compiled constraint using aggregation pipeline.
@@ -559,10 +559,10 @@ module Parse
             {
               "$match" => {
                 "$expr" => {
-                  "$eq" => [size_expr, value]
-                }
-              }
-            }
+                  "$eq" => [size_expr, value],
+                },
+              },
+            },
           ]
         elsif value.is_a?(Hash)
           # Hash with comparison operators
@@ -571,7 +571,7 @@ module Parse
           value.each do |op, val|
             op_sym = op.to_sym
             unless COMPARISON_OPERATORS.key?(op_sym)
-              raise ArgumentError, "#{self.class}: Unknown operator '#{op}'. Valid operators: #{COMPARISON_OPERATORS.keys.join(', ')}"
+              raise ArgumentError, "#{self.class}: Unknown operator '#{op}'. Valid operators: #{COMPARISON_OPERATORS.keys.join(", ")}"
             end
             unless val.is_a?(Integer) && val >= 0
               raise ArgumentError, "#{self.class}: Value for '#{op}' must be a non-negative integer"
@@ -587,9 +587,9 @@ module Parse
           pipeline = [
             {
               "$match" => {
-                "$expr" => expr
-              }
-            }
+                "$expr" => expr,
+              },
+            },
           ]
         else
           raise ArgumentError, "#{self.class}: Value must be an integer or hash with comparison operators (gt, gte, lt, lte, ne, eq)"
@@ -676,9 +676,9 @@ module Parse
         pipeline = [
           {
             "$match" => {
-              "$expr" => comparison
-            }
-          }
+              "$expr" => comparison,
+            },
+          },
         ]
 
         { "__aggregation_pipeline" => pipeline }
@@ -723,10 +723,10 @@ module Parse
                 "$or" => [
                   { field_name => { "$exists" => true, "$eq" => [] } },
                   { field_name => { "$exists" => false } },
-                  { field_name => { "$eq" => nil } }
-                ]
-              }
-            }
+                  { field_name => { "$eq" => nil } },
+                ],
+              },
+            },
           ]
         else
           # Match non-empty arrays (must exist, not nil, and not empty)
@@ -737,10 +737,10 @@ module Parse
                 "$and" => [
                   { field_name => { "$exists" => true } },
                   { field_name => { "$ne" => nil } },
-                  { field_name => { "$ne" => [] } }
-                ]
-              }
-            }
+                  { field_name => { "$ne" => [] } },
+                ],
+              },
+            },
           ]
         end
 
@@ -785,10 +785,10 @@ module Parse
                 "$and" => [
                   { field_name => { "$exists" => true } },
                   { field_name => { "$ne" => nil } },
-                  { field_name => { "$ne" => [] } }
-                ]
-              }
-            }
+                  { field_name => { "$ne" => [] } },
+                ],
+              },
+            },
           ]
         else
           # Match empty array OR nil/missing field
@@ -799,10 +799,10 @@ module Parse
                 "$or" => [
                   { field_name => { "$exists" => true, "$eq" => [] } },
                   { field_name => { "$exists" => false } },
-                  { field_name => { "$eq" => nil } }
-                ]
-              }
-            }
+                  { field_name => { "$eq" => nil } },
+                ],
+              },
+            },
           ]
         end
 
@@ -869,11 +869,11 @@ module Parse
                 "$expr" => {
                   "$setEquals" => [
                     { "$map" => { "input" => "$#{field_name}", "as" => "p", "in" => "$$p.objectId" } },
-                    target_ids
-                  ]
-                }
-              }
-            }
+                    target_ids,
+                  ],
+                },
+              },
+            },
           ]
         else
           # For simple value arrays (strings, numbers, etc.)
@@ -881,10 +881,10 @@ module Parse
             {
               "$match" => {
                 "$expr" => {
-                  "$setEquals" => ["$#{field_name}", val]
-                }
-              }
-            }
+                  "$setEquals" => ["$#{field_name}", val],
+                },
+              },
+            },
           ]
         end
 
@@ -954,11 +954,11 @@ module Parse
                 "$expr" => {
                   "$eq" => [
                     { "$map" => { "input" => "$#{field_name}", "as" => "p", "in" => "$$p.objectId" } },
-                    target_ids
-                  ]
-                }
-              }
-            }
+                    target_ids,
+                  ],
+                },
+              },
+            },
           ]
         else
           # For simple value arrays, direct $eq comparison (order matters)
@@ -966,10 +966,10 @@ module Parse
             {
               "$match" => {
                 "$expr" => {
-                  "$eq" => ["$#{field_name}", val]
-                }
-              }
-            }
+                  "$eq" => ["$#{field_name}", val],
+                },
+              },
+            },
           ]
         end
 
@@ -1033,11 +1033,11 @@ module Parse
                 "$expr" => {
                   "$ne" => [
                     { "$map" => { "input" => "$#{field_name}", "as" => "p", "in" => "$$p.objectId" } },
-                    target_ids
-                  ]
-                }
-              }
-            }
+                    target_ids,
+                  ],
+                },
+              },
+            },
           ]
         else
           # For simple value arrays, direct $ne comparison (order matters)
@@ -1045,10 +1045,10 @@ module Parse
             {
               "$match" => {
                 "$expr" => {
-                  "$ne" => ["$#{field_name}", val]
-                }
-              }
-            }
+                  "$ne" => ["$#{field_name}", val],
+                },
+              },
+            },
           ]
         end
 
@@ -1113,12 +1113,12 @@ module Parse
                   "$not" => {
                     "$setEquals" => [
                       { "$map" => { "input" => "$#{field_name}", "as" => "p", "in" => "$$p.objectId" } },
-                      target_ids
-                    ]
-                  }
-                }
-              }
-            }
+                      target_ids,
+                    ],
+                  },
+                },
+              },
+            },
           ]
         else
           # For simple value arrays, use $not with $setEquals
@@ -1127,11 +1127,11 @@ module Parse
               "$match" => {
                 "$expr" => {
                   "$not" => {
-                    "$setEquals" => ["$#{field_name}", val]
-                  }
-                }
-              }
-            }
+                    "$setEquals" => ["$#{field_name}", val],
+                  },
+                },
+              },
+            },
           ]
         end
 
@@ -1183,10 +1183,10 @@ module Parse
           {
             "$match" => {
               field_name => {
-                "$elemMatch" => converted_val
-              }
-            }
-          }
+                "$elemMatch" => converted_val,
+              },
+            },
+          },
         ]
 
         { "__aggregation_pipeline" => pipeline }
@@ -1266,21 +1266,21 @@ module Parse
                 "$expr" => {
                   "$setIsSubset" => [
                     { "$map" => { "input" => "$#{field_name}", "as" => "p", "in" => "$$p.objectId" } },
-                    target_ids
-                  ]
-                }
-              }
-            }
+                    target_ids,
+                  ],
+                },
+              },
+            },
           ]
         else
           pipeline = [
             {
               "$match" => {
                 "$expr" => {
-                  "$setIsSubset" => ["$#{field_name}", val]
-                }
-              }
-            }
+                  "$setIsSubset" => ["$#{field_name}", val],
+                },
+              },
+            },
           ]
         end
 
@@ -1320,11 +1320,11 @@ module Parse
                 "$expr" => {
                   "$eq" => [
                     { "$arrayElemAt" => [{ "$map" => { "input" => "$#{field_name}", "as" => "p", "in" => "$$p.objectId" } }, 0] },
-                    compare_val
-                  ]
-                }
-              }
-            }
+                    compare_val,
+                  ],
+                },
+              },
+            },
           ]
         elsif val.is_a?(Parse::Pointer)
           compare_val = val.id
@@ -1334,11 +1334,11 @@ module Parse
                 "$expr" => {
                   "$eq" => [
                     { "$arrayElemAt" => [{ "$map" => { "input" => "$#{field_name}", "as" => "p", "in" => "$$p.objectId" } }, 0] },
-                    compare_val
-                  ]
-                }
-              }
-            }
+                    compare_val,
+                  ],
+                },
+              },
+            },
           ]
         else
           pipeline = [
@@ -1347,11 +1347,11 @@ module Parse
                 "$expr" => {
                   "$eq" => [
                     { "$arrayElemAt" => ["$#{field_name}", 0] },
-                    val
-                  ]
-                }
-              }
-            }
+                    val,
+                  ],
+                },
+              },
+            },
           ]
         end
 
@@ -1391,11 +1391,11 @@ module Parse
                 "$expr" => {
                   "$eq" => [
                     { "$arrayElemAt" => [{ "$map" => { "input" => "$#{field_name}", "as" => "p", "in" => "$$p.objectId" } }, -1] },
-                    compare_val
-                  ]
-                }
-              }
-            }
+                    compare_val,
+                  ],
+                },
+              },
+            },
           ]
         elsif val.is_a?(Parse::Pointer)
           compare_val = val.id
@@ -1405,11 +1405,11 @@ module Parse
                 "$expr" => {
                   "$eq" => [
                     { "$arrayElemAt" => [{ "$map" => { "input" => "$#{field_name}", "as" => "p", "in" => "$$p.objectId" } }, -1] },
-                    compare_val
-                  ]
-                }
-              }
-            }
+                    compare_val,
+                  ],
+                },
+              },
+            },
           ]
         else
           pipeline = [
@@ -1418,11 +1418,11 @@ module Parse
                 "$expr" => {
                   "$eq" => [
                     { "$arrayElemAt" => ["$#{field_name}", -1] },
-                    val
-                  ]
-                }
-              }
-            }
+                    val,
+                  ],
+                },
+              },
+            },
           ]
         end
 
@@ -1851,7 +1851,7 @@ module Parse
       def build
         remote_field_name = @operation.operand
         query = nil
-        
+
         if @value.is_a?(Hash)
           res = @value.symbolize_keys
           remote_field_name = res[:key] || remote_field_name
@@ -1866,7 +1866,7 @@ module Parse
         else
           raise ArgumentError, "Invalid `:matches_key_in_query` query constraint. It should follow the format: :field.matches_key_in_query => { key: 'key', query: '<Parse::Query>' }"
         end
-        
+
         { @operation.operand => { :$select => { key: remote_field_name, query: query } } }
       end
     end
@@ -1902,7 +1902,7 @@ module Parse
       def build
         remote_field_name = @operation.operand
         query = nil
-        
+
         if @value.is_a?(Hash)
           res = @value.symbolize_keys
           remote_field_name = res[:key] || remote_field_name
@@ -1917,7 +1917,7 @@ module Parse
         else
           raise ArgumentError, "Invalid `:does_not_match_key_in_query` query constraint. It should follow the format: :field.does_not_match_key_in_query => { key: 'key', query: '<Parse::Query>' }"
         end
-        
+
         { @operation.operand => { :$dontSelect => { key: remote_field_name, query: query } } }
       end
     end
@@ -1994,7 +1994,6 @@ module Parse
       end
     end
 
-
     # A convenience constraint that combines greater-than-or-equal and less-than-or-equal
     # constraints for date/time range queries. This is equivalent to using both $gte and $lte.
     #
@@ -2016,16 +2015,16 @@ module Parse
         unless value.is_a?(Array) && value.length == 2
           raise ArgumentError, "#{self.class}: Value must be an array with exactly 2 elements [start_date, end_date]"
         end
-        
+
         start_date, end_date = value
-        
+
         # Format the dates using Parse's date formatting
         formatted_start = Parse::Constraint.formatted_value(start_date)
         formatted_end = Parse::Constraint.formatted_value(end_date)
-        
-        { @operation.operand => { 
+
+        { @operation.operand => {
           Parse::Constraint::GreaterThanOrEqualConstraint.key => formatted_start,
-          Parse::Constraint::LessThanOrEqualConstraint.key => formatted_end
+          Parse::Constraint::LessThanOrEqualConstraint.key => formatted_end,
         } }
       end
     end
@@ -2064,16 +2063,16 @@ module Parse
         unless value.is_a?(Array) && value.length == 2
           raise ArgumentError, "#{self.class}: Value must be an array with exactly 2 elements [min_value, max_value]"
         end
-        
+
         min_value, max_value = value
-        
+
         # Format the values using Parse's formatting (handles dates, numbers, etc.)
         formatted_min = Parse::Constraint.formatted_value(min_value)
         formatted_max = Parse::Constraint.formatted_value(max_value)
-        
-        { @operation.operand => { 
+
+        { @operation.operand => {
           Parse::Constraint::GreaterThanOrEqualConstraint.key => formatted_min,
-          Parse::Constraint::LessThanOrEqualConstraint.key => formatted_max
+          Parse::Constraint::LessThanOrEqualConstraint.key => formatted_max,
         } }
       end
     end
@@ -2128,7 +2127,6 @@ module Parse
           rescue
             # If role fetching fails, continue with just the user ID
           end
-
         elsif value.is_a?(Parse::Role) || (value.respond_to?(:is_a?) && value.is_a?(Parse::Role))
           # For a role object, add the role name with "role:" prefix
           permissions_to_check << "role:#{value.name}" if value.respond_to?(:name) && value.name.present?
@@ -2143,7 +2141,6 @@ module Parse
           rescue
             # If child role fetching fails, continue with just the direct role
           end
-
         elsif value.is_a?(Parse::Pointer) || (value.respond_to?(:parse_class) && value.respond_to?(:id))
           # Handle pointer to User or Role
           if value.respond_to?(:parse_class) && (value.parse_class == "User" || value.parse_class == "_User")
@@ -2167,7 +2164,6 @@ module Parse
               # If role fetching fails, continue with just the user ID
             end
           end
-
         elsif value.is_a?(Array)
           # Handle array of permission values
           value.each do |item|
@@ -2211,7 +2207,6 @@ module Parse
               permissions_to_check << (item == "public" ? "*" : item)
             end
           end
-
         elsif value.is_a?(String)
           if value == "none"
             # "none" = objects with empty _rperm (master key only)
@@ -2220,9 +2215,9 @@ module Parse
             pipeline = [
               {
                 "$match" => {
-                  "_rperm" => { "$eq" => [] }
-                }
-              }
+                  "_rperm" => { "$eq" => [] },
+                },
+              },
             ]
             return { "__aggregation_pipeline" => pipeline }
           end
@@ -2231,7 +2226,6 @@ module Parse
           # Also accept "public" as an alias for "*"
           # Note: For role names without prefix, use readable_by_role or pass a Parse::Role object
           permissions_to_check << (value == "public" ? "*" : value)
-
         else
           raise ArgumentError, "ACLReadableByConstraint: value must be a User, Role, String, or Array of these types"
         end
@@ -2250,10 +2244,10 @@ module Parse
             "$match" => {
               "$or" => [
                 { "_rperm" => { "$in" => permissions_with_public } },
-                { "_rperm" => { "$exists" => false } }
-              ]
-            }
-          }
+                { "_rperm" => { "$exists" => false } },
+              ],
+            },
+          },
         ]
 
         { "__aggregation_pipeline" => pipeline }
@@ -2286,7 +2280,6 @@ module Parse
 
         if value.is_a?(Parse::Role) || (value.respond_to?(:is_a?) && value.is_a?(Parse::Role))
           permissions_to_check << "role:#{value.name}" if value.respond_to?(:name) && value.name.present?
-
         elsif value.is_a?(Parse::Pointer) || (value.respond_to?(:parse_class) && value.respond_to?(:id))
           # Handle pointer to Role - need to fetch it to get the name
           if value.respond_to?(:parse_class) && (value.parse_class == "Role" || value.parse_class == "_Role")
@@ -2297,7 +2290,6 @@ module Parse
               # If fetching fails, skip this pointer
             end
           end
-
         elsif value.is_a?(Array)
           value.each do |item|
             if item.is_a?(Parse::Role) || (item.respond_to?(:is_a?) && item.is_a?(Parse::Role))
@@ -2316,11 +2308,9 @@ module Parse
               permissions_to_check << (item.start_with?("role:") ? item : "role:#{item}")
             end
           end
-
         elsif value.is_a?(String)
           # Add role: prefix if not already present
           permissions_to_check << (value.start_with?("role:") ? value : "role:#{value}")
-
         else
           raise ArgumentError, "ACLReadableByRoleConstraint: value must be a Role, Role Pointer, String, or Array of these types"
         end
@@ -2337,10 +2327,10 @@ module Parse
             "$match" => {
               "$or" => [
                 { "_rperm" => { "$in" => permissions_with_public } },
-                { "_rperm" => { "$exists" => false } }
-              ]
-            }
-          }
+                { "_rperm" => { "$exists" => false } },
+              ],
+            },
+          },
         ]
 
         { "__aggregation_pipeline" => pipeline }
@@ -2397,7 +2387,6 @@ module Parse
           rescue
             # If role fetching fails, continue with just the user ID
           end
-
         elsif value.is_a?(Parse::Role) || (value.respond_to?(:is_a?) && value.is_a?(Parse::Role))
           # For a role object, add the role name with "role:" prefix
           permissions_to_check << "role:#{value.name}" if value.respond_to?(:name) && value.name.present?
@@ -2412,7 +2401,6 @@ module Parse
           rescue
             # If child role fetching fails, continue with just the direct role
           end
-
         elsif value.is_a?(Parse::Pointer) || (value.respond_to?(:parse_class) && value.respond_to?(:id))
           # Handle pointer to User or Role
           if value.respond_to?(:parse_class) && (value.parse_class == "User" || value.parse_class == "_User")
@@ -2436,7 +2424,6 @@ module Parse
               # If role fetching fails, continue with just the user ID
             end
           end
-
         elsif value.is_a?(Array)
           # Handle array of permission values
           value.each do |item|
@@ -2480,7 +2467,6 @@ module Parse
               permissions_to_check << (item == "public" ? "*" : item)
             end
           end
-
         elsif value.is_a?(String)
           if value == "none"
             # "none" = objects with empty _wperm (master key only)
@@ -2489,9 +2475,9 @@ module Parse
             pipeline = [
               {
                 "$match" => {
-                  "_wperm" => { "$eq" => [] }
-                }
-              }
+                  "_wperm" => { "$eq" => [] },
+                },
+              },
             ]
             return { "__aggregation_pipeline" => pipeline }
           end
@@ -2499,7 +2485,6 @@ module Parse
           # Use string as-is (exact permission value: user ID, "role:Name", or "*")
           # Also accept "public" as an alias for "*"
           permissions_to_check << (value == "public" ? "*" : value)
-
         else
           raise ArgumentError, "ACLWritableByConstraint: value must be a User, Role, String, or Array of these types"
         end
@@ -2518,10 +2503,10 @@ module Parse
             "$match" => {
               "$or" => [
                 { "_wperm" => { "$in" => permissions_with_public } },
-                { "_wperm" => { "$exists" => false } }
-              ]
-            }
-          }
+                { "_wperm" => { "$exists" => false } },
+              ],
+            },
+          },
         ]
 
         { "__aggregation_pipeline" => pipeline }
@@ -2554,7 +2539,6 @@ module Parse
 
         if value.is_a?(Parse::Role) || (value.respond_to?(:is_a?) && value.is_a?(Parse::Role))
           permissions_to_check << "role:#{value.name}" if value.respond_to?(:name) && value.name.present?
-
         elsif value.is_a?(Parse::Pointer) || (value.respond_to?(:parse_class) && value.respond_to?(:id))
           # Handle pointer to Role - need to fetch it to get the name
           if value.respond_to?(:parse_class) && (value.parse_class == "Role" || value.parse_class == "_Role")
@@ -2565,7 +2549,6 @@ module Parse
               # If fetching fails, skip this pointer
             end
           end
-
         elsif value.is_a?(Array)
           value.each do |item|
             if item.is_a?(Parse::Role) || (item.respond_to?(:is_a?) && item.is_a?(Parse::Role))
@@ -2584,11 +2567,9 @@ module Parse
               permissions_to_check << (item.start_with?("role:") ? item : "role:#{item}")
             end
           end
-
         elsif value.is_a?(String)
           # Add role: prefix if not already present
           permissions_to_check << (value.start_with?("role:") ? value : "role:#{value}")
-
         else
           raise ArgumentError, "ACLWritableByRoleConstraint: value must be a Role, Role Pointer, String, or Array of these types"
         end
@@ -2605,10 +2586,10 @@ module Parse
             "$match" => {
               "$or" => [
                 { "_wperm" => { "$in" => permissions_with_public } },
-                { "_wperm" => { "$exists" => false } }
-              ]
-            }
-          }
+                { "_wperm" => { "$exists" => false } },
+              ],
+            },
+          },
         ]
 
         { "__aggregation_pipeline" => pipeline }
@@ -2620,7 +2601,7 @@ module Parse
     #
     #  # Find ObjectA where ObjectA.author equals ObjectA.project.owner
     #  ObjectA.where(:author.equals_linked_pointer => { through: :project, field: :owner })
-    #  
+    #
     #  # This generates a MongoDB aggregation pipeline with $lookup and $expr
     #  # to compare pointer fields across linked documents
     #
@@ -2655,7 +2636,7 @@ module Parse
         # Build the aggregation pipeline
         # Use clean alias name without _p_ prefix for readability
         lookup_alias = "#{through_field.to_s.camelize(:lower)}_data"
-        
+
         # Parse stores pointers as "ClassName$objectId" strings
         # We need to extract just the objectId part after the $
         pipeline = [
@@ -2665,29 +2646,29 @@ module Parse
                 "$substr" => [
                   "$#{formatted_through}",
                   target_collection.length + 1,  # Skip "ClassName$"
-                  -1  # Rest of string
-                ]
-              }
-            }
+                  -1,  # Rest of string
+                ],
+              },
+            },
           },
           {
             "$lookup" => {
               "from" => target_collection,
               "localField" => formatted_through,
-              "foreignField" => "_id", 
-              "as" => lookup_alias
-            }
+              "foreignField" => "_id",
+              "as" => lookup_alias,
+            },
           },
           {
             "$match" => {
               "$expr" => {
                 "$eq" => [
                   { "$arrayElemAt" => ["$#{lookup_alias}.#{formatted_target}", 0] },
-                  "$#{formatted_local}"
-                ]
-              }
-            }
-          }
+                  "$#{formatted_local}",
+                ],
+              },
+            },
+          },
         ]
 
         # Return a special marker that indicates this needs aggregation pipeline processing
@@ -2706,9 +2687,9 @@ module Parse
     # 2. Uses $match with $expr and $ne to find records where fields do NOT match
     #
     # @example Find assets where the project does not equal the capture's project
-    #   Asset.where(:project.does_not_equal_linked_pointer => { 
-    #     through: :capture, 
-    #     field: :project 
+    #   Asset.where(:project.does_not_equal_linked_pointer => {
+    #     through: :capture,
+    #     field: :project
     #   })
     class DoesNotEqualLinkedPointerConstraint < Constraint
       register :does_not_equal_linked_pointer
@@ -2724,22 +2705,22 @@ module Parse
 
         through_field = @value[:through]
         target_field = @value[:field]
-        
+
         # Convert field names to Parse format (snake_case to camelCase) with _p_ prefix for pointers
         local_field_name = format_field_name(@operation.operand, is_pointer: true)
         through_field_name = format_field_name(through_field, is_pointer: true)
         target_field_name = format_field_name(target_field, is_pointer: true)
-        
+
         # Determine the collection name for the lookup (Rails pluralization)
         through_class_name = through_field.to_s.classify
         lookup_collection = through_class_name
-        
+
         # Generate unique alias name for the joined data (use clean name without _p_ prefix)
         lookup_alias = "#{through_field.to_s.camelize(:lower)}_data"
-        
+
         # Build the MongoDB aggregation pipeline
         pipeline = []
-        
+
         # Parse stores pointers as "ClassName$objectId" strings
         # We need to extract just the objectId part after the $
         # Stage 1: Add field with extracted objectId
@@ -2749,41 +2730,41 @@ module Parse
               "$substr" => [
                 "$#{through_field_name}",
                 lookup_collection.length + 1,  # Skip "ClassName$"
-                -1  # Rest of string
-              ]
-            }
-          }
+                -1,  # Rest of string
+              ],
+            },
+          },
         }
         pipeline << add_fields_stage
-        
+
         # Stage 2: $lookup to join the linked collection
         lookup_stage = {
           "$lookup" => {
             "from" => lookup_collection,
             "localField" => through_field_name,
-            "foreignField" => "_id", 
-            "as" => lookup_alias
-          }
+            "foreignField" => "_id",
+            "as" => lookup_alias,
+          },
         }
         pipeline << lookup_stage
-        
+
         # Stage 2: $match with $expr to compare the fields using $ne (not equal)
         match_stage = {
           "$match" => {
             "$expr" => {
               "$ne" => [
                 { "$arrayElemAt" => ["$#{lookup_alias}.#{target_field_name}", 0] },
-                "$#{local_field_name}"
-              ]
-            }
-          }
+                "$#{local_field_name}",
+              ],
+            },
+          },
         }
         pipeline << match_stage
-        
+
         # Return a special marker that indicates this needs aggregation pipeline processing
         { "__aggregation_pipeline" => pipeline }
       end
-      
+
       private
 
       # Converts field names from snake_case to camelCase for Parse Server compatibility
@@ -2888,10 +2869,10 @@ module Parse
               "$match" => {
                 "$or" => [
                   { "_rperm" => { "$exists" => true, "$eq" => [] } },
-                  { "_rperm" => { "$exists" => false } }
-                ]
-              }
-            }
+                  { "_rperm" => { "$exists" => false } },
+                ],
+              },
+            },
           ]
         else
           # Find objects readable by ANY of the specified keys
@@ -2899,9 +2880,9 @@ module Parse
           pipeline = [
             {
               "$match" => {
-                "_rperm" => { "$in" => keys }
-              }
-            }
+                "_rperm" => { "$in" => keys },
+              },
+            },
           ]
         end
 
@@ -2947,19 +2928,19 @@ module Parse
               "$match" => {
                 "$or" => [
                   { "_wperm" => { "$exists" => true, "$eq" => [] } },
-                  { "_wperm" => { "$exists" => false } }
-                ]
-              }
-            }
+                  { "_wperm" => { "$exists" => false } },
+                ],
+              },
+            },
           ]
         else
           # Find objects writable by ANY of the specified keys
           pipeline = [
             {
               "$match" => {
-                "_wperm" => { "$in" => keys }
-              }
-            }
+                "_wperm" => { "$in" => keys },
+              },
+            },
           ]
         end
 
@@ -2999,9 +2980,9 @@ module Parse
         pipeline = [
           {
             "$match" => {
-              "_rperm" => { "$nin" => keys }
-            }
-          }
+              "_rperm" => { "$nin" => keys },
+            },
+          },
         ]
 
         { "__aggregation_pipeline" => pipeline }
@@ -3028,9 +3009,9 @@ module Parse
         pipeline = [
           {
             "$match" => {
-              "_wperm" => { "$nin" => keys }
-            }
-          }
+              "_wperm" => { "$nin" => keys },
+            },
+          },
         ]
 
         { "__aggregation_pipeline" => pipeline }
@@ -3070,18 +3051,18 @@ module Parse
                   {
                     "$or" => [
                       { "_rperm" => { "$exists" => true, "$eq" => [] } },
-                      { "_rperm" => { "$exists" => false } }
-                    ]
+                      { "_rperm" => { "$exists" => false } },
+                    ],
                   },
                   {
                     "$or" => [
                       { "_wperm" => { "$exists" => true, "$eq" => [] } },
-                      { "_wperm" => { "$exists" => false } }
-                    ]
-                  }
-                ]
-              }
-            }
+                      { "_wperm" => { "$exists" => false } },
+                    ],
+                  },
+                ],
+              },
+            },
           ]
         else
           # Match objects that have SOME permissions (either read or write)
@@ -3090,10 +3071,10 @@ module Parse
               "$match" => {
                 "$or" => [
                   { "_rperm" => { "$exists" => true, "$ne" => [] } },
-                  { "_wperm" => { "$exists" => true, "$ne" => [] } }
-                ]
-              }
-            }
+                  { "_wperm" => { "$exists" => true, "$ne" => [] } },
+                ],
+              },
+            },
           ]
         end
 

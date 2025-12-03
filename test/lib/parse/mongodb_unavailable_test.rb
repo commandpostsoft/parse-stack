@@ -206,12 +206,12 @@ class MongoDBUnavailableTest < Minitest::Test
   def test_available_requires_all_three_conditions
     # Test each combination
     combinations = [
-      { gem: true,  enabled: true,  uri: "mongodb://localhost/test", expected: true },
-      { gem: false, enabled: true,  uri: "mongodb://localhost/test", expected: false },
-      { gem: true,  enabled: false, uri: "mongodb://localhost/test", expected: false },
-      { gem: true,  enabled: true,  uri: nil,                        expected: false },
-      { gem: true,  enabled: true,  uri: "",                         expected: false },
-      { gem: false, enabled: false, uri: nil,                        expected: false },
+      { gem: true, enabled: true, uri: "mongodb://localhost/test", expected: true },
+      { gem: false, enabled: true, uri: "mongodb://localhost/test", expected: false },
+      { gem: true, enabled: false, uri: "mongodb://localhost/test", expected: false },
+      { gem: true, enabled: true, uri: nil, expected: false },
+      { gem: true, enabled: true, uri: "", expected: false },
+      { gem: false, enabled: false, uri: nil, expected: false },
     ]
 
     combinations.each do |combo|

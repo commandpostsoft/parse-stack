@@ -63,7 +63,7 @@ class MongoDBDirectQueryTest < Minitest::Test
     doc = {
       "_id" => "abc123",
       "title" => "Test Song",
-      "plays" => 100
+      "plays" => 100,
     }
 
     result = Parse::MongoDB.convert_document_to_parse(doc, "Song")
@@ -84,7 +84,7 @@ class MongoDBDirectQueryTest < Minitest::Test
       "_id" => "abc123",
       "_created_at" => created_at,
       "_updated_at" => updated_at,
-      "title" => "Test"
+      "title" => "Test",
     }
 
     result = Parse::MongoDB.convert_document_to_parse(doc)
@@ -102,7 +102,7 @@ class MongoDBDirectQueryTest < Minitest::Test
       "_id" => "song123",
       "_p_artist" => "Artist$artist456",
       "_p_album" => "Album$album789",
-      "title" => "Great Song"
+      "title" => "Great Song",
     }
 
     result = Parse::MongoDB.convert_document_to_parse(doc)
@@ -126,7 +126,7 @@ class MongoDBDirectQueryTest < Minitest::Test
       "_acl" => { "*" => { "r" => true } },
       "_hashed_password" => "secret_hash",
       "_session_token" => "r:abc123",
-      "title" => "Test"
+      "title" => "Test",
     }
 
     result = Parse::MongoDB.convert_document_to_parse(doc)
@@ -157,7 +157,7 @@ class MongoDBDirectQueryTest < Minitest::Test
     docs = [
       { "_id" => "1", "title" => "Song 1" },
       { "_id" => "2", "title" => "Song 2" },
-      { "_id" => "3", "title" => "Song 3" }
+      { "_id" => "3", "title" => "Song 3" },
     ]
 
     results = Parse::MongoDB.convert_documents_to_parse(docs, "Song")
@@ -357,7 +357,7 @@ class MongoDBDirectQueryTest < Minitest::Test
     query = Parse::Query.new("Song")
     pointers = [
       { "__type" => "Pointer", "className" => "Artist", "objectId" => "a1" },
-      { "__type" => "Pointer", "className" => "Artist", "objectId" => "a2" }
+      { "__type" => "Pointer", "className" => "Artist", "objectId" => "a2" },
     ]
 
     result = query.send(:convert_value_for_direct_mongodb, "artists", pointers)
@@ -568,8 +568,8 @@ class MongoDBDirectQueryTest < Minitest::Test
     constraints = {
       "$and" => [
         { "genre" => "Rock" },
-        { "plays" => { "$gt" => 100 } }
-      ]
+        { "plays" => { "$gt" => 100 } },
+      ],
     }
 
     result = query.send(:convert_constraints_for_direct_mongodb, constraints)
@@ -585,8 +585,8 @@ class MongoDBDirectQueryTest < Minitest::Test
     constraints = {
       "$or" => [
         { "genre" => "Rock" },
-        { "genre" => "Pop" }
-      ]
+        { "genre" => "Pop" },
+      ],
     }
 
     result = query.send(:convert_constraints_for_direct_mongodb, constraints)
@@ -632,8 +632,8 @@ class MongoDBDirectQueryTest < Minitest::Test
       "_included_artist" => {
         "_id" => "artist456",
         "name" => "Test Artist",
-        "_created_at" => Time.utc(2024, 1, 15, 10, 30, 0)
-      }
+        "_created_at" => Time.utc(2024, 1, 15, 10, 30, 0),
+      },
     }
 
     result = Parse::MongoDB.convert_document_to_parse(doc, "Song")
@@ -658,7 +658,7 @@ class MongoDBDirectQueryTest < Minitest::Test
     doc = {
       "_id" => "song123",
       "title" => "Test Song",
-      "_included_artist" => nil  # Artist pointer was null
+      "_included_artist" => nil,  # Artist pointer was null
     }
 
     result = Parse::MongoDB.convert_document_to_parse(doc, "Song")
@@ -675,7 +675,7 @@ class MongoDBDirectQueryTest < Minitest::Test
     doc = {
       "_id" => "song123",
       "title" => "Test Song",
-      "_include_id_artist" => "artist456"  # Temporary lookup field
+      "_include_id_artist" => "artist456",  # Temporary lookup field
     }
 
     result = Parse::MongoDB.convert_document_to_parse(doc, "Song")
@@ -694,13 +694,13 @@ class MongoDBDirectQueryTest < Minitest::Test
       "title" => "Test Song",
       "_included_artist" => {
         "_id" => "artist456",
-        "name" => "Test Artist"
+        "name" => "Test Artist",
       },
       "_included_album" => {
         "_id" => "album789",
         "title" => "Test Album",
-        "year" => 2024
-      }
+        "year" => 2024,
+      },
     }
 
     result = Parse::MongoDB.convert_document_to_parse(doc, "Song")
@@ -728,8 +728,8 @@ class MongoDBDirectQueryTest < Minitest::Test
       "_included_artist" => {
         "_id" => "artist456",
         "name" => "Test Artist",
-        "_p_label" => "Label$label789"  # Nested pointer in included document
-      }
+        "_p_label" => "Label$label789",  # Nested pointer in included document
+      },
     }
 
     result = Parse::MongoDB.convert_document_to_parse(doc, "Song")

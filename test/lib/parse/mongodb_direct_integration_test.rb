@@ -1,8 +1,8 @@
 # encoding: UTF-8
 # frozen_string_literal: true
 
-require_relative '../../test_helper_integration'
-require 'timeout'
+require_relative "../../test_helper_integration"
+require "timeout"
 
 # Test models for MongoDB direct query testing
 class MongoDirectSong < Parse::Object
@@ -81,8 +81,8 @@ class MongoDBDirectIntegrationTest < Minitest::Test
   def setup_mongodb_direct
     # Check if mongo gem is available and configure MongoDB
     begin
-      require 'mongo'
-      require 'parse/mongodb'
+      require "mongo"
+      require "parse/mongodb"
       Parse::MongoDB.configure(uri: MONGODB_URI, enabled: true)
       true
     rescue LoadError => e
@@ -103,7 +103,7 @@ class MongoDBDirectIntegrationTest < Minitest::Test
   # ==========================================================================
 
   def test_results_equivalency_simple_query
-    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
 
     with_parse_server do
       skip "MongoDB direct tests require mongo gem" unless setup_mongodb_direct
@@ -117,7 +117,7 @@ class MongoDBDirectIntegrationTest < Minitest::Test
           { title: "Song B", artist: "Artist 2", genre: "Pop", plays: 2000, duration: 4.0 },
           { title: "Song C", artist: "Artist 1", genre: "Rock", plays: 1500, duration: 3.8 },
           { title: "Song D", artist: "Artist 3", genre: "Jazz", plays: 500, duration: 5.2 },
-          { title: "Song E", artist: "Artist 2", genre: "Pop", plays: 3000, duration: 3.2 }
+          { title: "Song E", artist: "Artist 2", genre: "Pop", plays: 3000, duration: 3.2 },
         ]
 
         songs.each do |data|
@@ -187,7 +187,7 @@ class MongoDBDirectIntegrationTest < Minitest::Test
   end
 
   def test_results_equivalency_with_limit_skip_order
-    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
 
     with_parse_server do
       skip "MongoDB direct tests require mongo gem" unless setup_mongodb_direct
@@ -198,11 +198,11 @@ class MongoDBDirectIntegrationTest < Minitest::Test
         # Create test data
         10.times do |i|
           song = MongoDirectSong.new(
-            title: "Track #{format('%02d', i + 1)}",
+            title: "Track #{format("%02d", i + 1)}",
             artist: "Test Artist",
             genre: "Electronic",
             plays: (i + 1) * 100,
-            duration: 3.0 + (i * 0.1)
+            duration: 3.0 + (i * 0.1),
           )
           assert song.save, "Failed to save track #{i + 1}"
         end
@@ -277,7 +277,7 @@ class MongoDBDirectIntegrationTest < Minitest::Test
   # ==========================================================================
 
   def test_first_equivalency
-    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
 
     with_parse_server do
       skip "MongoDB direct tests require mongo gem" unless setup_mongodb_direct
@@ -291,7 +291,7 @@ class MongoDBDirectIntegrationTest < Minitest::Test
           { title: "Beta", artist: "Artist B", genre: "Pop", plays: 200 },
           { title: "Gamma", artist: "Artist C", genre: "Rock", plays: 300 },
           { title: "Delta", artist: "Artist D", genre: "Jazz", plays: 400 },
-          { title: "Epsilon", artist: "Artist E", genre: "Rock", plays: 500 }
+          { title: "Epsilon", artist: "Artist E", genre: "Rock", plays: 500 },
         ]
 
         songs.each do |data|
@@ -339,7 +339,7 @@ class MongoDBDirectIntegrationTest < Minitest::Test
   # ==========================================================================
 
   def test_count_equivalency
-    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
 
     with_parse_server do
       skip "MongoDB direct tests require mongo gem" unless setup_mongodb_direct
@@ -354,7 +354,7 @@ class MongoDBDirectIntegrationTest < Minitest::Test
             title: "Count Song #{i + 1}",
             artist: "Count Artist",
             genre: genre,
-            plays: (i + 1) * 100
+            plays: (i + 1) * 100,
           )
           assert song.save, "Failed to save count song #{i + 1}"
         end
@@ -405,7 +405,7 @@ class MongoDBDirectIntegrationTest < Minitest::Test
   # ==========================================================================
 
   def test_distinct_equivalency
-    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
 
     with_parse_server do
       skip "MongoDB direct tests require mongo gem" unless setup_mongodb_direct
@@ -421,7 +421,7 @@ class MongoDBDirectIntegrationTest < Minitest::Test
           { title: "D4", artist: "Distinct Artist", genre: "Jazz", plays: 400 },
           { title: "D5", artist: "Distinct Artist", genre: "Pop", plays: 500 },
           { title: "D6", artist: "Distinct Artist", genre: "Rock", plays: 600 },
-          { title: "D7", artist: "Other Artist", genre: "Classical", plays: 700 }
+          { title: "D7", artist: "Other Artist", genre: "Classical", plays: 700 },
         ]
 
         songs.each do |data|
@@ -466,7 +466,7 @@ class MongoDBDirectIntegrationTest < Minitest::Test
   # ==========================================================================
 
   def test_group_by_count_equivalency
-    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
 
     with_parse_server do
       skip "MongoDB direct tests require mongo gem" unless setup_mongodb_direct
@@ -482,7 +482,7 @@ class MongoDBDirectIntegrationTest < Minitest::Test
           { title: "G4", artist: "Group Artist", genre: "Jazz", plays: 400 },
           { title: "G5", artist: "Group Artist", genre: "Pop", plays: 500 },
           { title: "G6", artist: "Group Artist", genre: "Rock", plays: 600 },
-          { title: "G7", artist: "Group Artist", genre: "Pop", plays: 700 }
+          { title: "G7", artist: "Group Artist", genre: "Pop", plays: 700 },
         ]
 
         data.each do |song_data|
@@ -518,7 +518,7 @@ class MongoDBDirectIntegrationTest < Minitest::Test
   end
 
   def test_group_by_sum_equivalency
-    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
 
     with_parse_server do
       skip "MongoDB direct tests require mongo gem" unless setup_mongodb_direct
@@ -532,7 +532,7 @@ class MongoDBDirectIntegrationTest < Minitest::Test
           { title: "S2", artist: "Sum Artist", genre: "Pop", plays: 200 },
           { title: "S3", artist: "Sum Artist", genre: "Rock", plays: 300 },
           { title: "S4", artist: "Sum Artist", genre: "Jazz", plays: 400 },
-          { title: "S5", artist: "Sum Artist", genre: "Pop", plays: 500 }
+          { title: "S5", artist: "Sum Artist", genre: "Pop", plays: 500 },
         ]
 
         data.each do |song_data|
@@ -571,7 +571,7 @@ class MongoDBDirectIntegrationTest < Minitest::Test
   end
 
   def test_group_by_average_equivalency
-    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
 
     with_parse_server do
       skip "MongoDB direct tests require mongo gem" unless setup_mongodb_direct
@@ -584,7 +584,7 @@ class MongoDBDirectIntegrationTest < Minitest::Test
           { title: "A1", artist: "Avg Artist", genre: "Rock", plays: 100, duration: 3.0 },
           { title: "A2", artist: "Avg Artist", genre: "Rock", plays: 200, duration: 4.0 },
           { title: "A3", artist: "Avg Artist", genre: "Pop", plays: 300, duration: 3.5 },
-          { title: "A4", artist: "Avg Artist", genre: "Pop", plays: 400, duration: 4.5 }
+          { title: "A4", artist: "Avg Artist", genre: "Pop", plays: 400, duration: 4.5 },
         ]
 
         data.each do |song_data|
@@ -626,7 +626,7 @@ class MongoDBDirectIntegrationTest < Minitest::Test
   # ==========================================================================
 
   def test_group_by_date_equivalency
-    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
 
     with_parse_server do
       skip "MongoDB direct tests require mongo gem" unless setup_mongodb_direct
@@ -640,7 +640,7 @@ class MongoDBDirectIntegrationTest < Minitest::Test
           { product: "Date Product", quantity: 20, revenue: 200.0, sale_date: Date.new(2024, 1, 20) },
           { product: "Date Product", quantity: 15, revenue: 150.0, sale_date: Date.new(2024, 2, 10) },
           { product: "Date Product", quantity: 25, revenue: 250.0, sale_date: Date.new(2024, 2, 25) },
-          { product: "Date Product", quantity: 30, revenue: 300.0, sale_date: Date.new(2024, 3, 5) }
+          { product: "Date Product", quantity: 30, revenue: 300.0, sale_date: Date.new(2024, 3, 5) },
         ]
 
         sales.each do |data|
@@ -694,7 +694,7 @@ class MongoDBDirectIntegrationTest < Minitest::Test
   # ==========================================================================
 
   def test_date_field_queries
-    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
 
     with_parse_server do
       skip "MongoDB direct tests require mongo gem" unless setup_mongodb_direct
@@ -708,7 +708,7 @@ class MongoDBDirectIntegrationTest < Minitest::Test
           Date.new(2023, 6, 20),
           Date.new(2024, 1, 10),
           Date.new(2024, 6, 25),
-          Date.new(2024, 12, 1)
+          Date.new(2024, 12, 1),
         ]
 
         dates.each_with_index do |date, i|
@@ -717,7 +717,7 @@ class MongoDBDirectIntegrationTest < Minitest::Test
             artist: "Date Artist",
             genre: "Electronic",
             plays: (i + 1) * 100,
-            release_date: date
+            release_date: date,
           )
           assert song.save, "Failed to save date song #{i + 1}"
         end
@@ -747,12 +747,12 @@ class MongoDBDirectIntegrationTest < Minitest::Test
         parse_results = MongoDirectSong.query(
           :artist => "Date Artist",
           :release_date.gte => start_date,
-          :release_date.lte => end_date
+          :release_date.lte => end_date,
         ).results
         direct_results = MongoDirectSong.query(
           :artist => "Date Artist",
           :release_date.gte => start_date,
-          :release_date.lte => end_date
+          :release_date.lte => end_date,
         ).results(mongo_direct: true)
 
         assert_equal parse_results.length, direct_results.length,
@@ -777,7 +777,7 @@ class MongoDBDirectIntegrationTest < Minitest::Test
   # ==========================================================================
 
   def test_pointer_field_queries
-    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
 
     with_parse_server do
       skip "MongoDB direct tests require mongo gem" unless setup_mongodb_direct
@@ -798,7 +798,7 @@ class MongoDBDirectIntegrationTest < Minitest::Test
           { title: "Album B", release_year: 2021, artist: artist1 },
           { title: "Album C", release_year: 2022, artist: artist2 },
           { title: "Album D", release_year: 2023, artist: artist2 },
-          { title: "Album E", release_year: 2024, artist: artist1 }
+          { title: "Album E", release_year: 2024, artist: artist1 },
         ]
 
         albums.each do |data|
@@ -847,7 +847,7 @@ class MongoDBDirectIntegrationTest < Minitest::Test
   # ==========================================================================
 
   def test_complex_multi_constraint_queries
-    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
 
     with_parse_server do
       skip "MongoDB direct tests require mongo gem" unless setup_mongodb_direct
@@ -863,7 +863,7 @@ class MongoDBDirectIntegrationTest < Minitest::Test
           { title: "C4", artist: "Complex Artist", genre: "Pop", plays: 300, duration: 2.5, active: true },
           { title: "C5", artist: "Complex Artist", genre: "Jazz", plays: 50, duration: 5.0, active: true },
           { title: "C6", artist: "Complex Artist", genre: "Rock", plays: 500, duration: 3.2, active: false },
-          { title: "C7", artist: "Other Artist", genre: "Rock", plays: 1000, duration: 4.5, active: true }
+          { title: "C7", artist: "Other Artist", genre: "Rock", plays: 1000, duration: 4.5, active: true },
         ]
 
         songs.each do |data|
@@ -879,13 +879,13 @@ class MongoDBDirectIntegrationTest < Minitest::Test
           :artist => "Complex Artist",
           :genre => "Rock",
           :plays.gte => 100,
-          :active => true
+          :active => true,
         ).results
         direct_results = MongoDirectSong.query(
           :artist => "Complex Artist",
           :genre => "Rock",
           :plays.gte => 100,
-          :active => true
+          :active => true,
         ).results(mongo_direct: true)
 
         assert_equal parse_results.length, direct_results.length,
@@ -903,12 +903,12 @@ class MongoDBDirectIntegrationTest < Minitest::Test
         parse_results = MongoDirectSong.query(
           :artist => "Complex Artist",
           :duration.gte => 3.0,
-          :duration.lte => 4.0
+          :duration.lte => 4.0,
         ).order(:plays.desc).results
         direct_results = MongoDirectSong.query(
           :artist => "Complex Artist",
           :duration.gte => 3.0,
-          :duration.lte => 4.0
+          :duration.lte => 4.0,
         ).order(:plays.desc).results(mongo_direct: true)
 
         assert_equal parse_results.length, direct_results.length,
@@ -933,7 +933,7 @@ class MongoDBDirectIntegrationTest < Minitest::Test
   # ==========================================================================
 
   def test_raw_results_mode
-    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
 
     with_parse_server do
       skip "MongoDB direct tests require mongo gem" unless setup_mongodb_direct
@@ -946,7 +946,7 @@ class MongoDBDirectIntegrationTest < Minitest::Test
           title: "Raw Test Song",
           artist: "Raw Artist",
           genre: "Electronic",
-          plays: 999
+          plays: 999,
         )
         assert song.save, "Failed to save raw test song"
 
@@ -976,7 +976,7 @@ class MongoDBDirectIntegrationTest < Minitest::Test
   # ==========================================================================
 
   def test_keys_projection_direct
-    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
 
     with_parse_server do
       skip "MongoDB direct tests require mongo gem" unless setup_mongodb_direct
@@ -990,7 +990,7 @@ class MongoDBDirectIntegrationTest < Minitest::Test
           artist: "Keys Artist",
           genre: "Rock",
           plays: 500,
-          active: true
+          active: true,
         )
         assert song.save, "Failed to save song"
         sleep 0.5
@@ -1068,7 +1068,7 @@ class MongoDBDirectIntegrationTest < Minitest::Test
   # ==========================================================================
 
   def test_empty_results
-    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
 
     with_parse_server do
       skip "MongoDB direct tests require mongo gem" unless setup_mongodb_direct
@@ -1102,7 +1102,7 @@ class MongoDBDirectIntegrationTest < Minitest::Test
   end
 
   def test_special_field_names
-    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
 
     with_parse_server do
       skip "MongoDB direct tests require mongo gem" unless setup_mongodb_direct
@@ -1115,7 +1115,7 @@ class MongoDBDirectIntegrationTest < Minitest::Test
           title: "Special Fields Song",
           artist: "Special Artist",
           genre: "Pop",
-          plays: 100
+          plays: 100,
         )
         assert song.save, "Failed to save special fields song"
 
@@ -1151,7 +1151,7 @@ class MongoDBDirectIntegrationTest < Minitest::Test
   # ==========================================================================
 
   def test_pointer_field_return_types
-    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
 
     with_parse_server do
       skip "MongoDB direct tests require mongo gem" unless setup_mongodb_direct
@@ -1163,7 +1163,7 @@ class MongoDBDirectIntegrationTest < Minitest::Test
         artist = MongoDirectArtist.new(
           name: "Pointer Test Artist",
           country: "USA",
-          formed_year: 2020
+          formed_year: 2020,
         )
         assert artist.save, "Failed to save artist"
 
@@ -1171,14 +1171,14 @@ class MongoDBDirectIntegrationTest < Minitest::Test
         album1 = MongoDirectAlbum.new(
           title: "Pointer Album 1",
           release_year: 2021,
-          artist: artist
+          artist: artist,
         )
         assert album1.save, "Failed to save album 1"
 
         album2 = MongoDirectAlbum.new(
           title: "Pointer Album 2",
           release_year: 2022,
-          artist: artist
+          artist: artist,
         )
         assert album2.save, "Failed to save album 2"
 
@@ -1243,7 +1243,7 @@ class MongoDBDirectIntegrationTest < Minitest::Test
   # ==========================================================================
 
   def test_pointer_array_return_types
-    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
 
     with_parse_server do
       skip "MongoDB direct tests require mongo gem" unless setup_mongodb_direct
@@ -1269,7 +1269,7 @@ class MongoDBDirectIntegrationTest < Minitest::Test
           description: "A playlist for testing pointer arrays",
           created_date: Parse::Date.parse("2024-06-15T10:00:00Z"),
           owner: owner,
-          songs: [song1, song2, song3]
+          songs: [song1, song2, song3],
         )
         assert playlist.save, "Failed to save playlist"
 
@@ -1305,12 +1305,12 @@ class MongoDBDirectIntegrationTest < Minitest::Test
           assert is_valid_ref, "Song #{i} should be Pointer, Song, or Hash, got #{song_ref.class}"
 
           song_id = if song_ref.is_a?(Parse::Pointer)
-            song_ref.id
-          elsif song_ref.is_a?(Hash)
-            song_ref["objectId"]
-          else
-            song_ref.id
-          end
+              song_ref.id
+            elsif song_ref.is_a?(Hash)
+              song_ref["objectId"]
+            else
+              song_ref.id
+            end
 
           puts "    Song #{i + 1}: type=#{song_ref.class}, id=#{song_id}"
         end
@@ -1366,7 +1366,7 @@ class MongoDBDirectIntegrationTest < Minitest::Test
   # ==========================================================================
 
   def test_date_field_return_types
-    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
 
     with_parse_server do
       skip "MongoDB direct tests require mongo gem" unless setup_mongodb_direct
@@ -1380,7 +1380,7 @@ class MongoDBDirectIntegrationTest < Minitest::Test
           quantity: 10,
           revenue: 99.99,
           sale_date: Parse::Date.parse("2024-03-15T14:30:00Z"),
-          regions: ["North", "South"]
+          regions: ["North", "South"],
         )
         assert sale.save, "Failed to save sale"
 
@@ -1453,7 +1453,7 @@ class MongoDBDirectIntegrationTest < Minitest::Test
   # ==========================================================================
 
   def test_acl_permissions_filtering
-    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
 
     with_parse_server do
       skip "MongoDB direct tests require mongo gem" unless setup_mongodb_direct
@@ -1464,14 +1464,14 @@ class MongoDBDirectIntegrationTest < Minitest::Test
         # Create a note with ACL
         note = MongoDirectPrivateNote.new(
           content: "This is a private note",
-          category: "Personal"
+          category: "Personal",
         )
 
         # Set ACL permissions
         note.acl = Parse::ACL.new
         note.acl.permissions = {
           "*" => { "read" => true, "write" => false },
-          "role:Admin" => { "read" => true, "write" => true }
+          "role:Admin" => { "read" => true, "write" => true },
         }
 
         assert note.save, "Failed to save note with ACL"
@@ -1493,8 +1493,8 @@ class MongoDBDirectIntegrationTest < Minitest::Test
 
         # These internal MongoDB fields should NOT be in the results
         internal_fields = %w[_rperm _wperm _acl _hashed_password _email_verify_token
-                            _perishable_token _tombstone _failed_login_count
-                            _account_lockout_expires_at _session_token]
+                             _perishable_token _tombstone _failed_login_count
+                             _account_lockout_expires_at _session_token]
 
         internal_fields.each do |field|
           refute raw_note.key?(field), "Internal field '#{field}' should be filtered out"
@@ -1574,7 +1574,7 @@ class MongoDBDirectIntegrationTest < Minitest::Test
   # ==========================================================================
 
   def test_readable_by_writable_by_direct
-    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
 
     with_parse_server do
       skip "MongoDB direct tests require mongo gem" unless setup_mongodb_direct
@@ -1600,7 +1600,7 @@ class MongoDBDirectIntegrationTest < Minitest::Test
         note3.acl = Parse::ACL.new
         note3.acl.permissions = {
           "role:Moderator" => { "read" => true },
-          "role:Admin" => { "read" => true, "write" => true }
+          "role:Admin" => { "read" => true, "write" => true },
         }
         assert note3.save, "Failed to save note3"
 
@@ -1615,8 +1615,8 @@ class MongoDBDirectIntegrationTest < Minitest::Test
         # Test 1: readable_by_role should find notes with Admin role (note 2, 3) + Public (note 1)
         puts "Test: readable_by_role 'Admin'..."
         direct_results = MongoDirectPrivateNote.query
-                          .readable_by_role("Admin")
-                          .results(mongo_direct: true)
+          .readable_by_role("Admin")
+          .results(mongo_direct: true)
 
         admin_readable_categories = direct_results.map(&:category).sort
         puts "  Admin readable categories: #{admin_readable_categories.inspect}"
@@ -1628,8 +1628,8 @@ class MongoDBDirectIntegrationTest < Minitest::Test
         # Test 2: readable_by_role 'Moderator' should find note 3 + Public (note 1)
         puts "Test: readable_by_role 'Moderator'..."
         direct_results = MongoDirectPrivateNote.query
-                          .readable_by_role("Moderator")
-                          .results(mongo_direct: true)
+          .readable_by_role("Moderator")
+          .results(mongo_direct: true)
 
         mod_readable_categories = direct_results.map(&:category).sort
         puts "  Moderator readable categories: #{mod_readable_categories.inspect}"
@@ -1640,8 +1640,8 @@ class MongoDBDirectIntegrationTest < Minitest::Test
         # Test 3: writable_by_role 'Admin' should find notes 2 and 3
         puts "Test: writable_by_role 'Admin'..."
         direct_results = MongoDirectPrivateNote.query
-                          .writable_by_role("Admin")
-                          .results(mongo_direct: true)
+          .writable_by_role("Admin")
+          .results(mongo_direct: true)
 
         admin_writable_categories = direct_results.map(&:category).sort
         puts "  Admin writable categories: #{admin_writable_categories.inspect}"
@@ -1652,8 +1652,8 @@ class MongoDBDirectIntegrationTest < Minitest::Test
         # Test 4: readable_by specific user ID (exact string match)
         puts "Test: readable_by specific user ID..."
         direct_results = MongoDirectPrivateNote.query
-                          .readable_by("user123")
-                          .results(mongo_direct: true)
+          .readable_by("user123")
+          .results(mongo_direct: true)
 
         user_readable_categories = direct_results.map(&:category).sort
         puts "  user123 readable categories: #{user_readable_categories.inspect}"
@@ -1664,8 +1664,8 @@ class MongoDBDirectIntegrationTest < Minitest::Test
         # Test 5: readable_by with explicit role: prefix
         puts "Test: readable_by with 'role:Admin' explicit prefix..."
         direct_results = MongoDirectPrivateNote.query
-                          .readable_by("role:Admin")
-                          .results(mongo_direct: true)
+          .readable_by("role:Admin")
+          .results(mongo_direct: true)
 
         explicit_admin_categories = direct_results.map(&:category).sort
         puts "  role:Admin readable categories: #{explicit_admin_categories.inspect}"
@@ -1703,7 +1703,7 @@ class MongoDBDirectIntegrationTest < Minitest::Test
   # ==========================================================================
 
   def test_aggregate_group_sum_direct
-    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
 
     with_parse_server do
       skip "MongoDB direct tests require mongo gem" unless setup_mongodb_direct
@@ -1716,7 +1716,7 @@ class MongoDBDirectIntegrationTest < Minitest::Test
           { title: "Agg1", artist: "Agg Artist", genre: "Rock", plays: 10 },
           { title: "Agg2", artist: "Agg Artist", genre: "Pop", plays: 10 },
           { title: "Agg3", artist: "Agg Artist", genre: "Rock", plays: 10 },
-          { title: "Agg4", artist: "Agg Artist", genre: "Jazz", plays: 20 }
+          { title: "Agg4", artist: "Agg Artist", genre: "Jazz", plays: 20 },
         ]
 
         data.each do |song_data|
@@ -1729,7 +1729,7 @@ class MongoDBDirectIntegrationTest < Minitest::Test
         # Test: Group by null (all records) with $sum
         puts "Test: Group sum total..."
         pipeline = [
-          { "$group" => { "_id" => nil, "total" => { "$sum" => "$plays" } } }
+          { "$group" => { "_id" => nil, "total" => { "$sum" => "$plays" } } },
         ]
 
         parse_agg = MongoDirectSong.query(:artist => "Agg Artist").aggregate(pipeline, mongo_direct: false)
@@ -1769,7 +1769,7 @@ class MongoDBDirectIntegrationTest < Minitest::Test
   # ==========================================================================
 
   def test_aggregate_group_count_direct
-    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
 
     with_parse_server do
       skip "MongoDB direct tests require mongo gem" unless setup_mongodb_direct
@@ -1782,7 +1782,7 @@ class MongoDBDirectIntegrationTest < Minitest::Test
           { title: "Count1", artist: "Count Agg Artist", genre: "Rock", plays: 100 },
           { title: "Count2", artist: "Count Agg Artist", genre: "Pop", plays: 200 },
           { title: "Count3", artist: "Count Agg Artist", genre: "Rock", plays: 300 },
-          { title: "Count4", artist: "Count Agg Artist", genre: "Jazz", plays: 400 }
+          { title: "Count4", artist: "Count Agg Artist", genre: "Jazz", plays: 400 },
         ]
 
         data.each do |song_data|
@@ -1795,7 +1795,7 @@ class MongoDBDirectIntegrationTest < Minitest::Test
         # Test: Group by null with count ($sum: 1)
         puts "Test: Group count total..."
         pipeline = [
-          { "$group" => { "_id" => nil, "total" => { "$sum" => 1 } } }
+          { "$group" => { "_id" => nil, "total" => { "$sum" => 1 } } },
         ]
 
         parse_agg = MongoDirectSong.query(:artist => "Count Agg Artist").aggregate(pipeline, mongo_direct: false)
@@ -1811,8 +1811,8 @@ class MongoDBDirectIntegrationTest < Minitest::Test
         assert_equal 4, parse_raw.first["total"], "Parse count should be 4"
         assert_equal 4, direct_raw.first["total"], "Direct count should be 4"
 
-        puts "  Parse count: #{parse_raw.first['total']}"
-        puts "  Direct count: #{direct_raw.first['total']}"
+        puts "  Parse count: #{parse_raw.first["total"]}"
+        puts "  Direct count: #{direct_raw.first["total"]}"
         puts "  ✅ Group count matches!"
 
         puts "=== Aggregate Group Count Tests PASSED ==="
@@ -1828,7 +1828,7 @@ class MongoDBDirectIntegrationTest < Minitest::Test
   # ==========================================================================
 
   def test_aggregate_group_min_max_direct
-    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
 
     with_parse_server do
       skip "MongoDB direct tests require mongo gem" unless setup_mongodb_direct
@@ -1841,7 +1841,7 @@ class MongoDBDirectIntegrationTest < Minitest::Test
           { title: "MinMax1", artist: "MinMax Artist", genre: "Rock", plays: 10 },
           { title: "MinMax2", artist: "MinMax Artist", genre: "Pop", plays: 20 },
           { title: "MinMax3", artist: "MinMax Artist", genre: "Rock", plays: 15 },
-          { title: "MinMax4", artist: "MinMax Artist", genre: "Jazz", plays: 25 }
+          { title: "MinMax4", artist: "MinMax Artist", genre: "Jazz", plays: 25 },
         ]
 
         data.each do |song_data|
@@ -1854,7 +1854,7 @@ class MongoDBDirectIntegrationTest < Minitest::Test
         # Test: Min - aggregation results are hashes, use .raw for hash access
         puts "Test: Group min..."
         pipeline = [
-          { "$group" => { "_id" => nil, "minPlays" => { "$min" => "$plays" } } }
+          { "$group" => { "_id" => nil, "minPlays" => { "$min" => "$plays" } } },
         ]
 
         parse_agg = MongoDirectSong.query(:artist => "MinMax Artist").aggregate(pipeline, mongo_direct: false)
@@ -1866,14 +1866,14 @@ class MongoDBDirectIntegrationTest < Minitest::Test
 
         assert_equal 10, parse_raw["minPlays"], "Parse min should be 10"
         assert_equal 10, direct_raw["minPlays"], "Direct min should be 10"
-        puts "  Parse min: #{parse_raw['minPlays']}"
-        puts "  Direct min: #{direct_raw['minPlays']}"
+        puts "  Parse min: #{parse_raw["minPlays"]}"
+        puts "  Direct min: #{direct_raw["minPlays"]}"
         puts "  ✅ Group min matches!"
 
         # Test: Max
         puts "Test: Group max..."
         pipeline = [
-          { "$group" => { "_id" => nil, "maxPlays" => { "$max" => "$plays" } } }
+          { "$group" => { "_id" => nil, "maxPlays" => { "$max" => "$plays" } } },
         ]
 
         parse_agg = MongoDirectSong.query(:artist => "MinMax Artist").aggregate(pipeline, mongo_direct: false)
@@ -1884,8 +1884,8 @@ class MongoDBDirectIntegrationTest < Minitest::Test
 
         assert_equal 25, parse_raw["maxPlays"], "Parse max should be 25"
         assert_equal 25, direct_raw["maxPlays"], "Direct max should be 25"
-        puts "  Parse max: #{parse_raw['maxPlays']}"
-        puts "  Direct max: #{direct_raw['maxPlays']}"
+        puts "  Parse max: #{parse_raw["maxPlays"]}"
+        puts "  Direct max: #{direct_raw["maxPlays"]}"
         puts "  ✅ Group max matches!"
 
         puts "=== Aggregate Group Min/Max Tests PASSED ==="
@@ -1901,7 +1901,7 @@ class MongoDBDirectIntegrationTest < Minitest::Test
   # ==========================================================================
 
   def test_aggregate_group_avg_direct
-    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
 
     with_parse_server do
       skip "MongoDB direct tests require mongo gem" unless setup_mongodb_direct
@@ -1914,7 +1914,7 @@ class MongoDBDirectIntegrationTest < Minitest::Test
           { title: "Avg1", artist: "Avg Agg Artist", genre: "Rock", plays: 10 },
           { title: "Avg2", artist: "Avg Agg Artist", genre: "Pop", plays: 10 },
           { title: "Avg3", artist: "Avg Agg Artist", genre: "Rock", plays: 10 },
-          { title: "Avg4", artist: "Avg Agg Artist", genre: "Jazz", plays: 20 }
+          { title: "Avg4", artist: "Avg Agg Artist", genre: "Jazz", plays: 20 },
         ]
 
         data.each do |song_data|
@@ -1927,7 +1927,7 @@ class MongoDBDirectIntegrationTest < Minitest::Test
         # Test: Group by null with $avg
         puts "Test: Group avg..."
         pipeline = [
-          { "$group" => { "_id" => nil, "avgPlays" => { "$avg" => "$plays" } } }
+          { "$group" => { "_id" => nil, "avgPlays" => { "$avg" => "$plays" } } },
         ]
 
         parse_agg = MongoDirectSong.query(:artist => "Avg Agg Artist").aggregate(pipeline, mongo_direct: false)
@@ -1940,8 +1940,8 @@ class MongoDBDirectIntegrationTest < Minitest::Test
         assert_in_delta 12.5, parse_raw.first["avgPlays"], 0.01, "Parse avg should be 12.5"
         assert_in_delta 12.5, direct_raw.first["avgPlays"], 0.01, "Direct avg should be 12.5"
 
-        puts "  Parse avg: #{parse_raw.first['avgPlays']}"
-        puts "  Direct avg: #{direct_raw.first['avgPlays']}"
+        puts "  Parse avg: #{parse_raw.first["avgPlays"]}"
+        puts "  Direct avg: #{direct_raw.first["avgPlays"]}"
         puts "  ✅ Group avg matches!"
 
         puts "=== Aggregate Group Avg Tests PASSED ==="
@@ -1957,7 +1957,7 @@ class MongoDBDirectIntegrationTest < Minitest::Test
   # ==========================================================================
 
   def test_aggregate_group_by_pointer_direct
-    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
 
     with_parse_server do
       skip "MongoDB direct tests require mongo gem" unless setup_mongodb_direct
@@ -1976,7 +1976,7 @@ class MongoDBDirectIntegrationTest < Minitest::Test
           { title: "GP Album 1", release_year: 2020, artist: artist1 },
           { title: "GP Album 2", release_year: 2021, artist: artist2 },
           { title: "GP Album 3", release_year: 2022, artist: artist1 },
-          { title: "GP Album 4", release_year: 2023 }  # No artist
+          { title: "GP Album 4", release_year: 2023 },  # No artist
         ]
 
         albums.each do |data|
@@ -1989,7 +1989,7 @@ class MongoDBDirectIntegrationTest < Minitest::Test
         # Test: Group by pointer field
         puts "Test: Group by artist pointer..."
         pipeline = [
-          { "$group" => { "_id" => "$_p_artist" } }
+          { "$group" => { "_id" => "$_p_artist" } },
         ]
 
         # For direct query, we need to query the collection without the artist filter
@@ -2025,7 +2025,7 @@ class MongoDBDirectIntegrationTest < Minitest::Test
   # ==========================================================================
 
   def test_aggregate_match_or_query_direct
-    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
 
     with_parse_server do
       skip "MongoDB direct tests require mongo gem" unless setup_mongodb_direct
@@ -2038,7 +2038,7 @@ class MongoDBDirectIntegrationTest < Minitest::Test
           { title: "Or1", artist: "Or Artist", genre: "Rock", plays: 900 },
           { title: "Or2", artist: "Or Artist", genre: "Pop", plays: 800 },
           { title: "Or3", artist: "Or Artist", genre: "Jazz", plays: 700 },
-          { title: "Or4", artist: "Or Artist", genre: "Blues", plays: 700 }
+          { title: "Or4", artist: "Or Artist", genre: "Blues", plays: 700 },
         ]
 
         data.each do |song_data|
@@ -2055,10 +2055,10 @@ class MongoDBDirectIntegrationTest < Minitest::Test
             "$match" => {
               "$or" => [
                 { "plays" => { "$gt" => 850 } },
-                { "plays" => { "$lt" => 750, "$gt" => 650 } }
-              ]
-            }
-          }
+                { "plays" => { "$lt" => 750, "$gt" => 650 } },
+              ],
+            },
+          },
         ]
 
         parse_agg = MongoDirectSong.query(:artist => "Or Artist").aggregate(pipeline, mongo_direct: false)
@@ -2091,7 +2091,7 @@ class MongoDBDirectIntegrationTest < Minitest::Test
   # ==========================================================================
 
   def test_aggregate_match_pointer_direct
-    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
 
     with_parse_server do
       skip "MongoDB direct tests require mongo gem" unless setup_mongodb_direct
@@ -2109,7 +2109,7 @@ class MongoDBDirectIntegrationTest < Minitest::Test
         albums = [
           { title: "MP Album 1", release_year: 2020, artist: artist1 },
           { title: "MP Album 2", release_year: 2021, artist: artist2 },
-          { title: "MP Album 3", release_year: 2022, artist: artist1 }
+          { title: "MP Album 3", release_year: 2022, artist: artist1 },
         ]
 
         albums.each do |data|
@@ -2124,7 +2124,7 @@ class MongoDBDirectIntegrationTest < Minitest::Test
         # In MongoDB, pointer fields are stored as _p_fieldName with value "ClassName$objectId"
         pointer_value = "MongoDirectArtist$#{artist1.id}"
         pipeline = [
-          { "$match" => { "_p_artist" => pointer_value } }
+          { "$match" => { "_p_artist" => pointer_value } },
         ]
 
         direct_agg = MongoDirectAlbum.query(:title.starts_with => "MP Album").aggregate(pipeline, mongo_direct: true)
@@ -2151,7 +2151,7 @@ class MongoDBDirectIntegrationTest < Minitest::Test
   # ==========================================================================
 
   def test_aggregate_project_direct
-    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
 
     with_parse_server do
       skip "MongoDB direct tests require mongo gem" unless setup_mongodb_direct
@@ -2162,7 +2162,7 @@ class MongoDBDirectIntegrationTest < Minitest::Test
         # Create test data
         data = [
           { title: "Proj1", artist: "Project Artist", genre: "Rock", plays: 100, duration: 3.5 },
-          { title: "Proj2", artist: "Project Artist", genre: "Pop", plays: 200, duration: 4.0 }
+          { title: "Proj2", artist: "Project Artist", genre: "Pop", plays: 200, duration: 4.0 },
         ]
 
         data.each do |song_data|
@@ -2175,7 +2175,7 @@ class MongoDBDirectIntegrationTest < Minitest::Test
         # Test: Project only specific fields - use .raw for hash key checks
         puts "Test: Project specific fields..."
         pipeline = [
-          { "$project" => { "title" => 1, "plays" => 1 } }
+          { "$project" => { "title" => 1, "plays" => 1 } },
         ]
 
         parse_agg = MongoDirectSong.query(:artist => "Project Artist").aggregate(pipeline, mongo_direct: false)
@@ -2199,7 +2199,7 @@ class MongoDBDirectIntegrationTest < Minitest::Test
         # Test: Project excluding objectId
         puts "Test: Project excluding objectId..."
         pipeline = [
-          { "$project" => { "_id" => 0, "title" => 1, "plays" => 1 } }
+          { "$project" => { "_id" => 0, "title" => 1, "plays" => 1 } },
         ]
 
         direct_agg = MongoDirectSong.query(:artist => "Project Artist").aggregate(pipeline, mongo_direct: true)
@@ -2227,7 +2227,7 @@ class MongoDBDirectIntegrationTest < Minitest::Test
   # ==========================================================================
 
   def test_aggregate_distinct_pointer_direct
-    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
 
     with_parse_server do
       skip "MongoDB direct tests require mongo gem" unless setup_mongodb_direct
@@ -2245,7 +2245,7 @@ class MongoDBDirectIntegrationTest < Minitest::Test
         albums = [
           { title: "DP Album 1", release_year: 2020, artist: artist1 },
           { title: "DP Album 2", release_year: 2021, artist: artist2 },
-          { title: "DP Album 3", release_year: 2022, artist: artist1 }  # Duplicate artist1
+          { title: "DP Album 3", release_year: 2022, artist: artist1 },  # Duplicate artist1
         ]
 
         albums.each do |data|
@@ -2259,7 +2259,7 @@ class MongoDBDirectIntegrationTest < Minitest::Test
         puts "Test: Distinct on artist pointer..."
         pipeline = [
           { "$group" => { "_id" => "$_p_artist" } },
-          { "$match" => { "_id" => { "$ne" => nil } } }  # Exclude null
+          { "$match" => { "_id" => { "$ne" => nil } } },  # Exclude null
         ]
 
         direct_agg = MongoDirectAlbum.query(:title.starts_with => "DP Album").aggregate(pipeline, mongo_direct: true)
@@ -2284,7 +2284,7 @@ class MongoDBDirectIntegrationTest < Minitest::Test
   # ==========================================================================
 
   def test_internal_fields_not_exposed_in_aggregation
-    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
 
     with_parse_server do
       skip "MongoDB direct tests require mongo gem" unless setup_mongodb_direct
@@ -2297,7 +2297,7 @@ class MongoDBDirectIntegrationTest < Minitest::Test
           title: "Security Test Song",
           artist: "Security Artist",
           genre: "Rock",
-          plays: 500
+          plays: 500,
         )
         assert song.save, "Failed to save song"
 
@@ -2316,9 +2316,9 @@ class MongoDBDirectIntegrationTest < Minitest::Test
               "genre" => 1,
               "plays" => 1,
               "_created_at" => 1,  # Will be converted to createdAt
-              "_updated_at" => 1   # Will be converted to updatedAt
-            }
-          }
+              "_updated_at" => 1,   # Will be converted to updatedAt
+            },
+          },
         ]
 
         direct_agg = MongoDirectSong.query.aggregate(pipeline, mongo_direct: true)
@@ -2375,7 +2375,7 @@ class MongoDBDirectIntegrationTest < Minitest::Test
   # ==========================================================================
 
   def test_aggregate_sort_limit_skip_direct
-    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
 
     with_parse_server do
       skip "MongoDB direct tests require mongo gem" unless setup_mongodb_direct
@@ -2388,7 +2388,7 @@ class MongoDBDirectIntegrationTest < Minitest::Test
           { title: "SLS1", artist: "SLS Artist", genre: "Rock", plays: 100 },
           { title: "SLS2", artist: "SLS Artist", genre: "Pop", plays: 200 },
           { title: "SLS3", artist: "SLS Artist", genre: "Jazz", plays: 300 },
-          { title: "SLS4", artist: "SLS Artist", genre: "Blues", plays: 400 }
+          { title: "SLS4", artist: "SLS Artist", genre: "Blues", plays: 400 },
         ]
 
         data.each do |song_data|
@@ -2401,7 +2401,7 @@ class MongoDBDirectIntegrationTest < Minitest::Test
         # Test: Sort ascending
         puts "Test: Sort ascending..."
         pipeline = [
-          { "$sort" => { "title" => 1 } }
+          { "$sort" => { "title" => 1 } },
         ]
 
         parse_agg = MongoDirectSong.query(:artist => "SLS Artist").aggregate(pipeline, mongo_direct: false)
@@ -2417,7 +2417,7 @@ class MongoDBDirectIntegrationTest < Minitest::Test
         # Test: Sort descending
         puts "Test: Sort descending..."
         pipeline = [
-          { "$sort" => { "title" => -1 } }
+          { "$sort" => { "title" => -1 } },
         ]
 
         parse_agg = MongoDirectSong.query(:artist => "SLS Artist").aggregate(pipeline, mongo_direct: false)
@@ -2433,7 +2433,7 @@ class MongoDBDirectIntegrationTest < Minitest::Test
         # Test: Limit
         puts "Test: Limit..."
         pipeline = [
-          { "$limit" => 2 }
+          { "$limit" => 2 },
         ]
 
         parse_agg = MongoDirectSong.query(:artist => "SLS Artist").aggregate(pipeline, mongo_direct: false)
@@ -2447,7 +2447,7 @@ class MongoDBDirectIntegrationTest < Minitest::Test
         puts "Test: Skip..."
         pipeline = [
           { "$sort" => { "title" => 1 } },
-          { "$skip" => 2 }
+          { "$skip" => 2 },
         ]
 
         parse_agg = MongoDirectSong.query(:artist => "SLS Artist").aggregate(pipeline, mongo_direct: false)
@@ -2473,7 +2473,7 @@ class MongoDBDirectIntegrationTest < Minitest::Test
   # ==========================================================================
 
   def test_aggregate_group_by_date_object_direct
-    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
 
     with_parse_server do
       skip "MongoDB direct tests require mongo gem" unless setup_mongodb_direct
@@ -2486,7 +2486,7 @@ class MongoDBDirectIntegrationTest < Minitest::Test
         data = [
           { title: "DateGroup1", artist: "DateGroup Artist", genre: "Rock", plays: 100 },
           { title: "DateGroup2", artist: "DateGroup Artist", genre: "Pop", plays: 200 },
-          { title: "DateGroup3", artist: "DateGroup Artist", genre: "Jazz", plays: 300 }
+          { title: "DateGroup3", artist: "DateGroup Artist", genre: "Jazz", plays: 300 },
         ]
 
         data.each do |song_data|
@@ -2504,11 +2504,11 @@ class MongoDBDirectIntegrationTest < Minitest::Test
               "_id" => {
                 "day" => { "$dayOfMonth" => "$_created_at" },
                 "month" => { "$month" => "$_created_at" },
-                "year" => { "$year" => "$_created_at" }
+                "year" => { "$year" => "$_created_at" },
               },
-              "count" => { "$sum" => 1 }
-            }
-          }
+              "count" => { "$sum" => 1 },
+            },
+          },
         ]
 
         direct_agg = MongoDirectSong.query(:artist => "DateGroup Artist").aggregate(pipeline, mongo_direct: true)
@@ -2524,8 +2524,8 @@ class MongoDBDirectIntegrationTest < Minitest::Test
         assert date_id.key?("month"), "Should have month component"
         assert date_id.key?("year"), "Should have year component"
 
-        puts "  Date group: day=#{date_id['day']}, month=#{date_id['month']}, year=#{date_id['year']}"
-        puts "  Count: #{result['count']}"
+        puts "  Date group: day=#{date_id["day"]}, month=#{date_id["month"]}, year=#{date_id["year"]}"
+        puts "  Count: #{result["count"]}"
         puts "  ✅ Group by date object works!"
 
         puts "=== Aggregate Group by Date Object Tests PASSED ==="
@@ -2541,7 +2541,7 @@ class MongoDBDirectIntegrationTest < Minitest::Test
   # ==========================================================================
 
   def test_aggregate_match_date_comparison_direct
-    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
 
     with_parse_server do
       skip "MongoDB direct tests require mongo gem" unless setup_mongodb_direct
@@ -2554,7 +2554,7 @@ class MongoDBDirectIntegrationTest < Minitest::Test
         songs = [
           { title: "DateMatch1", artist: "DateMatch Artist", genre: "Rock", plays: 100 },
           { title: "DateMatch2", artist: "DateMatch Artist", genre: "Pop", plays: 200 },
-          { title: "DateMatch3", artist: "DateMatch Artist", genre: "Jazz", plays: 300 }
+          { title: "DateMatch3", artist: "DateMatch Artist", genre: "Jazz", plays: 300 },
         ]
 
         songs.each do |song_data|
@@ -2567,7 +2567,7 @@ class MongoDBDirectIntegrationTest < Minitest::Test
         # Match where _created_at >= 24 hours ago (all should match)
         yesterday_time = Time.now.utc - (24 * 60 * 60)
         pipeline = [
-          { "$match" => { "_created_at" => { "$gte" => yesterday_time } } }
+          { "$match" => { "_created_at" => { "$gte" => yesterday_time } } },
         ]
 
         direct_agg = MongoDirectSong.query(:artist => "DateMatch Artist").aggregate(pipeline, mongo_direct: true)
@@ -2589,7 +2589,7 @@ class MongoDBDirectIntegrationTest < Minitest::Test
         dated_songs = [
           { title: "ReleaseSong1", artist: "Release Artist", genre: "Rock", plays: 100, release_date: yesterday },
           { title: "ReleaseSong2", artist: "Release Artist", genre: "Pop", plays: 200, release_date: today },
-          { title: "ReleaseSong3", artist: "Release Artist", genre: "Jazz", plays: 300, release_date: tomorrow }
+          { title: "ReleaseSong3", artist: "Release Artist", genre: "Jazz", plays: 300, release_date: tomorrow },
         ]
 
         dated_songs.each do |song_data|
@@ -2604,7 +2604,7 @@ class MongoDBDirectIntegrationTest < Minitest::Test
         # When comparing, use the same time representation for accurate matching
         tomorrow_midnight_utc = Time.utc(tomorrow.year, tomorrow.month, tomorrow.day, 0, 0, 0)
         pipeline = [
-          { "$match" => { "releaseDate" => { "$lt" => tomorrow_midnight_utc } } }
+          { "$match" => { "releaseDate" => { "$lt" => tomorrow_midnight_utc } } },
         ]
 
         direct_agg = MongoDirectSong.query(:artist => "Release Artist").aggregate(pipeline, mongo_direct: true)

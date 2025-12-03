@@ -10,7 +10,7 @@ class AgentTest < Minitest::Test
       Parse.setup(
         server_url: "http://localhost:1337/parse",
         application_id: "test-app-id",
-        api_key: "test-api-key"
+        api_key: "test-api-key",
       )
     end
     @agent = Parse::Agent.new
@@ -153,8 +153,8 @@ class ConstraintTranslatorTest < Minitest::Test
       "author" => {
         "__type" => "Pointer",
         "className" => "_User",
-        "objectId" => "abc123"
-      }
+        "objectId" => "abc123",
+      },
     }
     result = Parse::Agent::ConstraintTranslator.translate(input)
     assert_equal input, result
@@ -163,7 +163,7 @@ class ConstraintTranslatorTest < Minitest::Test
   def test_nested_operators
     input = {
       "score" => { "$in" => [1, 2, 3] },
-      "status" => "active"
+      "status" => "active",
     }
     result = Parse::Agent::ConstraintTranslator.translate(input)
     assert_equal({ "score" => { "$in" => [1, 2, 3] }, "status" => "active" }, result)
@@ -179,7 +179,7 @@ class ResultFormatterTest < Minitest::Test
   def test_format_schemas
     schemas = [
       { "className" => "Song", "fields" => { "objectId" => {}, "createdAt" => {}, "updatedAt" => {}, "ACL" => {}, "title" => { "type" => "String" } } },
-      { "className" => "_User", "fields" => { "objectId" => {}, "createdAt" => {}, "updatedAt" => {}, "ACL" => {} } }
+      { "className" => "_User", "fields" => { "objectId" => {}, "createdAt" => {}, "updatedAt" => {}, "ACL" => {} } },
     ]
     result = Parse::Agent::ResultFormatter.format_schemas(schemas)
 
@@ -194,10 +194,10 @@ class ResultFormatterTest < Minitest::Test
 
   def test_format_query_results
     results = [
-      { "objectId" => "abc", "title" => "Test" }
+      { "objectId" => "abc", "title" => "Test" },
     ]
     formatted = Parse::Agent::ResultFormatter.format_query_results(
-      "Song", results, limit: 100, skip: 0
+      "Song", results, limit: 100, skip: 0,
     )
 
     assert_equal "Song", formatted[:class_name]
@@ -210,7 +210,7 @@ class ResultFormatterTest < Minitest::Test
       "objectId" => "abc123",
       "createdAt" => "2024-01-01T00:00:00.000Z",
       "updatedAt" => "2024-01-02T00:00:00.000Z",
-      "title" => "Test Song"
+      "title" => "Test Song",
     }
     result = Parse::Agent::ResultFormatter.format_object("Song", obj)
 
@@ -224,8 +224,8 @@ class ResultFormatterTest < Minitest::Test
       "objectId" => "abc",
       "publishedAt" => {
         "__type" => "Date",
-        "iso" => "2024-01-01T00:00:00.000Z"
-      }
+        "iso" => "2024-01-01T00:00:00.000Z",
+      },
     }
     result = Parse::Agent::ResultFormatter.format_object("Post", obj)
     assert_equal "2024-01-01T00:00:00.000Z", result[:object]["publishedAt"]
@@ -237,8 +237,8 @@ class ResultFormatterTest < Minitest::Test
       "author" => {
         "__type" => "Pointer",
         "className" => "_User",
-        "objectId" => "user123"
-      }
+        "objectId" => "user123",
+      },
     }
     result = Parse::Agent::ResultFormatter.format_object("Post", obj)
     assert_equal "Pointer", result[:object]["author"][:_type]
@@ -249,7 +249,7 @@ class ResultFormatterTest < Minitest::Test
   def test_truncates_large_results
     results = (1..100).map { |i| { "objectId" => "obj#{i}" } }
     formatted = Parse::Agent::ResultFormatter.format_query_results(
-      "Song", results, limit: 100, skip: 0
+      "Song", results, limit: 100, skip: 0,
     )
 
     assert formatted[:truncated]
@@ -374,7 +374,7 @@ class AgentLoggingSanitizationTest < Minitest::Test
       Parse.setup(
         server_url: "http://localhost:1337/parse",
         application_id: "test-app-id",
-        api_key: "test-api-key"
+        api_key: "test-api-key",
       )
     end
     @agent = Parse::Agent.new
@@ -423,7 +423,7 @@ class AgentLoggingSanitizationTest < Minitest::Test
       authData: { mfa: {} },
       recovery_codes: "ABC123",
       where: { name: "test" },
-      pipeline: [{ "$match" => {} }]
+      pipeline: [{ "$match" => {} }],
     }
 
     @agent.send(:log_operation, :test_tool, sensitive_args, {})
@@ -441,7 +441,7 @@ class AgentLoggingSanitizationTest < Minitest::Test
       class_name: "Song",
       limit: 10,
       skip: 0,
-      order: "-createdAt"
+      order: "-createdAt",
     }, {})
 
     log_entry = @agent.operation_log.last
@@ -473,7 +473,7 @@ class AgentRateLimiterTest < Minitest::Test
       Parse.setup(
         server_url: "http://localhost:1337/parse",
         application_id: "test-app-id",
-        api_key: "test-api-key"
+        api_key: "test-api-key",
       )
     end
   end
@@ -505,7 +505,7 @@ class AgentMalformedToolCallTest < Minitest::Test
       Parse.setup(
         server_url: "http://localhost:1337/parse",
         application_id: "test-app-id",
-        api_key: "test-api-key"
+        api_key: "test-api-key",
       )
     end
     @agent = Parse::Agent.new
@@ -532,8 +532,8 @@ class AgentMalformedToolCallTest < Minitest::Test
       "type" => "function",
       "function" => {
         "name" => "query_class",
-        "arguments" => '{"class_name": "Song"}'
-      }
+        "arguments" => '{"class_name": "Song"}',
+      },
     }
     function = tool_call&.dig("function")
     assert_equal "query_class", function["name"]
@@ -569,7 +569,7 @@ class AgentMalformedToolCallTest < Minitest::Test
       { "id" => "123" },
       { "function" => nil },
       { "function" => {} },
-      { "function" => { "name" => nil } }
+      { "function" => { "name" => nil } },
     ]
 
     valid_count = 0
@@ -593,8 +593,8 @@ class AgentMalformedToolCallTest < Minitest::Test
       "id" => "call_123",
       "function" => {
         "name" => "query_class",
-        "arguments" => '{"class_name": "Song"}'
-      }
+        "arguments" => '{"class_name": "Song"}',
+      },
     }
 
     processed = false

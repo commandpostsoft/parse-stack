@@ -1,4 +1,4 @@
-require_relative '../../test_helper_integration'
+require_relative "../../test_helper_integration"
 
 class ACLDirtyTrackingIntegrationTest < Minitest::Test
   include ParseStackIntegrationTest
@@ -9,7 +9,7 @@ class ACLDirtyTrackingIntegrationTest < Minitest::Test
   end
 
   def test_acl_was_captures_original_state_before_in_place_modification
-    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
 
     with_parse_server do
       # Create a document with empty ACL
@@ -67,7 +67,7 @@ class ACLDirtyTrackingIntegrationTest < Minitest::Test
   end
 
   def test_acl_modification_persists_correctly_after_multiple_changes
-    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
 
     with_parse_server do
       # Create document with initial ACL
@@ -112,7 +112,7 @@ class ACLDirtyTrackingIntegrationTest < Minitest::Test
   end
 
   def test_acl_assignment_vs_in_place_modification
-    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
 
     with_parse_server do
       # Test 1: Assignment (replacing entire ACL)

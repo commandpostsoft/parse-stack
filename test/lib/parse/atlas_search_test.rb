@@ -366,7 +366,7 @@ class AtlasSearchTest < Minitest::Test
     builder = Parse::AtlasSearch::SearchBuilder.new
     should_ops = [
       { "text" => { "query" => "rock", "path" => "genre" } },
-      { "text" => { "query" => "pop", "path" => "genre" } }
+      { "text" => { "query" => "pop", "path" => "genre" } },
     ]
 
     stage = builder.build_compound(should: should_ops, minimum_should_match: 1)
@@ -395,7 +395,7 @@ class AtlasSearchTest < Minitest::Test
       must_not: { "text" => { "query" => "hate", "path" => "title" } },
       should: { "text" => { "query" => "heart", "path" => "lyrics" } },
       filter: { "range" => { "path" => "year", "gte" => 2000 } },
-      minimum_should_match: 1
+      minimum_should_match: 1,
     )
 
     assert_equal "custom", stage["$search"]["index"]
@@ -475,7 +475,7 @@ class AtlasSearchTest < Minitest::Test
   def test_autocomplete_result_initialization
     result = Parse::AtlasSearch::AutocompleteResult.new(
       suggestions: ["Love Story", "Lovely Day"],
-      results: []
+      results: [],
     )
     assert_equal ["Love Story", "Lovely Day"], result.suggestions
     assert_equal 2, result.count
@@ -485,7 +485,7 @@ class AtlasSearchTest < Minitest::Test
   def test_autocomplete_result_first
     result = Parse::AtlasSearch::AutocompleteResult.new(
       suggestions: ["Love Story", "Lovely Day"],
-      results: []
+      results: [],
     )
     assert_equal "Love Story", result.first
   end
@@ -496,12 +496,12 @@ class AtlasSearchTest < Minitest::Test
 
   def test_faceted_result_initialization
     facets = {
-      genre: [{ value: "Rock", count: 100 }, { value: "Pop", count: 50 }]
+      genre: [{ value: "Rock", count: 100 }, { value: "Pop", count: 50 }],
     }
     result = Parse::AtlasSearch::FacetedResult.new(
       results: [1, 2],
       facets: facets,
-      total_count: 150
+      total_count: 150,
     )
 
     assert_equal [1, 2], result.results
@@ -512,12 +512,12 @@ class AtlasSearchTest < Minitest::Test
   def test_faceted_result_facet_access
     facets = {
       genre: [{ value: "Rock", count: 100 }],
-      "decade" => [{ value: 1980, count: 50 }]
+      "decade" => [{ value: 1980, count: 50 }],
     }
     result = Parse::AtlasSearch::FacetedResult.new(
       results: [],
       facets: facets,
-      total_count: 0
+      total_count: 0,
     )
 
     assert_equal [{ value: "Rock", count: 100 }], result.facet(:genre)
@@ -529,7 +529,7 @@ class AtlasSearchTest < Minitest::Test
     result = Parse::AtlasSearch::FacetedResult.new(
       results: [],
       facets: facets,
-      total_count: 0
+      total_count: 0,
     )
 
     assert_equal [:genre, :year, :artist], result.facet_names
@@ -539,7 +539,7 @@ class AtlasSearchTest < Minitest::Test
     result = Parse::AtlasSearch::FacetedResult.new(
       results: [1, 2, 3],
       facets: {},
-      total_count: 3
+      total_count: 3,
     )
     assert_equal [2, 4, 6], result.map { |x| x * 2 }
   end

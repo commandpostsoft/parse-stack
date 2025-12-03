@@ -386,7 +386,7 @@ class TestParsePhone < Minitest::Test
       "+8613812345678" => "China",
       "+919876543210" => "India",
       "+5511987654321" => "Brazil",
-      "+33123456789" => "France"
+      "+33123456789" => "France",
     }
 
     numbers.each do |num, _country|

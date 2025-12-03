@@ -170,8 +170,8 @@ class MFATest < Minitest::Test
     expected = {
       mfa: {
         secret: "TESTSECRET",
-        token: "123456"
-      }
+        token: "123456",
+      },
     }
     assert_equal expected, auth_data
   end
@@ -181,8 +181,8 @@ class MFATest < Minitest::Test
 
     expected = {
       mfa: {
-        token: "654321"
-      }
+        token: "654321",
+      },
     }
     assert_equal expected, auth_data
   end
@@ -192,8 +192,8 @@ class MFATest < Minitest::Test
 
     expected = {
       mfa: {
-        mobile: "+1234567890"
-      }
+        mobile: "+1234567890",
+      },
     }
     assert_equal expected, auth_data
   end
@@ -204,8 +204,8 @@ class MFATest < Minitest::Test
     expected = {
       mfa: {
         mobile: "+1234567890",
-        token: "123456"
-      }
+        token: "123456",
+      },
     }
     assert_equal expected, auth_data
   end

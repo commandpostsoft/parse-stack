@@ -1,4 +1,4 @@
-require_relative '../../test_helper'
+require_relative "../../test_helper"
 
 # Test model simulating the Capture class with traits array and boolean properties
 class ArrayDirtyTestModel < Parse::Object
@@ -12,7 +12,6 @@ class ArrayDirtyTestModel < Parse::Object
 end
 
 class ArrayPropertyDirtyTrackingTest < Minitest::Test
-
   def setup
     @model = ArrayDirtyTestModel.new
     @model.instance_variable_set(:@id, "test123")
@@ -455,7 +454,7 @@ class ArrayPropertyDirtyTrackingTest < Minitest::Test
       "objectId" => "capture123",
       "traits" => ["draft"],
       "is_draft" => true,
-      "on_timeline" => false
+      "on_timeline" => false,
     }, false)
     model.clear_changes!
 
@@ -575,7 +574,7 @@ class ArrayPropertyDirtyTrackingTest < Minitest::Test
       "traits" => ["draft"],
       "is_draft" => true,
       "on_timeline" => false,
-      "tags" => ["old_tag"]
+      "tags" => ["old_tag"],
     }, false)
     model.clear_changes!
 

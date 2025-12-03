@@ -31,7 +31,7 @@ class TestLiveQueryHealthMonitor < Minitest::Test
     @monitor = Parse::LiveQuery::HealthMonitor.new(
       client: @mock_client,
       ping_interval: 0.1,
-      pong_timeout: 0.05
+      pong_timeout: 0.05,
     )
   end
 

@@ -222,7 +222,7 @@ module Parse
           query: query.to_s,
           path: field_str,
           fuzzy: options[:fuzzy],
-          token_order: options[:token_order]
+          token_order: options[:token_order],
         )
 
         pipeline = [builder.build]
@@ -248,11 +248,11 @@ module Parse
         # Convert to full objects if needed
         class_name = options[:class_name] || collection_name
         results = if options[:raw]
-          raw_results
-        else
-          parse_results = Parse::MongoDB.convert_documents_to_parse(raw_results, class_name)
-          parse_results.map { |doc| build_parse_object(doc, class_name) }.compact
-        end
+            raw_results
+          else
+            parse_results = Parse::MongoDB.convert_documents_to_parse(raw_results, class_name)
+            parse_results.map { |doc| build_parse_object(doc, class_name) }.compact
+          end
 
         AutocompleteResult.new(suggestions: suggestions, results: results)
       end
@@ -287,9 +287,9 @@ module Parse
           "$searchMeta" => {
             "index" => index_name,
             "facet" => {
-              "facets" => facet_definitions
-            }
-          }
+              "facets" => facet_definitions,
+            },
+          },
         }
 
         # Add operator for the search query if present
@@ -300,11 +300,11 @@ module Parse
               { "text" => { "query" => query, "path" => field } }
             end
             search_meta_stage["$searchMeta"]["facet"]["operator"] = {
-              "compound" => { "should" => should_clauses, "minimumShouldMatch" => 1 }
+              "compound" => { "should" => should_clauses, "minimumShouldMatch" => 1 },
             }
           else
             search_meta_stage["$searchMeta"]["facet"]["operator"] = {
-              "text" => { "query" => query, "path" => { "wildcard" => "*" } }
+              "text" => { "query" => query, "path" => { "wildcard" => "*" } },
             }
           end
         end
@@ -335,10 +335,10 @@ module Parse
 
         # Get actual results with regular $search
         results = if limit > 0 && query.present?
-          search(collection_name, query, **options.merge(limit: limit, skip: skip_val)).results
-        else
-          []
-        end
+            search(collection_name, query, **options.merge(limit: limit, skip: skip_val)).results
+          else
+            []
+          end
 
         FacetedResult.new(results: results, facets: facet_data, total_count: total_count)
       end

@@ -35,6 +35,7 @@ module Parse
       def count
         @results.size
       end
+
       alias_method :size, :count
       alias_method :length, :count
 
@@ -101,6 +102,7 @@ module Parse
       def count
         @suggestions.size
       end
+
       alias_method :size, :count
 
       # @return [Boolean] true if there are no suggestions
@@ -162,6 +164,7 @@ module Parse
       def count
         @results.size
       end
+
       alias_method :size, :count
 
       # @return [Boolean] true if there are no results

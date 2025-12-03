@@ -94,7 +94,7 @@ module Parse
         WRITE_METHOD_PATTERNS = [
           /save/i, /update/i, /delete/i, /destroy/i, /create/i, /remove/i,
           /insert/i, /upsert/i, /modify/i, /set/i, /clear/i, /reset/i,
-          /add/i, /append/i, /push/i, /increment/i, /decrement/i
+          /add/i, /append/i, /push/i, /increment/i, /decrement/i,
         ].freeze
 
         # Mark a method as callable by the agent with an optional description.
@@ -117,24 +117,24 @@ module Parse
           method_sym = method_name.to_sym
 
           unless AGENT_METHOD_PERMISSIONS.include?(permission)
-            raise ArgumentError, "Invalid permission level: #{permission}. Must be one of: #{AGENT_METHOD_PERMISSIONS.join(', ')}"
+            raise ArgumentError, "Invalid permission level: #{permission}. Must be one of: #{AGENT_METHOD_PERMISSIONS.join(", ")}"
           end
 
           # Determine if this is an instance or class method
           # Note: method_defined? checks instance methods, respond_to? checks class methods
           method_type = if method_defined?(method_sym)
-                          :instance
-                        elsif respond_to?(method_sym) || singleton_methods.include?(method_sym)
-                          :class
-                        else
-                          # Method not yet defined - we'll check again at runtime
-                          :unknown
-                        end
+              :instance
+            elsif respond_to?(method_sym) || singleton_methods.include?(method_sym)
+              :class
+            else
+              # Method not yet defined - we'll check again at runtime
+              :unknown
+            end
 
           agent_methods[method_sym] = {
             description: description&.to_s&.freeze,
             type: method_type,
-            permission: permission
+            permission: permission,
           }
         end
 
@@ -203,7 +203,7 @@ module Parse
           {
             description: agent_description,
             property_descriptions: property_descriptions.dup,
-            methods: agent_methods.dup
+            methods: agent_methods.dup,
           }
         end
 

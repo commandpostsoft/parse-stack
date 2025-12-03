@@ -1,9 +1,9 @@
-require_relative '../../test_helper_integration'
+require_relative "../../test_helper_integration"
 
 # Test models for transaction integration testing
 class Product < Parse::Object
   parse_class "Product"
-  
+
   property :name, :string, required: true
   property :price, :float
   property :sku, :string
@@ -14,7 +14,7 @@ end
 
 class Order < Parse::Object
   parse_class "Order"
-  
+
   property :order_number, :string
   property :customer_name, :string
   property :total_amount, :float
@@ -24,7 +24,7 @@ end
 
 class Inventory < Parse::Object
   parse_class "Inventory"
-  
+
   belongs_to :product
   property :location, :string
   property :quantity, :integer
@@ -43,7 +43,7 @@ class TransactionIntegrationTest < Minitest::Test
   end
 
   def test_basic_transaction_success
-    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
 
     with_parse_server do
       with_timeout(15, "basic transaction success test") do
@@ -52,7 +52,7 @@ class TransactionIntegrationTest < Minitest::Test
         # Create initial products
         product1 = Product.new(name: "Product 1", price: 10.00, sku: "PRD-001", stock_quantity: 100)
         product2 = Product.new(name: "Product 2", price: 20.00, sku: "PRD-002", stock_quantity: 50)
-        
+
         assert product1.save, "Product 1 should save initially"
         assert product2.save, "Product 2 should save initially"
 
@@ -75,7 +75,7 @@ class TransactionIntegrationTest < Minitest::Test
         # Verify changes were persisted
         product1.fetch!
         product2.fetch!
-        
+
         assert_equal 12.00, product1.price, "Product 1 price should be updated"
         assert_equal 95, product1.stock_quantity, "Product 1 stock should be updated"
         assert_equal 22.00, product2.price, "Product 2 price should be updated"
@@ -87,7 +87,7 @@ class TransactionIntegrationTest < Minitest::Test
   end
 
   def test_transaction_with_return_value_auto_batch
-    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
 
     with_parse_server do
       with_timeout(15, "transaction auto-batch test") do
@@ -96,7 +96,7 @@ class TransactionIntegrationTest < Minitest::Test
         # Create initial products
         product1 = Product.new(name: "Auto Product 1", price: 15.00, sku: "AUTO-001")
         product2 = Product.new(name: "Auto Product 2", price: 25.00, sku: "AUTO-002")
-        
+
         assert product1.save, "Auto Product 1 should save initially"
         assert product2.save, "Auto Product 2 should save initially"
 
@@ -104,7 +104,7 @@ class TransactionIntegrationTest < Minitest::Test
         responses = Parse::Object.transaction do
           product1.price = 18.00
           product2.price = 28.00
-          
+
           # Return array of objects to be saved
           [product1, product2]
         end
@@ -116,7 +116,7 @@ class TransactionIntegrationTest < Minitest::Test
         # Verify changes were persisted
         product1.fetch!
         product2.fetch!
-        
+
         assert_equal 18.00, product1.price, "Auto Product 1 price should be updated"
         assert_equal 28.00, product2.price, "Auto Product 2 price should be updated"
 
@@ -126,7 +126,7 @@ class TransactionIntegrationTest < Minitest::Test
   end
 
   def test_transaction_rollback_on_failure
-    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
 
     with_parse_server do
       with_timeout(15, "transaction rollback test") do
@@ -135,7 +135,7 @@ class TransactionIntegrationTest < Minitest::Test
         # Create a valid product
         product = Product.new(name: "Rollback Test Product", price: 30.00, sku: "RBT-001")
         assert product.save, "Product should save initially"
-        
+
         original_price = product.price
 
         # Attempt transaction that should fail
@@ -144,7 +144,7 @@ class TransactionIntegrationTest < Minitest::Test
           Parse::Object.transaction do |batch|
             # Add the product to the batch FIRST to capture its current state
             batch.add(product)
-            
+
             # Then modify it - this should be rolled back if transaction fails
             product.price = 35.00
 
@@ -172,7 +172,7 @@ class TransactionIntegrationTest < Minitest::Test
   end
 
   def test_complex_business_transaction
-    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
 
     with_parse_server do
       with_timeout(20, "complex business transaction test") do
@@ -181,20 +181,20 @@ class TransactionIntegrationTest < Minitest::Test
         # Setup: Create products and inventory
         product1 = Product.new(name: "Complex Product 1", price: 50.00, sku: "CPX-001", stock_quantity: 20)
         product2 = Product.new(name: "Complex Product 2", price: 75.00, sku: "CPX-002", stock_quantity: 15)
-        
+
         assert product1.save, "Product 1 should save"
         assert product2.save, "Product 2 should save"
 
         inventory1 = Inventory.new(product: product1.pointer, location: "Warehouse A", quantity: 20)
         inventory2 = Inventory.new(product: product2.pointer, location: "Warehouse A", quantity: 15)
-        
+
         assert inventory1.save, "Inventory 1 should save"
         assert inventory2.save, "Inventory 2 should save"
 
         # Business scenario: Process an order (reserve inventory, create order, update stock)
         order_items = [
           { product_id: product1.id, quantity: 5, price: 50.00 },
-          { product_id: product2.id, quantity: 3, price: 75.00 }
+          { product_id: product2.id, quantity: 3, price: 75.00 },
         ]
         total_amount = (5 * 50.00) + (3 * 75.00)
 
@@ -205,7 +205,7 @@ class TransactionIntegrationTest < Minitest::Test
             customer_name: "John Doe",
             total_amount: total_amount,
             status: "confirmed",
-            items: order_items
+            items: order_items,
           )
           batch.add(order)
 
@@ -244,7 +244,7 @@ class TransactionIntegrationTest < Minitest::Test
         assert_equal 15, product1.stock_quantity, "Product 1 stock should be reduced"
         assert_equal 12, product2.stock_quantity, "Product 2 stock should be reduced"
 
-        # Verify order was created  
+        # Verify order was created
         created_order = Order.first
         assert created_order, "Order should be created"
         assert_equal "confirmed", created_order.status, "Order should be confirmed"
@@ -256,8 +256,8 @@ class TransactionIntegrationTest < Minitest::Test
   end
 
   def test_transaction_with_retry_on_conflict
-    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
-    skip "Conflict simulation requires special setup" unless ENV['TEST_TRANSACTION_CONFLICTS'] == 'true'
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
+    skip "Conflict simulation requires special setup" unless ENV["TEST_TRANSACTION_CONFLICTS"] == "true"
 
     with_parse_server do
       with_timeout(20, "transaction retry test") do
@@ -281,19 +281,19 @@ class TransactionIntegrationTest < Minitest::Test
           else
             product.stock_quantity -= 2
           end
-          
+
           batch.add(product)
         end
 
         assert responses.all?(&:success?), "Transaction should eventually succeed with retries"
-        
+
         puts "✅ Transaction retry mechanism tested"
       end
     end
   end
 
   def test_transaction_with_mixed_operations
-    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
 
     with_parse_server do
       with_timeout(15, "mixed operations transaction test") do
@@ -311,10 +311,10 @@ class TransactionIntegrationTest < Minitest::Test
 
           # Create new product
           new_product = Product.new(
-            name: "New Product in Transaction", 
-            price: 45.00, 
+            name: "New Product in Transaction",
+            price: 45.00,
             sku: "NEW-001",
-            stock_quantity: 30
+            stock_quantity: 30,
           )
           batch.add(new_product)
 
@@ -322,7 +322,7 @@ class TransactionIntegrationTest < Minitest::Test
           new_inventory = Inventory.new(
             product: new_product.pointer,
             location: "Warehouse B",
-            quantity: 30
+            quantity: 30,
           )
           batch.add(new_inventory)
 
@@ -331,7 +331,7 @@ class TransactionIntegrationTest < Minitest::Test
             order_number: "MXD-#{rand(10000)}",
             customer_name: "Jane Smith",
             total_amount: 110.00,  # 65 + 45
-            status: "pending"
+            status: "pending",
           )
           batch.add(order)
         end
@@ -359,7 +359,7 @@ class TransactionIntegrationTest < Minitest::Test
   end
 
   def test_transaction_error_handling
-    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
 
     with_parse_server do
       with_timeout(15, "transaction error handling test") do
@@ -395,7 +395,7 @@ class TransactionIntegrationTest < Minitest::Test
   end
 
   def test_transaction_batch_limits
-    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
 
     with_parse_server do
       with_timeout(20, "transaction batch limits test") do
@@ -403,15 +403,15 @@ class TransactionIntegrationTest < Minitest::Test
 
         # Create multiple products to test batch processing
         products = []
-        
+
         # Create products in a transaction (test batch size handling)
         responses = Parse::Object.transaction do |batch|
           10.times do |i|
             product = Product.new(
-              name: "Batch Product #{i+1}",
+              name: "Batch Product #{i + 1}",
               price: (i + 1) * 10.0,
-              sku: "BCH-#{sprintf('%03d', i+1)}",
-              stock_quantity: (i + 1) * 5
+              sku: "BCH-#{sprintf("%03d", i + 1)}",
+              stock_quantity: (i + 1) * 5,
             )
             products << product
             batch.add(product)
@@ -433,7 +433,7 @@ class TransactionIntegrationTest < Minitest::Test
         end
 
         assert responses.all?(&:success?), "Batch update transaction should succeed"
-        
+
         # Verify all products were updated
         products.each(&:fetch!)
         assert products.all? { |p| p.is_active == false }, "All products should be inactive"
@@ -444,7 +444,7 @@ class TransactionIntegrationTest < Minitest::Test
   end
 
   def test_transaction_with_pointers_and_relations
-    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
 
     with_parse_server do
       with_timeout(15, "transaction pointers and relations test") do
@@ -459,7 +459,7 @@ class TransactionIntegrationTest < Minitest::Test
           inventory = Inventory.new(
             product: main_product.pointer,  # Test pointer relationship
             location: "Main Warehouse",
-            quantity: 100
+            quantity: 100,
           )
           batch.add(inventory)
 
@@ -468,12 +468,12 @@ class TransactionIntegrationTest < Minitest::Test
             order_number: "PTR-#{rand(10000)}",
             customer_name: "Pointer Test Customer",
             total_amount: 200.00,
-            items: [{ 
+            items: [{
               product_id: main_product.id,  # Reference by ID
               product_name: main_product.name,
               quantity: 1,
-              price: 200.00
-            }]
+              price: 200.00,
+            }],
           )
           batch.add(order)
 
@@ -489,7 +489,7 @@ class TransactionIntegrationTest < Minitest::Test
         # Verify relationships are correct
         created_inventory = Inventory.first(location: "Main Warehouse")
         assert created_inventory, "Inventory should be created"
-        
+
         # Test pointer relationship
         assert_equal main_product.id, created_inventory.product.id, "Inventory should point to main product"
 
@@ -504,7 +504,7 @@ class TransactionIntegrationTest < Minitest::Test
   end
 
   def test_transaction_assigns_object_ids_to_new_objects
-    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
 
     with_parse_server do
       with_timeout(15, "transaction object ID assignment test") do

@@ -142,7 +142,7 @@ module Parse
         provider: provider.to_sym,
         api_key: api_key,
         model: model,
-        base_url: base_url
+        base_url: base_url,
       }
     end
 

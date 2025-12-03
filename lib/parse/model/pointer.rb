@@ -188,7 +188,7 @@ module Parse
       # For partial fetch, build with fetched_keys tracking
       if keys.present?
         # Parse keys to get top-level field names and nested keys
-        top_level_keys = Array(keys).map { |k| Parse::Query.format_field(k).split('.').first.to_sym }
+        top_level_keys = Array(keys).map { |k| Parse::Query.format_field(k).split(".").first.to_sym }
         top_level_keys << :id unless top_level_keys.include?(:id)
         top_level_keys << :objectId unless top_level_keys.include?(:objectId)
         top_level_keys.uniq!
@@ -294,12 +294,12 @@ module Parse
       klass = Parse::Model.find_class(parse_class)
 
       # If no class is registered or the class doesn't have this field, use default behavior
-      unless klass && klass.respond_to?(:fields) && klass.fields[method_name.to_s.chomp('=').to_sym]
+      unless klass && klass.respond_to?(:fields) && klass.fields[method_name.to_s.chomp("=").to_sym]
         return super
       end
 
       # We have a registered class with this field - handle autofetch
-      field_name = method_name.to_s.chomp('=').to_sym
+      field_name = method_name.to_s.chomp("=").to_sym
 
       # If autofetch_raise_on_missing_keys is enabled, raise an error
       if Parse.autofetch_raise_on_missing_keys
@@ -327,7 +327,7 @@ module Parse
     def respond_to_missing?(method_name, include_private = false)
       klass = Parse::Model.find_class(parse_class)
       if klass && klass.respond_to?(:fields)
-        field_name = method_name.to_s.chomp('=').to_sym
+        field_name = method_name.to_s.chomp("=").to_sym
         return true if klass.fields[field_name]
       end
       super

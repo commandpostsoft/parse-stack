@@ -94,7 +94,7 @@ module Parse
           request_id: request_id,
           received_at: received_at,
           object: object&.as_json,
-          original: original&.as_json
+          original: original&.as_json,
         }
       end
 

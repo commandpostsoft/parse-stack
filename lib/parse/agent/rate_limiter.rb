@@ -73,7 +73,7 @@ module Parse
             raise RateLimitExceeded.new(
               retry_after: retry_after,
               limit: @limit,
-              window: @window
+              window: @window,
             )
           end
 
@@ -133,7 +133,7 @@ module Parse
             window: @window,
             used: @requests.size,
             remaining: [@limit - @requests.size, 0].max,
-            retry_after: @requests.size >= @limit ? calculate_retry_after : nil
+            retry_after: @requests.size >= @limit ? calculate_retry_after : nil,
           }
         end
       end

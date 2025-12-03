@@ -57,15 +57,15 @@ class TestSchemaInfo < Minitest::Test
         "duration" => { "type" => "Number" },
         "artist" => { "type" => "Pointer", "targetClass" => "Artist" },
         "tags" => { "type" => "Array" },
-        "released" => { "type" => "Boolean" }
+        "released" => { "type" => "Boolean" },
       },
       "indexes" => {
-        "_id_" => { "_id" => 1 }
+        "_id_" => { "_id" => 1 },
       },
       "classLevelPermissions" => {
         "find" => { "*" => true },
-        "get" => { "*" => true }
-      }
+        "get" => { "*" => true },
+      },
     }
     @schema_info = Parse::Schema::SchemaInfo.new(@data)
   end
@@ -235,8 +235,8 @@ class TestMigration < Minitest::Test
         "updatedAt" => { "type" => "Date" },
         "ACL" => { "type" => "ACL" },
         "name" => { "type" => "String" },
-        "value" => { "type" => "Number" }
-      }
+        "value" => { "type" => "Number" },
+      },
     }
     schema = Parse::Schema::SchemaInfo.new(data)
     diff = Parse::Schema::SchemaDiff.new(MigrationTestModel, schema)

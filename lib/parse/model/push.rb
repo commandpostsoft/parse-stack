@@ -685,15 +685,15 @@ module Parse
       return to_users(user) if user.is_a?(Array)
 
       pointer = case user
-                when Parse::User
-                  user.pointer
-                when Hash
-                  user
-                when String
-                  Parse::Pointer.new(Parse::Model::CLASS_USER, user).to_h
-                else
-                  raise ArgumentError, "Expected Parse::User, Hash, String, or Array, got #{user.class}"
-                end
+        when Parse::User
+          user.pointer
+        when Hash
+          user
+        when String
+          Parse::Pointer.new(Parse::Model::CLASS_USER, user).to_h
+        else
+          raise ArgumentError, "Expected Parse::User, Hash, String, or Array, got #{user.class}"
+        end
 
       query.where(user: pointer)
       self
@@ -774,15 +774,15 @@ module Parse
       return to_installations(installation) if installation.is_a?(Array)
 
       object_id = case installation
-                  when Parse::Installation
-                    installation.id
-                  when Hash
-                    installation[:objectId] || installation["objectId"] || installation[:id] || installation["id"]
-                  when String
-                    installation
-                  else
-                    raise ArgumentError, "Expected Parse::Installation, Hash, String, or Array, got #{installation.class}"
-                  end
+        when Parse::Installation
+          installation.id
+        when Hash
+          installation[:objectId] || installation["objectId"] || installation[:id] || installation["id"]
+        when String
+          installation
+        else
+          raise ArgumentError, "Expected Parse::Installation, Hash, String, or Array, got #{installation.class}"
+        end
 
       query.where(objectId: object_id)
       self

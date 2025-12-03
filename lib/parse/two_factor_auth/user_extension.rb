@@ -141,8 +141,8 @@ module Parse
         auth_data_payload = {
           mfa: {
             secret: secret,
-            token: token
-          }
+            token: token,
+          },
         }
 
         response = client.update_user(id, { authData: auth_data_payload }, opts: { session_token: session_token })
@@ -188,8 +188,8 @@ module Parse
 
         auth_data_payload = {
           mfa: {
-            mobile: mobile
-          }
+            mobile: mobile,
+          },
         }
 
         response = client.update_user(id, { authData: auth_data_payload }, opts: { session_token: session_token })
@@ -225,8 +225,8 @@ module Parse
         auth_data_payload = {
           mfa: {
             mobile: mobile,
-            token: token
-          }
+            token: token,
+          },
         }
 
         response = client.update_user(id, { authData: auth_data_payload }, opts: { session_token: session_token })
@@ -265,8 +265,8 @@ module Parse
         auth_data_payload = {
           mfa: {
             old: current_token,
-            secret: nil  # Setting to nil disables TOTP
-          }
+            secret: nil,  # Setting to nil disables TOTP
+          },
         }
 
         response = client.update_user(id, { authData: auth_data_payload }, opts: { session_token: session_token })
@@ -297,7 +297,7 @@ module Parse
       def disable_mfa_admin!
         # Setting authData.mfa to null with master key
         auth_data_payload = {
-          mfa: nil
+          mfa: nil,
         }
 
         response = client.update_user(id, { authData: auth_data_payload }, opts: { use_master_key: true })

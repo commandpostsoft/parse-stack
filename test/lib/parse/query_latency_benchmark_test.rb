@@ -49,7 +49,7 @@ class QueryLatencyBenchmarkTest < Minitest::Test
       max: times.max.round(2),
       avg: (times.sum / times.length).round(2),
       median: times.sort[times.length / 2].round(2),
-      times: times
+      times: times,
     }
   end
 
@@ -78,16 +78,16 @@ class QueryLatencyBenchmarkTest < Minitest::Test
             plays: rand(100..10000),
             genre: ["Rock", "Pop", "Jazz", "Classical", "Electronic"].sample,
             tags: ["tag1", "tag2", "tag3"].sample(rand(1..3)),
-            release_date: Time.now - rand(0..365*5) * 24 * 60 * 60,
-            artist: artists.sample
+            release_date: Time.now - rand(0..365 * 5) * 24 * 60 * 60,
+            artist: artists.sample,
           )
           s.save!
         end
         puts "Created 5 artists and 100 songs"
 
         # Configure MongoDB direct
-        require 'mongo'
-        require_relative '../../../lib/parse/mongodb'
+        require "mongo"
+        require_relative "../../../lib/parse/mongodb"
         Parse::MongoDB.configure(uri: "mongodb://admin:password@localhost:27019/parse?authSource=admin", enabled: true)
 
         puts "\n" + "-" * 70
@@ -110,7 +110,7 @@ class QueryLatencyBenchmarkTest < Minitest::Test
         puts "\nParse Server:   avg=#{parse_stats[:avg]}ms, min=#{parse_stats[:min]}ms, max=#{parse_stats[:max]}ms"
         puts "MongoDB Direct: avg=#{direct_stats[:avg]}ms, min=#{direct_stats[:min]}ms, max=#{direct_stats[:max]}ms"
         speedup = (parse_stats[:avg] / direct_stats[:avg]).round(2)
-        puts "Speedup: #{speedup}x #{speedup > 1 ? '(Direct faster)' : '(Parse faster)'}"
+        puts "Speedup: #{speedup}x #{speedup > 1 ? "(Direct faster)" : "(Parse faster)"}"
 
         assert_equal parse_count, direct_count, "Result counts should match"
 
@@ -132,7 +132,7 @@ class QueryLatencyBenchmarkTest < Minitest::Test
         puts "\nParse Server:   avg=#{parse_stats[:avg]}ms, min=#{parse_stats[:min]}ms, max=#{parse_stats[:max]}ms"
         puts "MongoDB Direct: avg=#{direct_stats[:avg]}ms, min=#{direct_stats[:min]}ms, max=#{direct_stats[:max]}ms"
         speedup = (parse_stats[:avg] / direct_stats[:avg]).round(2)
-        puts "Speedup: #{speedup}x #{speedup > 1 ? '(Direct faster)' : '(Parse faster)'}"
+        puts "Speedup: #{speedup}x #{speedup > 1 ? "(Direct faster)" : "(Parse faster)"}"
 
         assert_equal parse_count, direct_count, "Result counts should match"
 
@@ -156,7 +156,7 @@ class QueryLatencyBenchmarkTest < Minitest::Test
         puts "\nParse Server:   avg=#{parse_stats[:avg]}ms, min=#{parse_stats[:min]}ms, max=#{parse_stats[:max]}ms"
         puts "MongoDB Direct: avg=#{direct_stats[:avg]}ms, min=#{direct_stats[:min]}ms, max=#{direct_stats[:max]}ms"
         speedup = (parse_stats[:avg] / direct_stats[:avg]).round(2)
-        puts "Speedup: #{speedup}x #{speedup > 1 ? '(Direct faster)' : '(Parse faster)'}"
+        puts "Speedup: #{speedup}x #{speedup > 1 ? "(Direct faster)" : "(Parse faster)"}"
 
         assert_equal parse_count, direct_count, "Result counts should match"
 
@@ -190,15 +190,15 @@ class QueryLatencyBenchmarkTest < Minitest::Test
             plays: rand(100..10000),
             genre: ["Rock", "Pop", "Jazz"].sample,
             tags: i < 100 ? ["featured", "popular"].sample(rand(1..2)) : [],
-            artist: artists.sample
+            artist: artists.sample,
           )
           s.save!
         end
         puts "Created 10 artists and 150 songs"
 
         # Configure MongoDB direct
-        require 'mongo'
-        require_relative '../../../lib/parse/mongodb'
+        require "mongo"
+        require_relative "../../../lib/parse/mongodb"
         Parse::MongoDB.configure(uri: "mongodb://admin:password@localhost:27019/parse?authSource=admin", enabled: true)
 
         puts "\n" + "-" * 70
@@ -221,7 +221,7 @@ class QueryLatencyBenchmarkTest < Minitest::Test
         puts "\nParse Server:   avg=#{parse_stats[:avg]}ms, min=#{parse_stats[:min]}ms, max=#{parse_stats[:max]}ms"
         puts "MongoDB Direct: avg=#{direct_stats[:avg]}ms, min=#{direct_stats[:min]}ms, max=#{direct_stats[:max]}ms"
         speedup = (parse_stats[:avg] / direct_stats[:avg]).round(2)
-        puts "Speedup: #{speedup}x #{speedup > 1 ? '(Direct faster)' : '(Parse faster)'}"
+        puts "Speedup: #{speedup}x #{speedup > 1 ? "(Direct faster)" : "(Parse faster)"}"
 
         assert_equal parse_count, direct_count, "Result counts should match"
 
@@ -245,7 +245,7 @@ class QueryLatencyBenchmarkTest < Minitest::Test
         puts "\nParse Server:   avg=#{parse_stats[:avg]}ms, min=#{parse_stats[:min]}ms, max=#{parse_stats[:max]}ms"
         puts "MongoDB Direct: avg=#{direct_stats[:avg]}ms, min=#{direct_stats[:min]}ms, max=#{direct_stats[:max]}ms"
         speedup = (parse_stats[:avg] / direct_stats[:avg]).round(2)
-        puts "Speedup: #{speedup}x #{speedup > 1 ? '(Direct faster)' : '(Parse faster)'}"
+        puts "Speedup: #{speedup}x #{speedup > 1 ? "(Direct faster)" : "(Parse faster)"}"
 
         assert_equal parse_count, direct_count, "Result counts should match"
 
@@ -269,7 +269,7 @@ class QueryLatencyBenchmarkTest < Minitest::Test
         puts "\nParse Server:   avg=#{parse_stats[:avg]}ms, min=#{parse_stats[:min]}ms, max=#{parse_stats[:max]}ms"
         puts "MongoDB Direct: avg=#{direct_stats[:avg]}ms, min=#{direct_stats[:min]}ms, max=#{direct_stats[:max]}ms"
         speedup = (parse_stats[:avg] / direct_stats[:avg]).round(2)
-        puts "Speedup: #{speedup}x #{speedup > 1 ? '(Direct faster)' : '(Parse faster)'}"
+        puts "Speedup: #{speedup}x #{speedup > 1 ? "(Direct faster)" : "(Parse faster)"}"
 
         assert_equal parse_count, direct_count, "Result counts should match"
 
@@ -302,15 +302,15 @@ class QueryLatencyBenchmarkTest < Minitest::Test
             title: "Song #{i}",
             plays: rand(100..10000),
             genre: ["Rock", "Pop", "Jazz"].sample,
-            artist: artists.sample
+            artist: artists.sample,
           )
           s.save!
         end
         puts "Created 20 artists and 100 songs"
 
         # Configure MongoDB direct
-        require 'mongo'
-        require_relative '../../../lib/parse/mongodb'
+        require "mongo"
+        require_relative "../../../lib/parse/mongodb"
         Parse::MongoDB.configure(uri: "mongodb://admin:password@localhost:27019/parse?authSource=admin", enabled: true)
 
         puts "\n" + "-" * 70
@@ -328,7 +328,7 @@ class QueryLatencyBenchmarkTest < Minitest::Test
         puts "Parse Server:   avg=#{parse_stats[:avg]}ms, min=#{parse_stats[:min]}ms, max=#{parse_stats[:max]}ms"
         puts "MongoDB Direct: avg=#{direct_stats[:avg]}ms, min=#{direct_stats[:min]}ms, max=#{direct_stats[:max]}ms"
         speedup = (parse_stats[:avg] / direct_stats[:avg]).round(2)
-        puts "Speedup: #{speedup}x #{speedup > 1 ? '(Direct faster)' : '(Parse faster)'}"
+        puts "Speedup: #{speedup}x #{speedup > 1 ? "(Direct faster)" : "(Parse faster)"}"
 
         puts "\n" + "-" * 70
         puts "Test 2: Query WITH includes (eager loading artist)"
@@ -347,7 +347,7 @@ class QueryLatencyBenchmarkTest < Minitest::Test
         puts "Parse Server:   avg=#{parse_stats[:avg]}ms, min=#{parse_stats[:min]}ms, max=#{parse_stats[:max]}ms"
         puts "MongoDB Direct: avg=#{direct_stats[:avg]}ms, min=#{direct_stats[:min]}ms, max=#{direct_stats[:max]}ms"
         speedup = (parse_stats[:avg] / direct_stats[:avg]).round(2)
-        puts "Speedup: #{speedup}x #{speedup > 1 ? '(Direct faster)' : '(Parse faster)'}"
+        puts "Speedup: #{speedup}x #{speedup > 1 ? "(Direct faster)" : "(Parse faster)"}"
 
         # Verify includes work correctly
         parse_songs = BenchmarkSong.query(:plays.gt => 5000).includes(:artist).limit(5).all
@@ -404,15 +404,15 @@ class QueryLatencyBenchmarkTest < Minitest::Test
           s = BenchmarkSong.new(
             title: "Song #{i}",
             plays: rand(100..10000),
-            genre: ["Rock", "Pop", "Jazz", "Classical", "Electronic"].sample
+            genre: ["Rock", "Pop", "Jazz", "Classical", "Electronic"].sample,
           )
           s.save!
         end
         puts "Created 200 songs"
 
         # Configure MongoDB direct
-        require 'mongo'
-        require_relative '../../../lib/parse/mongodb'
+        require "mongo"
+        require_relative "../../../lib/parse/mongodb"
         Parse::MongoDB.configure(uri: "mongodb://admin:password@localhost:27019/parse?authSource=admin", enabled: true)
 
         puts "\n" + "-" * 70
@@ -433,7 +433,7 @@ class QueryLatencyBenchmarkTest < Minitest::Test
         puts "\nParse Server:   avg=#{parse_stats[:avg]}ms, min=#{parse_stats[:min]}ms, max=#{parse_stats[:max]}ms"
         puts "MongoDB Direct: avg=#{direct_stats[:avg]}ms, min=#{direct_stats[:min]}ms, max=#{direct_stats[:max]}ms"
         speedup = (parse_stats[:avg] / direct_stats[:avg]).round(2)
-        puts "Speedup: #{speedup}x #{speedup > 1 ? '(Direct faster)' : '(Parse faster)'}"
+        puts "Speedup: #{speedup}x #{speedup > 1 ? "(Direct faster)" : "(Parse faster)"}"
 
         assert_equal parse_count, direct_count
 
@@ -455,7 +455,7 @@ class QueryLatencyBenchmarkTest < Minitest::Test
         puts "\nParse Server:   avg=#{parse_stats[:avg]}ms, min=#{parse_stats[:min]}ms, max=#{parse_stats[:max]}ms"
         puts "MongoDB Direct: avg=#{direct_stats[:avg]}ms, min=#{direct_stats[:min]}ms, max=#{direct_stats[:max]}ms"
         speedup = (parse_stats[:avg] / direct_stats[:avg]).round(2)
-        puts "Speedup: #{speedup}x #{speedup > 1 ? '(Direct faster)' : '(Parse faster)'}"
+        puts "Speedup: #{speedup}x #{speedup > 1 ? "(Direct faster)" : "(Parse faster)"}"
 
         assert_equal parse_count, direct_count
 
@@ -477,7 +477,7 @@ class QueryLatencyBenchmarkTest < Minitest::Test
         puts "\nParse Server:   avg=#{parse_stats[:avg]}ms, min=#{parse_stats[:min]}ms, max=#{parse_stats[:max]}ms"
         puts "MongoDB Direct: avg=#{direct_stats[:avg]}ms, min=#{direct_stats[:min]}ms, max=#{direct_stats[:max]}ms"
         speedup = (parse_stats[:avg] / direct_stats[:avg]).round(2)
-        puts "Speedup: #{speedup}x #{speedup > 1 ? '(Direct faster)' : '(Parse faster)'}"
+        puts "Speedup: #{speedup}x #{speedup > 1 ? "(Direct faster)" : "(Parse faster)"}"
 
         assert_equal parse_count, direct_count
 
@@ -512,14 +512,14 @@ class QueryLatencyBenchmarkTest < Minitest::Test
             genre: ["Rock", "Pop", "Jazz", "Classical"].sample,
             tags: i < 150 ? ["tag1", "tag2"].sample(rand(1..2)) : [],
             release_date: Time.now - rand(0..365) * 24 * 60 * 60,
-            artist: artists.sample
+            artist: artists.sample,
           )
           s.save!
         end
 
         # Configure MongoDB direct
-        require 'mongo'
-        require_relative '../../../lib/parse/mongodb'
+        require "mongo"
+        require_relative "../../../lib/parse/mongodb"
         Parse::MongoDB.configure(uri: "mongodb://admin:password@localhost:27019/parse?authSource=admin", enabled: true)
 
         results = []
@@ -528,7 +528,7 @@ class QueryLatencyBenchmarkTest < Minitest::Test
         patterns = [
           { name: "Simple equality", query: -> { BenchmarkSong.query(genre: "Rock") } },
           { name: "Range query", query: -> { BenchmarkSong.query(:plays.gt => 5000) } },
-          { name: "Date range", query: -> { BenchmarkSong.query(:release_date.gt => Time.now - 180*24*60*60) } },
+          { name: "Date range", query: -> { BenchmarkSong.query(:release_date.gt => Time.now - 180 * 24 * 60 * 60) } },
           { name: "With limit", query: -> { BenchmarkSong.query(:plays.gt => 1000).limit(20) } },
           { name: "With order", query: -> { BenchmarkSong.query(:plays.gt => 1000).order(:plays.desc).limit(20) } },
           { name: "empty_or_nil", query: -> { BenchmarkSong.query(:tags.empty_or_nil => true) } },
@@ -567,14 +567,14 @@ class QueryLatencyBenchmarkTest < Minitest::Test
             name: pattern[:name],
             parse: parse_stats[:avg],
             direct: direct_stats[:avg],
-            speedup: speedup
+            speedup: speedup,
           }
 
           puts "| %-20s | %12.2f | %12.2f | %7.2fx |" % [
             pattern[:name],
             parse_stats[:avg],
             direct_stats[:avg],
-            speedup
+            speedup,
           ]
         end
 

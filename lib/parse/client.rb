@@ -3,14 +3,14 @@ require "faraday"
 # Attempt to load the persistent connection adapter for better performance.
 # Falls back gracefully to the default adapter if not available.
 NET_HTTP_PERSISTENT_AVAILABLE = begin
-  require "faraday/net_http_persistent"
-  true
-rescue LoadError
-  warn "[parse-stack] faraday-net_http_persistent gem not available. " \
-       "Using standard Net::HTTP adapter. For better performance, add " \
-       "'faraday-net_http_persistent' to your Gemfile."
-  false
-end
+    require "faraday/net_http_persistent"
+    true
+  rescue LoadError
+    warn "[parse-stack] faraday-net_http_persistent gem not available. " \
+         "Using standard Net::HTTP adapter. For better performance, add " \
+         "'faraday-net_http_persistent' to your Gemfile."
+    false
+  end
 
 require "active_support"
 require "moneta"
@@ -451,7 +451,7 @@ module Parse
         application_id: @application_id,
         client_key: @api_key,
         master_key: @master_key,
-        **live_query_opts
+        **live_query_opts,
       )
     end
 
@@ -750,12 +750,12 @@ module Parse
   # @return (see Parse.call_function)
   def self.trigger_job(name, body = {}, **opts)
     conn = opts[:session] || opts[:client] || :default
-    
+
     # Extract request options for the API call
     request_opts = {}
     request_opts[:session_token] = opts[:session_token] if opts[:session_token]
     request_opts[:master_key] = opts[:master_key] if opts[:master_key]
-    
+
     response = Parse::Client.client(conn).trigger_job(name, body, opts: request_opts)
     return response if opts[:raw].present?
     response.error? ? nil : response.result["result"]
@@ -785,12 +785,12 @@ module Parse
   # @return [Object] the result data of the response. nil if there was an error.
   def self.call_function(name, body = {}, **opts)
     conn = opts[:session] || opts[:client] || :default
-    
+
     # Extract request options for the API call
     request_opts = {}
     request_opts[:session_token] = opts[:session_token] if opts[:session_token]
     request_opts[:master_key] = opts[:master_key] if opts[:master_key]
-    
+
     response = Parse::Client.client(conn).call_function(name, body, opts: request_opts)
     return response if opts[:raw].present?
     response.error? ? nil : response.result["result"]

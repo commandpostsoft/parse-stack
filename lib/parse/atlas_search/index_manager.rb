@@ -78,7 +78,7 @@ module Parse
             available = list_indexes(collection_name).map { |i| i["name"] }.join(", ")
             raise IndexNotFound,
               "Atlas Search index '#{index_name}' not found or not ready on collection '#{collection_name}'. " \
-              "Available indexes: #{available.presence || 'none'}"
+              "Available indexes: #{available.presence || "none"}"
           end
         end
 
@@ -112,7 +112,7 @@ module Parse
         def cache_indexes(collection_name, indexes)
           index_cache[collection_name] = {
             indexes: indexes,
-            cached_at: Time.now
+            cached_at: Time.now,
           }
         end
 

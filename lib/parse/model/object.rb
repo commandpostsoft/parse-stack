@@ -239,18 +239,18 @@ module Parse
               # Only run for new objects
               existing_if = options[:if]
               options[:if] = if existing_if
-                              -> { new? && instance_exec(&existing_if) }
-                            else
-                              :new?
-                            end
+                  -> { new? && instance_exec(&existing_if) }
+                else
+                  :new?
+                end
             when :update
               # Only run for existing objects
               existing_if = options[:if]
               options[:if] = if existing_if
-                              -> { !new? && instance_exec(&existing_if) }
-                            else
-                              -> { !new? }
-                            end
+                  -> { !new? && instance_exec(&existing_if) }
+                else
+                  -> { !new? }
+                end
             end
           end
 
@@ -263,6 +263,7 @@ module Parse
         end
       end
     end
+
     singleton_class.prepend ValidationCallbackOnSupport
 
     attr_accessor :created_at, :updated_at, :acl
@@ -736,8 +737,6 @@ module Parse
     def run_after_delete_callbacks
       run_callbacks_from_list(self.class._destroy_callbacks, :after)
     end
-
-   
 
     # Returns a hash of all the changes that have been made to the object. By default
     # changes to the Parse::Properties::BASE_KEYS are ignored unless you pass true as

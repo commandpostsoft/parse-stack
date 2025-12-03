@@ -143,9 +143,9 @@ module Parse
           password: password,
           authData: {
             mfa: {
-              token: mfa_token
-            }
-          }
+              token: mfa_token,
+            },
+          },
         }
         headers.merge!({ Parse::Protocol::REVOCABLE_SESSION => "1" })
         response = request :post, LOGIN_PATH, body: body, headers: headers, opts: opts

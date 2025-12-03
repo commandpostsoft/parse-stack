@@ -33,7 +33,7 @@ module Parse
       "Object" => :object,
       "Pointer" => :pointer,
       "Relation" => :relation,
-      "Bytes" => :bytes
+      "Bytes" => :bytes,
     }.freeze
 
     # Reverse mapping from Ruby types to Parse types
@@ -52,7 +52,7 @@ module Parse
       pointer: "Pointer",
       relation: "Relation",
       bytes: "Bytes",
-      acl: "ACL"
+      acl: "ACL",
     }.freeze
 
     class << self
@@ -178,7 +178,7 @@ module Parse
             type: ruby_type,
             target_class: info["targetClass"],
             required: info["required"] || false,
-            default_value: info["defaultValue"]
+            default_value: info["defaultValue"],
           }
         end
         result
@@ -343,7 +343,7 @@ module Parse
           ops << {
             action: :add_field,
             field: name.to_s.camelize(:lower),
-            type: REVERSE_TYPE_MAP[type] || "String"
+            type: REVERSE_TYPE_MAP[type] || "String",
           }
         end
 
@@ -425,7 +425,7 @@ module Parse
           field_name = name.to_s.camelize(:lower)
           fields[field_name] = {
             "type" => "Pointer",
-            "targetClass" => target_class.to_s
+            "targetClass" => target_class.to_s,
           }
         end
 

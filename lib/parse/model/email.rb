@@ -170,7 +170,7 @@ module Parse
       if l.length <= 2
         "#{l[0]}*@#{d}"
       else
-        "#{l[0]}#{'*' * [l.length - 2, 3].min}#{l[-1]}@#{d}"
+        "#{l[0]}#{"*" * [l.length - 2, 3].min}#{l[-1]}@#{d}"
       end
     end
 

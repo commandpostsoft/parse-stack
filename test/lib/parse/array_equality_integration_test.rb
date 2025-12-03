@@ -1,5 +1,5 @@
-require_relative '../../test_helper_integration'
-require 'timeout'
+require_relative "../../test_helper_integration"
+require "timeout"
 
 class ArrayEqualityIntegrationTest < Minitest::Test
   include ParseStackIntegrationTest
@@ -36,7 +36,7 @@ class ArrayEqualityIntegrationTest < Minitest::Test
   # Test 1: Verify $all behavior (baseline)
   # ==========================================================================
   def test_all_constraint_matches_supersets
-    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
 
     with_parse_server do
       puts "\n=== Testing $all Constraint Behavior ==="
@@ -74,7 +74,7 @@ class ArrayEqualityIntegrationTest < Minitest::Test
   # Test 2: Test $size constraint (verify if Parse supports it)
   # ==========================================================================
   def test_size_constraint_support
-    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
 
     with_parse_server do
       puts "\n=== Testing $size Constraint Support ==="
@@ -113,7 +113,7 @@ class ArrayEqualityIntegrationTest < Minitest::Test
   # Test 3: Test $all + $size combination for exact match
   # ==========================================================================
   def test_all_plus_size_for_exact_match
-    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
 
     with_parse_server do
       puts "\n=== Testing $all + $size Combination ==="
@@ -154,7 +154,7 @@ class ArrayEqualityIntegrationTest < Minitest::Test
   # Test 4: MongoDB aggregation with $setEquals (order-independent)
   # ==========================================================================
   def test_set_equals_aggregation
-    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
 
     with_parse_server do
       puts "\n=== Testing $setEquals Aggregation ==="
@@ -173,22 +173,22 @@ class ArrayEqualityIntegrationTest < Minitest::Test
             {
               "$match" => {
                 "$expr" => {
-                  "$setEquals" => ["$tags", ["rock", "pop"]]
-                }
-              }
-            }
+                  "$setEquals" => ["$tags", ["rock", "pop"]],
+                },
+              },
+            },
           ]
 
           aggregation = TaggedItem.query.aggregate(pipeline)
           results = aggregation.results
 
           puts "Aggregation pipeline: $setEquals => ['rock', 'pop']"
-          puts "Results: #{results.map { |r| r['name'] || r[:name] || (r.name rescue nil) || r.inspect }.inspect}"
+          puts "Results: #{results.map { |r| r["name"] || r[:name] || (r.name rescue nil) || r.inspect }.inspect}"
 
           # $setEquals should match items with exactly the same elements (order-independent)
           # Should match: exact, reordered
           # Should NOT match: superset, different
-          names = results.map { |r| r['name'] || r[:name] || r.name rescue nil }.compact
+          names = results.map { |r| r["name"] || r[:name] || r.name rescue nil }.compact
 
           if names.include?("exact") && names.include?("reordered") &&
              !names.include?("superset") && !names.include?("different")
@@ -208,7 +208,7 @@ class ArrayEqualityIntegrationTest < Minitest::Test
   # Test 5: MongoDB aggregation with $eq (order-dependent)
   # ==========================================================================
   def test_eq_aggregation_order_dependent
-    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
 
     with_parse_server do
       puts "\n=== Testing $eq Aggregation (Order-Dependent) ==="
@@ -226,22 +226,22 @@ class ArrayEqualityIntegrationTest < Minitest::Test
             {
               "$match" => {
                 "$expr" => {
-                  "$eq" => ["$tags", ["rock", "pop"]]
-                }
-              }
-            }
+                  "$eq" => ["$tags", ["rock", "pop"]],
+                },
+              },
+            },
           ]
 
           aggregation = TaggedItem.query.aggregate(pipeline)
           results = aggregation.results
 
           puts "Aggregation pipeline: $eq => ['rock', 'pop']"
-          puts "Results: #{results.map { |r| r['name'] || r[:name] || (r.name rescue nil) || r.inspect }.inspect}"
+          puts "Results: #{results.map { |r| r["name"] || r[:name] || (r.name rescue nil) || r.inspect }.inspect}"
 
           # $eq should only match items with exactly the same array (including order)
           # Should match: exact_order
           # Should NOT match: reordered, superset
-          names = results.map { |r| r['name'] || r[:name] || r.name rescue nil }.compact
+          names = results.map { |r| r["name"] || r[:name] || r.name rescue nil }.compact
 
           if names.include?("exact_order") && !names.include?("reordered") && !names.include?("superset")
             puts "✅ $eq aggregation works for strict order-dependent equality!"
@@ -261,7 +261,7 @@ class ArrayEqualityIntegrationTest < Minitest::Test
   # Test 6: Parse pointers (has_many) array equality
   # ==========================================================================
   def test_pointer_array_set_equals
-    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
 
     with_parse_server do
       puts "\n=== Testing Pointer Array $setEquals ==="
@@ -307,20 +307,20 @@ class ArrayEqualityIntegrationTest < Minitest::Test
                 "$expr" => {
                   "$setEquals" => [
                     { "$map" => { "input" => "$categories", "as" => "c", "in" => "$$c.objectId" } },
-                    target_ids
-                  ]
-                }
-              }
-            }
+                    target_ids,
+                  ],
+                },
+              },
+            },
           ]
 
           aggregation = Product.query.aggregate(pipeline)
           results = aggregation.results
 
           puts "Aggregation: $setEquals on categories objectIds => #{target_ids.inspect}"
-          puts "Results: #{results.map { |r| r['name'] || r[:name] || (r.name rescue nil) || r.inspect }.inspect}"
+          puts "Results: #{results.map { |r| r["name"] || r[:name] || (r.name rescue nil) || r.inspect }.inspect}"
 
-          names = results.map { |r| r['name'] || r[:name] || r.name rescue nil }.compact
+          names = results.map { |r| r["name"] || r[:name] || r.name rescue nil }.compact
 
           if names.include?("exact_match") && names.include?("reordered") && !names.include?("superset")
             puts "✅ Pointer array $setEquals works!"
@@ -339,7 +339,7 @@ class ArrayEqualityIntegrationTest < Minitest::Test
   # Test 7: Direct array match in $match (simpler approach)
   # ==========================================================================
   def test_direct_array_match_aggregation
-    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
 
     with_parse_server do
       puts "\n=== Testing Direct Array Match in $match ==="
@@ -354,16 +354,16 @@ class ArrayEqualityIntegrationTest < Minitest::Test
         begin
           # Try direct array equality in $match
           pipeline = [
-            { "$match" => { "tags" => ["rock", "pop"] } }
+            { "$match" => { "tags" => ["rock", "pop"] } },
           ]
 
           aggregation = TaggedItem.query.aggregate(pipeline)
           results = aggregation.results
 
           puts "Aggregation: direct match tags => ['rock', 'pop']"
-          puts "Results: #{results.map { |r| r['name'] || r[:name] || (r.name rescue nil) || r.inspect }.inspect}"
+          puts "Results: #{results.map { |r| r["name"] || r[:name] || (r.name rescue nil) || r.inspect }.inspect}"
 
-          names = results.map { |r| r['name'] || r[:name] || r.name rescue nil }.compact
+          names = results.map { |r| r["name"] || r[:name] || r.name rescue nil }.compact
 
           if names == ["exact"]
             puts "✅ Direct array match works for order-dependent equality!"
@@ -383,7 +383,7 @@ class ArrayEqualityIntegrationTest < Minitest::Test
   # Test 8: Native :size constraint
   # ==========================================================================
   def test_native_size_constraint
-    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
 
     with_parse_server do
       puts "\n=== Testing Native :size Constraint ==="
@@ -441,7 +441,7 @@ class ArrayEqualityIntegrationTest < Minitest::Test
   # Test 9: Native :set_equals constraint (order-independent)
   # ==========================================================================
   def test_native_set_equals_constraint
-    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
 
     with_parse_server do
       puts "\n=== Testing Native :set_equals Constraint ==="
@@ -485,7 +485,7 @@ class ArrayEqualityIntegrationTest < Minitest::Test
   # Test 10: Native :eq_array constraint (order-dependent)
   # ==========================================================================
   def test_native_eq_array_constraint
-    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
 
     with_parse_server do
       puts "\n=== Testing Native :eq_array Constraint ==="
@@ -527,7 +527,7 @@ class ArrayEqualityIntegrationTest < Minitest::Test
   # Test 11: Pointer array :set_equals constraint
   # ==========================================================================
   def test_pointer_array_set_equals_constraint
-    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
 
     with_parse_server do
       puts "\n=== Testing Pointer Array :set_equals Constraint ==="
@@ -590,7 +590,7 @@ class ArrayEqualityIntegrationTest < Minitest::Test
   # Test 12: Native :neq constraint (order-dependent not-equal)
   # ==========================================================================
   def test_native_neq_constraint
-    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
 
     with_parse_server do
       puts "\n=== Testing Native :neq Constraint ==="
@@ -634,7 +634,7 @@ class ArrayEqualityIntegrationTest < Minitest::Test
   # Test 13: Native :not_set_equals constraint (order-independent not-equal)
   # ==========================================================================
   def test_native_not_set_equals_constraint
-    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
 
     with_parse_server do
       puts "\n=== Testing Native :not_set_equals Constraint ==="
@@ -678,7 +678,7 @@ class ArrayEqualityIntegrationTest < Minitest::Test
   # Test 14: arr_empty and arr_nempty constraints
   # ==========================================================================
   def test_arr_empty_and_nempty_constraints
-    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
 
     with_parse_server do
       puts "\n=== Testing arr_empty and arr_nempty Constraints ==="
@@ -733,7 +733,7 @@ class ArrayEqualityIntegrationTest < Minitest::Test
   # Test 15: Size comparison operators (gt, gte, lt, lte, ne)
   # ==========================================================================
   def test_size_comparison_operators
-    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
 
     with_parse_server do
       puts "\n=== Testing Size Comparison Operators ==="
@@ -804,7 +804,7 @@ class ArrayEqualityIntegrationTest < Minitest::Test
   # Test 16: Pointer array :size constraint
   # ==========================================================================
   def test_pointer_array_size_constraint
-    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV['PARSE_TEST_USE_DOCKER'] == 'true'
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
 
     with_parse_server do
       puts "\n=== Testing Pointer Array :size Constraint ==="

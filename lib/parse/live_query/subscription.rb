@@ -195,8 +195,8 @@ module Parse
           requestId: request_id,
           query: {
             className: class_name,
-            where: query
-          }
+            where: query,
+          },
         }
 
         msg[:query][:fields] = fields if fields&.any?
@@ -210,7 +210,7 @@ module Parse
       def to_unsubscribe_message
         {
           op: "unsubscribe",
-          requestId: request_id
+          requestId: request_id,
         }
       end
 
@@ -254,7 +254,7 @@ module Parse
             class_name: class_name,
             query: query,
             state: @state,
-            fields: fields
+            fields: fields,
           }
         end
       end

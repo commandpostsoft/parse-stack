@@ -88,7 +88,7 @@ module Parse
         TLSv1: OpenSSL::SSL::TLS1_VERSION,
         TLSv1_1: OpenSSL::SSL::TLS1_1_VERSION,
         TLSv1_2: OpenSSL::SSL::TLS1_2_VERSION,
-        TLSv1_3: OpenSSL::SSL::TLS1_3_VERSION
+        TLSv1_3: OpenSSL::SSL::TLS1_3_VERSION,
       }.freeze
 
       # Valid TLS version symbols
@@ -204,7 +204,7 @@ module Parse
           ssl_min_version: @ssl_min_version,
           ssl_max_version: @ssl_max_version,
           logging_enabled: @logging_enabled,
-          log_level: @log_level
+          log_level: @log_level,
         }
       end
     end

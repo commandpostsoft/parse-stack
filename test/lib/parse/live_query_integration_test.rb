@@ -23,7 +23,7 @@ class LiveQueryIntegrationTest < Minitest::Test
     Parse::LiveQuery.configure(
       url: LIVE_QUERY_URL,
       application_id: "myAppId",
-      client_key: "test-rest-key"
+      client_key: "test-rest-key",
     )
 
     # Clean up any existing test data

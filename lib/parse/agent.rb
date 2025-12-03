@@ -127,8 +127,8 @@ module Parse
           error_parts << "Set Parse.mcp_server_enabled = true in code" unless prog_set
 
           raise RuntimeError, "MCP server requires both environment and code configuration:\n" \
-            "  - #{error_parts.join("\n  - ")}\n" \
-            "Then call Parse::Agent.enable_mcp!(port: 3001)"
+                "  - #{error_parts.join("\n  - ")}\n" \
+                "Then call Parse::Agent.enable_mcp!(port: 3001)"
         end
 
         # Use provided port, or configured port, or default
@@ -180,7 +180,7 @@ module Parse
         delete_object
         create_class
         delete_class
-      ].freeze
+      ].freeze,
     }.freeze
 
     # All readonly tools (default)
@@ -308,7 +308,7 @@ module Parse
         before_tool_call: [],
         after_tool_call: [],
         on_error: [],
-        on_llm_response: []
+        on_llm_response: [],
       }
     end
 
@@ -367,10 +367,10 @@ module Parse
 
       unless tool_allowed?(tool_name)
         return error_response(
-          "Permission denied: '#{tool_name}' requires #{required_permission_for(tool_name)} permissions. " \
-          "Current level: #{@permissions}",
-          error_code: :permission_denied
-        )
+                 "Permission denied: '#{tool_name}' requires #{required_permission_for(tool_name)} permissions. " \
+                 "Current level: #{@permissions}",
+                 error_code: :permission_denied,
+               )
       end
 
       # Trigger before_tool_call callbacks
@@ -386,39 +386,39 @@ module Parse
 
         response
 
-      # Security errors - NEVER swallow, always re-raise
+        # Security errors - NEVER swallow, always re-raise
       rescue PipelineValidator::PipelineSecurityError,
              ConstraintTranslator::ConstraintSecurityError => e
         log_security_event(tool_name, kwargs, e)
         trigger_callbacks(:on_error, e, { tool: tool_name, args: kwargs })
         raise  # Re-raise security errors to caller
 
-      # Validation errors - return structured error response
+        # Validation errors - return structured error response
       rescue ConstraintTranslator::InvalidOperatorError => e
         trigger_callbacks(:on_error, e, { tool: tool_name, args: kwargs })
         error_response(e.message, error_code: :invalid_query)
 
-      # Timeout errors
+        # Timeout errors
       rescue ToolTimeoutError => e
         trigger_callbacks(:on_error, e, { tool: tool_name, args: kwargs })
         error_response(e.message, error_code: :timeout)
 
-      # Rate limit errors (should be caught above, but handle just in case)
+        # Rate limit errors (should be caught above, but handle just in case)
       rescue RateLimiter::RateLimitExceeded => e
         trigger_callbacks(:on_error, e, { tool: tool_name, args: kwargs })
         error_response(e.message, error_code: :rate_limited, retry_after: e.retry_after)
 
-      # Invalid arguments
+        # Invalid arguments
       rescue ArgumentError => e
         trigger_callbacks(:on_error, e, { tool: tool_name, args: kwargs })
         error_response("Invalid arguments: #{e.message}", error_code: :invalid_argument)
 
-      # Parse API errors
+        # Parse API errors
       rescue Parse::Error => e
         trigger_callbacks(:on_error, e, { tool: tool_name, args: kwargs })
         error_response("Parse error: #{e.message}", error_code: :parse_error)
 
-      # Unexpected errors - log with stack trace for debugging
+        # Unexpected errors - log with stack trace for debugging
       rescue StandardError => e
         warn "[Parse::Agent] Unexpected error in #{tool_name}: #{e.class} - #{e.message}"
         warn e.backtrace.first(5).join("\n") if e.backtrace
@@ -493,7 +493,7 @@ module Parse
         messages: messages.dup,
         model: model_name,
         endpoint: endpoint,
-        streaming: false
+        streaming: false,
       }
 
       tool_calls_made = []
@@ -531,9 +531,9 @@ module Parse
           @conversation_history << { role: "assistant", content: answer }
 
           return {
-            answer: answer,
-            tool_calls: tool_calls_made
-          }
+                   answer: answer,
+                   tool_calls: tool_calls_made,
+                 }
         end
 
         # Process tool calls
@@ -555,7 +555,7 @@ module Parse
           messages << {
             role: "tool",
             tool_call_id: tool_call["id"],
-            content: JSON.generate(result)
+            content: JSON.generate(result),
           }
         end
       end
@@ -624,7 +624,7 @@ module Parse
       {
         prompt_tokens: @total_prompt_tokens,
         completion_tokens: @total_completion_tokens,
-        total_tokens: @total_tokens
+        total_tokens: @total_tokens,
       }
     end
 
@@ -737,7 +737,7 @@ module Parse
         conversation_history: @conversation_history,
         token_usage: token_usage,
         permissions: @permissions,
-        exported_at: Time.now.iso8601
+        exported_at: Time.now.iso8601,
       })
     end
 
@@ -829,7 +829,7 @@ module Parse
         messages: messages.dup,
         model: model_name,
         endpoint: endpoint,
-        streaming: true
+        streaming: true,
       }
 
       # Make streaming request
@@ -847,7 +847,7 @@ module Parse
       {
         answer: full_response[:content],
         tool_calls: [],  # Streaming mode doesn't support tool calls currently
-        error: full_response[:error]
+        error: full_response[:error],
       }
     end
 
@@ -887,7 +887,7 @@ module Parse
         messages: messages,
         tools: tool_definitions.map { |t| { type: "function", function: t[:function] } },
         tool_choice: "auto",
-        temperature: 0.1
+        temperature: 0.1,
       }
 
       request.body = JSON.generate(body)
@@ -906,8 +906,8 @@ module Parse
             usage: {
               prompt_tokens: usage["prompt_tokens"] || 0,
               completion_tokens: usage["completion_tokens"] || 0,
-              total_tokens: usage["total_tokens"] || 0
-            }
+              total_tokens: usage["total_tokens"] || 0,
+            },
           }
         end
       rescue StandardError => e
@@ -935,7 +935,7 @@ module Parse
         model: model,
         messages: messages,
         stream: true,
-        temperature: 0.1
+        temperature: 0.1,
       }
 
       request.body = JSON.generate(body)
@@ -1016,10 +1016,10 @@ module Parse
     # @return [Hash] auth type and master key usage info
     def auth_context
       @auth_context ||= if @session_token
-        { type: :session_token, using_master_key: false }
-      else
-        { type: :master_key, using_master_key: true }
-      end
+          { type: :session_token, using_master_key: false }
+        else
+          { type: :master_key, using_master_key: true }
+        end
     end
 
     # Keys that should never be logged for security reasons
@@ -1039,7 +1039,7 @@ module Parse
         success: true,
         auth_type: auth_context[:type],
         using_master_key: auth_context[:using_master_key],
-        permissions: @permissions
+        permissions: @permissions,
       }
       append_log(entry)
 
@@ -1061,7 +1061,7 @@ module Parse
         error_message: error.message,
         timestamp: Time.now.iso8601,
         auth_type: auth_context[:type],
-        permissions: @permissions
+        permissions: @permissions,
       }
 
       # Add specific info based on error type
@@ -1097,7 +1097,7 @@ module Parse
         error: message,
         error_code: error_code,
         timestamp: Time.now.iso8601,
-        success: false
+        success: false,
       }
       append_log(entry)
 

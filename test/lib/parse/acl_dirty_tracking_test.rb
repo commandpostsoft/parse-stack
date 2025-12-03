@@ -1,4 +1,4 @@
-require_relative '../../test_helper'
+require_relative "../../test_helper"
 
 # Test model for ACL dirty tracking
 class ACLDirtyTestObject < Parse::Object
@@ -7,7 +7,6 @@ class ACLDirtyTestObject < Parse::Object
 end
 
 class ACLDirtyTrackingTest < Minitest::Test
-
   def setup
     @obj = ACLDirtyTestObject.new
     @obj.instance_variable_set(:@id, "test123")
@@ -61,7 +60,7 @@ class ACLDirtyTrackingTest < Minitest::Test
 
     # acl_was should have the previous value
     assert_equal({ "*" => { "read" => true } }, @obj.acl_was.as_json,
-      "acl_was should capture the previous ACL value")
+                 "acl_was should capture the previous ACL value")
   end
 
   def test_acl_was_differs_from_current_acl_after_change
@@ -159,9 +158,9 @@ class ACLDirtyTrackingTest < Minitest::Test
 
     was_acl, current_acl = changes
     assert_equal({ "*" => { "read" => true } }, was_acl.as_json,
-      "First element should be the previous ACL")
+                 "First element should be the previous ACL")
     assert_equal({ "*" => { "read" => true, "write" => true } }, current_acl.as_json,
-      "Second element should be the current ACL")
+                 "Second element should be the current ACL")
   end
 
   def test_changes_shows_correct_before_and_after_for_in_place_modification
@@ -182,11 +181,11 @@ class ACLDirtyTrackingTest < Minitest::Test
     # limitation. Use `acl_was` method instead for accurate "before" value.
     # current should have the new permission
     assert_equal({ "*" => { "read" => true } }, current_acl.as_json,
-      "current value in changes should be the state AFTER modification")
+                 "current value in changes should be the state AFTER modification")
 
     # The acl_was METHOD correctly returns the snapshot (our fix)
     assert_equal({}, @obj.acl_was.as_json,
-      "acl_was method should return the state BEFORE modification")
+                 "acl_was method should return the state BEFORE modification")
   end
 
   # ============================================
@@ -231,7 +230,7 @@ class ACLDirtyTrackingTest < Minitest::Test
 
     # acl_was should still be the ORIGINAL state (empty), not any intermediate state
     assert_equal({}, @obj.acl_was.as_json,
-      "acl_was should capture the first state before any modifications")
+                 "acl_was should capture the first state before any modifications")
   end
 
   # ============================================

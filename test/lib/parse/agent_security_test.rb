@@ -26,7 +26,7 @@ class PipelineValidatorTest < Minitest::Test
 
   def test_allows_group_stage
     assert Parse::Agent::PipelineValidator.validate!([
-      { "$group" => { "_id" => "$category", "count" => { "$sum" => 1 } } }
+      { "$group" => { "_id" => "$category", "count" => { "$sum" => 1 } } },
     ])
   end
 
@@ -48,7 +48,7 @@ class PipelineValidatorTest < Minitest::Test
 
   def test_allows_lookup_stage
     assert Parse::Agent::PipelineValidator.validate!([
-      { "$lookup" => { "from" => "artists", "localField" => "artistId", "foreignField" => "_id", "as" => "artist" } }
+      { "$lookup" => { "from" => "artists", "localField" => "artistId", "foreignField" => "_id", "as" => "artist" } },
     ])
   end
 
@@ -62,7 +62,7 @@ class PipelineValidatorTest < Minitest::Test
 
   def test_allows_facet_stage
     assert Parse::Agent::PipelineValidator.validate!([
-      { "$facet" => { "byCategory" => [{ "$group" => { "_id" => "$category" } }] } }
+      { "$facet" => { "byCategory" => [{ "$group" => { "_id" => "$category" } }] } },
     ])
   end
 
@@ -89,7 +89,7 @@ class PipelineValidatorTest < Minitest::Test
   def test_blocks_function_stage
     error = assert_raises(Parse::Agent::PipelineValidator::PipelineSecurityError) do
       Parse::Agent::PipelineValidator.validate!([
-        { "$function" => { "body" => "function() { return 1; }", "args" => [], "lang" => "js" } }
+        { "$function" => { "body" => "function() { return 1; }", "args" => [], "lang" => "js" } },
       ])
     end
     assert_match(/SECURITY/, error.message)
@@ -99,7 +99,7 @@ class PipelineValidatorTest < Minitest::Test
   def test_blocks_accumulator_stage
     error = assert_raises(Parse::Agent::PipelineValidator::PipelineSecurityError) do
       Parse::Agent::PipelineValidator.validate!([
-        { "$accumulator" => { "init" => "function() {}", "accumulate" => "function() {}" } }
+        { "$accumulator" => { "init" => "function() {}", "accumulate" => "function() {}" } },
       ])
     end
     assert_match(/SECURITY/, error.message)
@@ -113,7 +113,7 @@ class PipelineValidatorTest < Minitest::Test
   def test_blocks_out_nested_in_facet
     error = assert_raises(Parse::Agent::PipelineValidator::PipelineSecurityError) do
       Parse::Agent::PipelineValidator.validate!([
-        { "$facet" => { "pipeline1" => [{ "$out" => "hacked" }] } }
+        { "$facet" => { "pipeline1" => [{ "$out" => "hacked" }] } },
       ])
     end
     assert_match(/nested/, error.message.downcase)
@@ -123,8 +123,8 @@ class PipelineValidatorTest < Minitest::Test
     error = assert_raises(Parse::Agent::PipelineValidator::PipelineSecurityError) do
       Parse::Agent::PipelineValidator.validate!([
         { "$facet" => {
-          "a" => [{ "$match" => { "x" => { "$function" => { "body" => "evil" } } } }]
-        } }
+          "a" => [{ "$match" => { "x" => { "$function" => { "body" => "evil" } } } }],
+        } },
       ])
     end
     assert_match(/\$function/, error.message)
@@ -298,7 +298,7 @@ class ConstraintTranslatorSecurityTest < Minitest::Test
   def test_blocks_function_operator
     error = assert_raises(Parse::Agent::ConstraintTranslator::ConstraintSecurityError) do
       Parse::Agent::ConstraintTranslator.translate({
-        "field" => { "$function" => { "body" => "function() {}", "args" => [] } }
+        "field" => { "$function" => { "body" => "function() {}", "args" => [] } },
       })
     end
     assert_match(/\$function/, error.message)
@@ -307,7 +307,7 @@ class ConstraintTranslatorSecurityTest < Minitest::Test
   def test_blocks_accumulator_operator
     error = assert_raises(Parse::Agent::ConstraintTranslator::ConstraintSecurityError) do
       Parse::Agent::ConstraintTranslator.translate({
-        "field" => { "$accumulator" => { "init" => "function() {}" } }
+        "field" => { "$accumulator" => { "init" => "function() {}" } },
       })
     end
     assert_match(/\$accumulator/, error.message)
@@ -316,7 +316,7 @@ class ConstraintTranslatorSecurityTest < Minitest::Test
   def test_blocks_expr_operator
     error = assert_raises(Parse::Agent::ConstraintTranslator::ConstraintSecurityError) do
       Parse::Agent::ConstraintTranslator.translate({
-        "field" => { "$expr" => { "$gt" => ["$a", "$b"] } }
+        "field" => { "$expr" => { "$gt" => ["$a", "$b"] } },
       })
     end
     assert_match(/\$expr/, error.message)
@@ -340,8 +340,8 @@ class ConstraintTranslatorSecurityTest < Minitest::Test
       Parse::Agent::ConstraintTranslator.translate({
         "$and" => [
           { "a" => 1 },
-          { "b" => { "$unknownOp" => 2 } }
-        ]
+          { "b" => { "$unknownOp" => 2 } },
+        ],
       })
     end
     assert_match(/\$unknownOp/, error.message)
@@ -358,7 +358,7 @@ class ConstraintTranslatorSecurityTest < Minitest::Test
       "c" => { "$gt" => 5 },
       "d" => { "$gte" => 15 },
       "e" => { "$ne" => 0 },
-      "f" => { "$eq" => 1 }
+      "f" => { "$eq" => 1 },
     })
     assert result.is_a?(Hash)
     assert_equal 10, result["a"]["$lt"]
@@ -368,7 +368,7 @@ class ConstraintTranslatorSecurityTest < Minitest::Test
     result = Parse::Agent::ConstraintTranslator.translate({
       "tags" => { "$in" => ["a", "b"] },
       "ids" => { "$nin" => [1, 2] },
-      "items" => { "$all" => ["x", "y"] }
+      "items" => { "$all" => ["x", "y"] },
     })
     assert result.is_a?(Hash)
     assert_equal ["a", "b"], result["tags"]["$in"]
@@ -376,14 +376,14 @@ class ConstraintTranslatorSecurityTest < Minitest::Test
 
   def test_allows_existence_operator
     result = Parse::Agent::ConstraintTranslator.translate({
-      "field" => { "$exists" => true }
+      "field" => { "$exists" => true },
     })
     assert_equal true, result["field"]["$exists"]
   end
 
   def test_allows_regex_operator
     result = Parse::Agent::ConstraintTranslator.translate({
-      "name" => { "$regex" => "^John", "$options" => "i" }
+      "name" => { "$regex" => "^John", "$options" => "i" },
     })
     assert_equal "^John", result["name"]["$regex"]
   end
@@ -391,7 +391,7 @@ class ConstraintTranslatorSecurityTest < Minitest::Test
   def test_allows_logical_operators
     result = Parse::Agent::ConstraintTranslator.translate({
       "$or" => [{ "a" => 1 }, { "b" => 2 }],
-      "$and" => [{ "c" => 3 }, { "d" => 4 }]
+      "$and" => [{ "c" => 3 }, { "d" => 4 }],
     })
     assert result.key?("$or")
     assert result.key?("$and")
@@ -399,7 +399,7 @@ class ConstraintTranslatorSecurityTest < Minitest::Test
 
   def test_allows_geo_operators
     result = Parse::Agent::ConstraintTranslator.translate({
-      "location" => { "$near" => { "__type" => "GeoPoint", "latitude" => 40.0, "longitude" => -74.0 } }
+      "location" => { "$near" => { "__type" => "GeoPoint", "latitude" => 40.0, "longitude" => -74.0 } },
     })
     assert result["location"].key?("$near")
   end
@@ -446,7 +446,7 @@ class AgentRateLimitingTest < Minitest::Test
       Parse.setup(
         server_url: "http://localhost:1337/parse",
         application_id: "test-app-id",
-        api_key: "test-api-key"
+        api_key: "test-api-key",
       )
     end
   end

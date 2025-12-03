@@ -206,7 +206,7 @@ module Parse
             name: name.to_s,
             type: info[:type]&.to_s || "unknown",
             permission: info[:permission]&.to_s || "readonly",
-            description: info[:description]
+            description: info[:description],
           }.compact
         end
       end

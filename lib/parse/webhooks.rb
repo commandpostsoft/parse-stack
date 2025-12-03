@@ -173,11 +173,11 @@ module Parse
 
         # Add ruby_initiated flag to payload for intelligent callback handling
         if payload
-          request_id = payload&.raw&.dig(:headers, 'x-parse-request-id') || 
-                      payload&.raw&.dig('headers', 'x-parse-request-id') ||
-                      payload&.raw&.dig(:headers, 'X-Parse-Request-Id') ||
-                      payload&.raw&.dig('headers', 'X-Parse-Request-Id')
-          ruby_initiated = request_id&.start_with?('_RB_')
+          request_id = payload&.raw&.dig(:headers, "x-parse-request-id") ||
+                       payload&.raw&.dig("headers", "x-parse-request-id") ||
+                       payload&.raw&.dig(:headers, "X-Parse-Request-Id") ||
+                       payload&.raw&.dig("headers", "X-Parse-Request-Id")
+          ruby_initiated = request_id&.start_with?("_RB_")
           payload.instance_variable_set(:@ruby_initiated, ruby_initiated)
         else
           ruby_initiated = false
@@ -216,7 +216,7 @@ module Parse
         elsif type == :after_save && (result == true || result.nil?) && payload&.parse_object.present? && payload.parse_object.is_a?(Parse::Object)
           # Handle after_save callbacks intelligently based on request origin
           is_new = payload.original.nil?
-          
+
           # Only run Ruby callbacks for NON-Ruby-initiated requests
           # This prevents callback loops while ensuring client-initiated operations trigger Ruby business logic
           payload.parse_object.run_after_create_callbacks if is_new && !ruby_initiated

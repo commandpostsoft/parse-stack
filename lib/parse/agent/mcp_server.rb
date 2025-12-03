@@ -32,7 +32,7 @@ module Parse
       CAPABILITIES = {
         tools: { listChanged: false },
         resources: { subscribe: false, listChanged: false },
-        prompts: { listChanged: false }
+        prompts: { listChanged: false },
       }.freeze
 
       # Default port for the MCP server
@@ -56,7 +56,7 @@ module Parse
             port: port || @default_port,
             permissions: permissions,
             session_token: session_token,
-            host: host
+            host: host,
           )
           server.start
         end
@@ -90,7 +90,7 @@ module Parse
           Port: @port,
           BindAddress: @host,
           Logger: WEBrick::Log.new($stdout, WEBrick::Log::INFO),
-          AccessLog: [[::File.open(::File::NULL, "w"), ""]] # Suppress access log
+          AccessLog: [[::File.open(::File::NULL, "w"), ""]], # Suppress access log
         )
 
         setup_routes
@@ -144,25 +144,25 @@ module Parse
         id = body["id"]
 
         result = case method
-                 when "initialize"
-                   handle_initialize(params)
-                 when "tools/list"
-                   handle_tools_list(params)
-                 when "tools/call"
-                   handle_tools_call(params)
-                 when "resources/list"
-                   handle_resources_list(params)
-                 when "prompts/list"
-                   handle_prompts_list(params)
-                 when "ping"
-                   {}
-                 else
-                   { error: { code: -32601, message: "Method not found: #{method}" } }
-                 end
+          when "initialize"
+            handle_initialize(params)
+          when "tools/list"
+            handle_tools_list(params)
+          when "tools/call"
+            handle_tools_call(params)
+          when "resources/list"
+            handle_resources_list(params)
+          when "prompts/list"
+            handle_prompts_list(params)
+          when "ping"
+            {}
+          else
+            { error: { code: -32601, message: "Method not found: #{method}" } }
+          end
 
         response = {
           jsonrpc: "2.0",
-          id: id
+          id: id,
         }
 
         if result[:error]
@@ -181,15 +181,15 @@ module Parse
           capabilities: CAPABILITIES,
           serverInfo: {
             name: "parse-stack-mcp",
-            version: Parse::Stack::VERSION
-          }
+            version: Parse::Stack::VERSION,
+          },
         }
       end
 
       # Handle tools/list request
       def handle_tools_list(_params)
         {
-          tools: @agent.tool_definitions(format: :mcp)
+          tools: @agent.tool_definitions(format: :mcp),
         }
       end
 
@@ -212,20 +212,20 @@ module Parse
             content: [
               {
                 type: "text",
-                text: JSON.pretty_generate(result[:data])
-              }
+                text: JSON.pretty_generate(result[:data]),
+              },
             ],
-            isError: false
+            isError: false,
           }
         else
           {
             content: [
               {
                 type: "text",
-                text: result[:error]
-              }
+                text: result[:error],
+              },
             ],
-            isError: true
+            isError: true,
           }
         end
       end
@@ -240,7 +240,7 @@ module Parse
               uri: "parse://#{cls[:name]}",
               name: cls[:name],
               description: "Parse class: #{cls[:type]}",
-              mimeType: "application/json"
+              mimeType: "application/json",
             }
           end
           { resources: resources }
@@ -256,7 +256,7 @@ module Parse
             {
               name: "explore_database",
               description: "Get an overview of the Parse database structure",
-              arguments: []
+              arguments: [],
             },
             {
               name: "query_builder",
@@ -265,11 +265,11 @@ module Parse
                 {
                   name: "class_name",
                   description: "The Parse class to query",
-                  required: true
-                }
-              ]
-            }
-          ]
+                  required: true,
+                },
+              ],
+            },
+          ],
         }
       end
 

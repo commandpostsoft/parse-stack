@@ -136,7 +136,6 @@ class CacheWriteOnlyTest < Minitest::Test
   end
 end
 
-
 # Unit tests for fetch!, reload!, find default cache behavior
 class CacheWriteOnlyDefaultsTest < Minitest::Test
   # Test model for verifying default cache behavior
@@ -368,7 +367,6 @@ class CacheWriteOnlyDefaultsTest < Minitest::Test
   end
 end
 
-
 # Unit tests for find/find_cached default cache behavior
 class CacheWriteOnlyFindTest < Minitest::Test
   # Test model for verifying find cache behavior
@@ -477,7 +475,6 @@ class CacheWriteOnlyFindTest < Minitest::Test
   end
 end
 
-
 # Tests for the caching middleware write_only behavior
 class CacheMiddlewareWriteOnlyTest < Minitest::Test
   def setup
@@ -503,7 +500,7 @@ class CacheMiddlewareWriteOnlyTest < Minitest::Test
       response.finish({
         status: 200,
         response_headers: { "Content-Type" => "application/json", "content-length" => "50" },
-        body: '{"objectId":"abc123","title":"Fresh"}'
+        body: '{"objectId":"abc123","title":"Fresh"}',
       })
       response
     end
@@ -516,7 +513,7 @@ class CacheMiddlewareWriteOnlyTest < Minitest::Test
     env.method = :get
     env.url = URI.parse(@cache_key)
     env[:request_headers] = {
-      Parse::Middleware::Caching::CACHE_WRITE_ONLY => "true"
+      Parse::Middleware::Caching::CACHE_WRITE_ONLY => "true",
     }
 
     # Call middleware
@@ -537,7 +534,7 @@ class CacheMiddlewareWriteOnlyTest < Minitest::Test
       response.finish({
         status: 200,
         response_headers: { "Content-Type" => "application/json", "content-length" => "50" },
-        body: '{"objectId":"abc123","title":"Fresh"}'
+        body: '{"objectId":"abc123","title":"Fresh"}',
       })
       response
     end
@@ -550,7 +547,7 @@ class CacheMiddlewareWriteOnlyTest < Minitest::Test
     env.method = :get
     env.url = URI.parse(@cache_key)
     env[:request_headers] = {
-      Parse::Middleware::Caching::CACHE_WRITE_ONLY => "true"
+      Parse::Middleware::Caching::CACHE_WRITE_ONLY => "true",
     }
 
     # Call middleware
@@ -605,7 +602,7 @@ class CacheMiddlewareWriteOnlyTest < Minitest::Test
       response.finish({
         status: 200,
         response_headers: { "Content-Type" => "application/json", "content-length" => "50" },
-        body: '{"objectId":"abc123","title":"New"}'
+        body: '{"objectId":"abc123","title":"New"}',
       })
       response
     end
@@ -618,7 +615,7 @@ class CacheMiddlewareWriteOnlyTest < Minitest::Test
     env.method = :get
     env.url = URI.parse(@cache_key)
     env[:request_headers] = {
-      Parse::Middleware::Caching::CACHE_CONTROL => "no-cache"
+      Parse::Middleware::Caching::CACHE_CONTROL => "no-cache",
     }
 
     # Call middleware

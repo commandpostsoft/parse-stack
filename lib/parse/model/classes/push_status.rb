@@ -256,7 +256,7 @@ module Parse
         total_targeted: count || 0,
         success_rate: success_rate,
         sent_per_type: sent_per_type || {},
-        failed_per_type: failed_per_type || {}
+        failed_per_type: failed_per_type || {},
       }
     end
   end

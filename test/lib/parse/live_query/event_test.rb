@@ -23,7 +23,7 @@ class TestLiveQueryEvent < Minitest::Test
       "artist" => "Beatles",
       "plays" => 1000,
       "createdAt" => "2024-01-01T00:00:00.000Z",
-      "updatedAt" => "2024-01-02T00:00:00.000Z"
+      "updatedAt" => "2024-01-02T00:00:00.000Z",
     }
 
     @original_data = {
@@ -33,7 +33,7 @@ class TestLiveQueryEvent < Minitest::Test
       "artist" => "Beatles",
       "plays" => 500,
       "createdAt" => "2024-01-01T00:00:00.000Z",
-      "updatedAt" => "2024-01-01T12:00:00.000Z"
+      "updatedAt" => "2024-01-01T12:00:00.000Z",
     }
   end
 
@@ -42,7 +42,7 @@ class TestLiveQueryEvent < Minitest::Test
       type: :create,
       class_name: "Song",
       object_data: @object_data,
-      request_id: 1
+      request_id: 1,
     )
 
     assert event.create?
@@ -65,7 +65,7 @@ class TestLiveQueryEvent < Minitest::Test
       class_name: "Song",
       object_data: @object_data,
       original_data: @original_data,
-      request_id: 2
+      request_id: 2,
     )
 
     assert event.update?
@@ -84,7 +84,7 @@ class TestLiveQueryEvent < Minitest::Test
       type: :delete,
       class_name: "Song",
       object_data: @object_data,
-      request_id: 3
+      request_id: 3,
     )
 
     assert event.delete?
@@ -96,7 +96,7 @@ class TestLiveQueryEvent < Minitest::Test
       class_name: "Song",
       object_data: @object_data,
       original_data: @original_data,
-      request_id: 4
+      request_id: 4,
     )
 
     assert event.enter?
@@ -109,7 +109,7 @@ class TestLiveQueryEvent < Minitest::Test
       class_name: "Song",
       object_data: @object_data,
       original_data: @original_data,
-      request_id: 5
+      request_id: 5,
     )
 
     assert event.leave?
@@ -121,7 +121,7 @@ class TestLiveQueryEvent < Minitest::Test
       type: "create",
       class_name: "Song",
       object_data: @object_data,
-      request_id: 6
+      request_id: 6,
     )
 
     assert_equal :create, event.type
@@ -134,7 +134,7 @@ class TestLiveQueryEvent < Minitest::Test
       class_name: "Song",
       object_data: @object_data,
       original_data: @original_data,
-      request_id: 7
+      request_id: 7,
     )
 
     hash = event.to_h
@@ -156,7 +156,7 @@ class TestLiveQueryEvent < Minitest::Test
       class_name: "Song",
       object_data: @object_data,
       request_id: 8,
-      raw: raw
+      raw: raw,
     )
 
     assert_equal raw, event.raw
@@ -167,7 +167,7 @@ class TestLiveQueryEvent < Minitest::Test
       type: :delete,
       class_name: "Song",
       object_data: nil,
-      request_id: 9
+      request_id: 9,
     )
 
     assert_nil event.object

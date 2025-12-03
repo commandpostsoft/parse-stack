@@ -170,7 +170,7 @@ module Parse
         if is_partial_fetch
           # Build the new fetched keys list (top-level keys only, without nested paths)
           # Reuse formatted_keys instead of calling format_field again
-          new_keys = formatted_keys.map { |k| k.split('.').first.to_sym }
+          new_keys = formatted_keys.map { |k| k.split(".").first.to_sym }
           new_keys << :id unless new_keys.include?(:id)
           new_keys << :objectId unless new_keys.include?(:objectId)
           new_keys.uniq!
@@ -355,7 +355,7 @@ module Parse
           inc_str = inc.to_s
 
           # Skip includes with dots - these are internal references (e.g., "project.owner")
-          next if inc_str.include?('.')
+          next if inc_str.include?(".")
 
           inc_sym = inc_str.to_sym
           field_type = fields[inc_sym]
@@ -377,6 +377,7 @@ module Parse
           end
         end
       end
+
       private :validate_fetch_includes_vs_keys
 
       # Validates that fetch keys match defined properties on the model.
@@ -393,7 +394,7 @@ module Parse
         keys.each do |key|
           key_str = key.to_s
           # Extract top-level field (before any dot notation)
-          top_level_key = key_str.split('.').first.to_sym
+          top_level_key = key_str.split(".").first.to_sym
 
           # Skip base keys (objectId, createdAt, updatedAt, ACL)
           next if Parse::Properties::BASE_KEYS.include?(top_level_key)
@@ -411,6 +412,7 @@ module Parse
                "These fields are not defined on the model. (silence with Parse.validate_query_keys = false)"
         end
       end
+
       private :validate_fetch_keys
 
       # Autofetches the object based on a key that is not part {Parse::Properties::BASE_KEYS}.
@@ -436,7 +438,7 @@ module Parse
 
         # Capture caller stack BEFORE mutex for better error tracebacks
         # Filter out internal parse-stack frames to show where user code accessed the field
-        caller_stack = caller.reject { |frame| frame.include?('/lib/parse/') }
+        caller_stack = caller.reject { |frame| frame.include?("/lib/parse/") }
 
         # Use mutex for thread-safe check-and-fetch pattern
         fetch_mutex.synchronize do
@@ -455,7 +457,7 @@ module Parse
               source_class: source_class,
               association: association,
               target_class: self.class.name,
-              object_id: id
+              object_id: id,
             )
           end
 

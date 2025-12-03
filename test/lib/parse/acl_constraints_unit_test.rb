@@ -1,7 +1,6 @@
-require_relative '../../test_helper'
+require_relative "../../test_helper"
 
 class ACLConstraintsUnitTest < Minitest::Test
-
   def test_readable_by_constraint_generates_aggregation_pipeline
     puts "\n=== Testing ACL readable_by Constraint Generation ==="
 
@@ -17,10 +16,10 @@ class ACLConstraintsUnitTest < Minitest::Test
         "$match" => {
           "$or" => [
             { "_rperm" => { "$in" => ["role:Admin", "*"] } },
-            { "_rperm" => { "$exists" => false } }
-          ]
-        }
-      }
+            { "_rperm" => { "$exists" => false } },
+          ],
+        },
+      },
     ]
 
     assert_equal expected_pipeline, pipeline, "Should generate aggregation pipeline for ACL constraints"
@@ -36,10 +35,10 @@ class ACLConstraintsUnitTest < Minitest::Test
         "$match" => {
           "$or" => [
             { "_rperm" => { "$in" => ["user123", "role:Editor", "*"] } },
-            { "_rperm" => { "$exists" => false } }
-          ]
-        }
-      }
+            { "_rperm" => { "$exists" => false } },
+          ],
+        },
+      },
     ]
 
     assert_equal expected_pipeline2, pipeline2, "Should generate aggregation pipeline for mixed values"
@@ -60,10 +59,10 @@ class ACLConstraintsUnitTest < Minitest::Test
         "$match" => {
           "$or" => [
             { "_wperm" => { "$in" => ["role:Admin", "*"] } },
-            { "_wperm" => { "$exists" => false } }
-          ]
-        }
-      }
+            { "_wperm" => { "$exists" => false } },
+          ],
+        },
+      },
     ]
 
     assert_equal expected_pipeline, pipeline, "Should generate aggregation pipeline for writable constraint"
@@ -79,10 +78,10 @@ class ACLConstraintsUnitTest < Minitest::Test
         "$match" => {
           "$or" => [
             { "_wperm" => { "$in" => ["user123", "role:Editor", "*"] } },
-            { "_wperm" => { "$exists" => false } }
-          ]
-        }
-      }
+            { "_wperm" => { "$exists" => false } },
+          ],
+        },
+      },
     ]
 
     assert_equal expected_pipeline2, pipeline2, "Should generate aggregation pipeline for multiple writable values"
@@ -102,10 +101,10 @@ class ACLConstraintsUnitTest < Minitest::Test
         "$match" => {
           "$or" => [
             { "_rperm" => { "$in" => ["role:Admin", "*"] } },
-            { "_rperm" => { "$exists" => false } }
-          ]
-        }
-      }
+            { "_rperm" => { "$exists" => false } },
+          ],
+        },
+      },
     ]
 
     assert_equal expected_pipeline, pipeline, "ACL constraints should generate aggregation pipelines"
@@ -145,10 +144,10 @@ class ACLConstraintsUnitTest < Minitest::Test
         "$match" => {
           "$or" => [
             { "_rperm" => { "$in" => ["*"] } },
-            { "_rperm" => { "$exists" => false } }
-          ]
-        }
-      }
+            { "_rperm" => { "$exists" => false } },
+          ],
+        },
+      },
     ]
 
     assert_equal expected_pipeline, pipeline, "Should generate pipeline for public access"
@@ -167,10 +166,10 @@ class ACLConstraintsUnitTest < Minitest::Test
         "$match" => {
           "$or" => [
             { "_rperm" => { "$in" => ["*"] } },
-            { "_rperm" => { "$exists" => false } }
-          ]
-        }
-      }
+            { "_rperm" => { "$exists" => false } },
+          ],
+        },
+      },
     ]
 
     # "public" should be converted to "*"
@@ -190,10 +189,10 @@ class ACLConstraintsUnitTest < Minitest::Test
         "$match" => {
           "$or" => [
             { "_wperm" => { "$in" => ["*"] } },
-            { "_wperm" => { "$exists" => false } }
-          ]
-        }
-      }
+            { "_wperm" => { "$exists" => false } },
+          ],
+        },
+      },
     ]
 
     assert_equal expected_pipeline, pipeline, "Should generate pipeline for public write access"
@@ -212,10 +211,10 @@ class ACLConstraintsUnitTest < Minitest::Test
         "$match" => {
           "$or" => [
             { "_wperm" => { "$in" => ["*"] } },
-            { "_wperm" => { "$exists" => false } }
-          ]
-        }
-      }
+            { "_wperm" => { "$exists" => false } },
+          ],
+        },
+      },
     ]
 
     assert_equal expected_pipeline, pipeline, "Should convert 'public' to '*' for write"
@@ -238,10 +237,10 @@ class ACLConstraintsUnitTest < Minitest::Test
         "$match" => {
           "$or" => [
             { "_rperm" => { "$in" => ["*"] } },
-            { "_rperm" => { "$exists" => false } }
-          ]
-        }
-      }
+            { "_rperm" => { "$exists" => false } },
+          ],
+        },
+      },
     ]
 
     assert_equal expected_pipeline, pipeline, "publicly_readable should query for '*' in _rperm"
@@ -260,10 +259,10 @@ class ACLConstraintsUnitTest < Minitest::Test
         "$match" => {
           "$or" => [
             { "_wperm" => { "$in" => ["*"] } },
-            { "_wperm" => { "$exists" => false } }
-          ]
-        }
-      }
+            { "_wperm" => { "$exists" => false } },
+          ],
+        },
+      },
     ]
 
     assert_equal expected_pipeline, pipeline, "publicly_writable should query for '*' in _wperm"
@@ -282,9 +281,9 @@ class ACLConstraintsUnitTest < Minitest::Test
     expected_pipeline = [
       {
         "$match" => {
-          "_rperm" => { "$eq" => [] }
-        }
-      }
+          "_rperm" => { "$eq" => [] },
+        },
+      },
     ]
 
     assert_equal expected_pipeline, pipeline, "privately_readable should query for empty _rperm"
@@ -302,9 +301,9 @@ class ACLConstraintsUnitTest < Minitest::Test
     expected_pipeline = [
       {
         "$match" => {
-          "_wperm" => { "$eq" => [] }
-        }
-      }
+          "_wperm" => { "$eq" => [] },
+        },
+      },
     ]
 
     assert_equal expected_pipeline, pipeline, "privately_writable should query for empty _wperm"
@@ -321,9 +320,9 @@ class ACLConstraintsUnitTest < Minitest::Test
     expected_pipeline = [
       {
         "$match" => {
-          "_rperm" => { "$eq" => [] }
-        }
-      }
+          "_rperm" => { "$eq" => [] },
+        },
+      },
     ]
 
     assert_equal expected_pipeline, pipeline, "master_key_read_only should be alias for privately_readable"
@@ -340,9 +339,9 @@ class ACLConstraintsUnitTest < Minitest::Test
     expected_pipeline = [
       {
         "$match" => {
-          "_wperm" => { "$eq" => [] }
-        }
-      }
+          "_wperm" => { "$eq" => [] },
+        },
+      },
     ]
 
     assert_equal expected_pipeline, pipeline, "master_key_write_only should be alias for privately_writable"
@@ -393,9 +392,9 @@ class ACLConstraintsUnitTest < Minitest::Test
     expected_pipeline = [
       {
         "$match" => {
-          "_rperm" => { "$nin" => ["*"] }
-        }
-      }
+          "_rperm" => { "$nin" => ["*"] },
+        },
+      },
     ]
 
     assert_equal expected_pipeline, pipeline, "not_publicly_readable should query for '*' NOT in _rperm"
@@ -412,9 +411,9 @@ class ACLConstraintsUnitTest < Minitest::Test
     expected_pipeline = [
       {
         "$match" => {
-          "_wperm" => { "$nin" => ["*"] }
-        }
-      }
+          "_wperm" => { "$nin" => ["*"] },
+        },
+      },
     ]
 
     assert_equal expected_pipeline, pipeline, "not_publicly_writable should query for '*' NOT in _wperm"
@@ -437,10 +436,10 @@ class ACLConstraintsUnitTest < Minitest::Test
         "$match" => {
           "$or" => [
             { "_rperm" => { "$in" => ["role:Admin", "*"] } },
-            { "_rperm" => { "$exists" => false } }
-          ]
-        }
-      }
+            { "_rperm" => { "$exists" => false } },
+          ],
+        },
+      },
     ]
 
     assert_equal expected_pipeline, pipeline, "readable_by: hash key should work in where"
@@ -459,10 +458,10 @@ class ACLConstraintsUnitTest < Minitest::Test
         "$match" => {
           "$or" => [
             { "_wperm" => { "$in" => ["role:Editor", "*"] } },
-            { "_wperm" => { "$exists" => false } }
-          ]
-        }
-      }
+            { "_wperm" => { "$exists" => false } },
+          ],
+        },
+      },
     ]
 
     assert_equal expected_pipeline, pipeline, "writable_by: hash key should work in where"
@@ -481,10 +480,10 @@ class ACLConstraintsUnitTest < Minitest::Test
         "$match" => {
           "$or" => [
             { "_rperm" => { "$in" => ["role:Admin", "*"] } },
-            { "_rperm" => { "$exists" => false } }
-          ]
-        }
-      }
+            { "_rperm" => { "$exists" => false } },
+          ],
+        },
+      },
     ]
 
     assert_equal expected_pipeline, pipeline, "readable_by_role: should auto-add role: prefix"
@@ -503,10 +502,10 @@ class ACLConstraintsUnitTest < Minitest::Test
         "$match" => {
           "$or" => [
             { "_wperm" => { "$in" => ["role:Editor", "*"] } },
-            { "_wperm" => { "$exists" => false } }
-          ]
-        }
-      }
+            { "_wperm" => { "$exists" => false } },
+          ],
+        },
+      },
     ]
 
     assert_equal expected_pipeline, pipeline, "writable_by_role: should auto-add role: prefix"
@@ -525,10 +524,10 @@ class ACLConstraintsUnitTest < Minitest::Test
         "$match" => {
           "$or" => [
             { "_rperm" => { "$in" => ["*"] } },
-            { "_rperm" => { "$exists" => false } }
-          ]
-        }
-      }
+            { "_rperm" => { "$exists" => false } },
+          ],
+        },
+      },
     ]
 
     assert_equal expected_pipeline, pipeline, "publicly_readable: true should work in where"
@@ -545,9 +544,9 @@ class ACLConstraintsUnitTest < Minitest::Test
     expected_pipeline = [
       {
         "$match" => {
-          "_rperm" => { "$eq" => [] }
-        }
-      }
+          "_rperm" => { "$eq" => [] },
+        },
+      },
     ]
 
     assert_equal expected_pipeline, pipeline, "privately_readable: true should work in where"
@@ -595,10 +594,10 @@ class ACLConstraintsUnitTest < Minitest::Test
         "$match" => {
           "$or" => [
             { "_rperm" => { "$in" => ["user123", "role:Admin", "*"] } },
-            { "_rperm" => { "$exists" => false } }
-          ]
-        }
-      }
+            { "_rperm" => { "$exists" => false } },
+          ],
+        },
+      },
     ]
 
     assert_equal expected_pipeline, pipeline, "readable_by: with array should work"
@@ -650,5 +649,4 @@ class ACLConstraintsUnitTest < Minitest::Test
 
     puts "✅ Multiple ACL convenience methods work together"
   end
-
 end

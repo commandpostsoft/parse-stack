@@ -11,7 +11,7 @@ class TestLiveQueryCircuitBreaker < Minitest::Test
     @breaker = Parse::LiveQuery::CircuitBreaker.new(
       failure_threshold: 3,
       reset_timeout: 0.1,
-      half_open_requests: 1
+      half_open_requests: 1,
     )
   end
 
@@ -130,7 +130,7 @@ class TestLiveQueryCircuitBreaker < Minitest::Test
       on_state_change: ->(old, new_state) {
         old_states << old
         new_states << new_state
-      }
+      },
     )
 
     2.times { breaker.record_failure }
@@ -181,9 +181,9 @@ class TestLiveQueryCircuitBreaker < Minitest::Test
           current_state: breaker.state,
           is_open: breaker.open?,
           is_closed: breaker.closed?,
-          info: breaker.info
+          info: breaker.info,
         }
-      }
+      },
     )
 
     # Trigger state change: closed -> open
@@ -206,7 +206,7 @@ class TestLiveQueryCircuitBreaker < Minitest::Test
       reset_timeout: 0.05,
       on_state_change: ->(old_state, new_state) {
         observed_states << breaker.state
-      }
+      },
     )
 
     breaker.record_failure  # closed -> open
@@ -227,7 +227,7 @@ class TestLiveQueryCircuitBreaker < Minitest::Test
         callback_count.increment
         # Simulate slow callback
         sleep 0.001
-      }
+      },
     )
 
     threads = 5.times.map do
@@ -255,7 +255,7 @@ class TestLiveQueryCircuitBreaker < Minitest::Test
     breaker = Parse::LiveQuery::CircuitBreaker.new(
       failure_threshold: 3,
       reset_timeout: 0.1,
-      on_state_change: ->(_old, _new) { callback_count += 1 }
+      on_state_change: ->(_old, _new) { callback_count += 1 },
     )
 
     # Record failures below threshold - no state change

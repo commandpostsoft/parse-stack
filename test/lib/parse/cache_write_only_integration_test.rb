@@ -28,7 +28,7 @@ class CacheWriteOnlyIntegrationTest < Minitest::Test
       app_id: "myAppId",
       api_key: "test-rest-key",
       master_key: "myMasterKey",
-      cache: @cache_store
+      cache: @cache_store,
     )
 
     # Store original settings

@@ -43,13 +43,13 @@ module Parse
         # @return [Logger]
         def default_logger
           @default_logger ||= begin
-            l = ::Logger.new($stdout)
-            l.progname = "Parse::LiveQuery"
-            l.formatter = proc do |severity, datetime, progname, msg|
-              "[#{datetime.strftime('%Y-%m-%d %H:%M:%S')}] #{severity} -- #{progname}: #{msg}\n"
+              l = ::Logger.new($stdout)
+              l.progname = "Parse::LiveQuery"
+              l.formatter = proc do |severity, datetime, progname, msg|
+                "[#{datetime.strftime("%Y-%m-%d %H:%M:%S")}] #{severity} -- #{progname}: #{msg}\n"
+              end
+              l
             end
-            l
-          end
         end
 
         # Get the current logger (custom or default)
@@ -115,10 +115,10 @@ module Parse
           return unless should_log?(level)
 
           formatted = if context.any?
-                        "#{message} #{format_context(context)}"
-                      else
-                        message
-                      end
+              "#{message} #{format_context(context)}"
+            else
+              message
+            end
 
           current_logger.send(level, formatted)
         end
@@ -129,13 +129,13 @@ module Parse
         def format_context(context)
           context.map do |k, v|
             value = case v
-                    when Exception
-                      "#{v.class}: #{v.message}"
-                    when String
-                      v.length > 100 ? "#{v[0..97]}..." : v
-                    else
-                      v.inspect
-                    end
+              when Exception
+                "#{v.class}: #{v.message}"
+              when String
+                v.length > 100 ? "#{v[0..97]}..." : v
+              else
+                v.inspect
+              end
             "#{k}=#{value}"
           end.join(" ")
         end

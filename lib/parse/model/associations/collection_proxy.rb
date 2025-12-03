@@ -109,7 +109,8 @@ module Parse
     # @return [Array]
     def to_a
       collection.to_a
-    end; 
+    end
+
     alias_method :to_ary, :to_a
 
     # Set the internal collection of items *without* dirty tracking or
@@ -147,7 +148,8 @@ module Parse
         collection.push item
       end
       @collection
-    end; 
+    end
+
     alias_method :push, :add
 
     # Add items to the collection if they don't already exist
@@ -158,7 +160,8 @@ module Parse
       notify_will_change!
       @collection = collection | items.flatten
       @collection
-    end; 
+    end
+
     alias_method :push_unique, :add_unique
 
     # Set Union - Returns a new array by joining two arrays, excluding
@@ -225,7 +228,8 @@ module Parse
         collection.delete item
       end
       @collection
-    end; 
+    end
+
     alias_method :delete, :remove
 
     # Atomically adds all items from the array.
@@ -329,7 +333,7 @@ module Parse
           {
             Parse::Model::TYPE_FIELD => Parse::Model::TYPE_POINTER,
             Parse::Model::KEY_CLASS_NAME => ptr.parse_class,
-            Parse::Model::OBJECT_ID => ptr.id
+            Parse::Model::OBJECT_ID => ptr.id,
           }
         elsif item.respond_to?(:as_json)
           item.as_json(opts)
@@ -419,7 +423,7 @@ module Parse
           {
             Parse::Model::TYPE_FIELD => Parse::Model::TYPE_POINTER,
             Parse::Model::KEY_CLASS_NAME => ptr.parse_class,
-            Parse::Model::OBJECT_ID => ptr.id
+            Parse::Model::OBJECT_ID => ptr.id,
           }
         else
           item

@@ -22,7 +22,7 @@ class ObjectAsJsonOptionsTest < Minitest::Test
       artist: "Test Artist",
       duration: 180,
       genre: "Rock",
-      play_count: 1000
+      play_count: 1000,
     )
   end
 

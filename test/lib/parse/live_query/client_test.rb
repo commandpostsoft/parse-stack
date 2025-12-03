@@ -46,7 +46,7 @@ class TestLiveQueryClient < Minitest::Test
       url: "wss://test.example.com",
       application_id: "test_app_id",
       client_key: "test_key",
-      auto_connect: false
+      auto_connect: false,
     )
 
     assert_equal "wss://test.example.com", client.url
@@ -61,7 +61,7 @@ class TestLiveQueryClient < Minitest::Test
       url: "wss://test.example.com",
       application_id: "test_app_id",
       client_key: "test_key",
-      auto_connect: false
+      auto_connect: false,
     )
 
     subscription = client.subscribe("Song", where: { "artist" => "Beatles" })
@@ -77,7 +77,7 @@ class TestLiveQueryClient < Minitest::Test
       url: "wss://test.example.com",
       application_id: "test_app_id",
       client_key: "test_key",
-      auto_connect: false
+      auto_connect: false,
     )
 
     query = Parse::Query.new("Album")
@@ -95,7 +95,7 @@ class TestLiveQueryClient < Minitest::Test
       url: "wss://test.example.com",
       application_id: "test_app_id",
       client_key: "test_key",
-      auto_connect: false
+      auto_connect: false,
     )
 
     refute client.connected?
@@ -108,7 +108,7 @@ class TestLiveQueryClient < Minitest::Test
       url: "wss://test.example.com",
       application_id: "test_app_id",
       client_key: "test_key",
-      auto_connect: false
+      auto_connect: false,
     )
 
     callback_called = false
@@ -122,7 +122,7 @@ class TestLiveQueryClient < Minitest::Test
       url: "wss://test.example.com",
       application_id: "test_app_id",
       client_key: "test_key",
-      auto_connect: false
+      auto_connect: false,
     )
 
     # These should not raise
@@ -136,13 +136,13 @@ class TestLiveQueryClient < Minitest::Test
       url: "wss://test.example.com",
       application_id: "test_app_id",
       client_key: "test_key",
-      auto_connect: false
+      auto_connect: false,
     )
 
     subscription = client.subscribe(
       "User",
       where: { "status" => "active" },
-      fields: ["name", "email"]
+      fields: ["name", "email"],
     )
 
     assert_equal ["name", "email"], subscription.fields
@@ -153,12 +153,12 @@ class TestLiveQueryClient < Minitest::Test
       url: "wss://test.example.com",
       application_id: "test_app_id",
       client_key: "test_key",
-      auto_connect: false
+      auto_connect: false,
     )
 
     subscription = client.subscribe(
       "PrivateData",
-      session_token: "r:user_session_token"
+      session_token: "r:user_session_token",
     )
 
     assert_equal "r:user_session_token", subscription.session_token

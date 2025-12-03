@@ -101,11 +101,11 @@ module Parse
       def gem_available?
         return @gem_available if defined?(@gem_available)
         @gem_available = begin
-          require "mongo"
-          true
-        rescue LoadError
-          false
-        end
+            require "mongo"
+            true
+          rescue LoadError
+            false
+          end
       end
 
       # Ensure mongo gem is loaded, raise error if not
@@ -156,10 +156,10 @@ module Parse
         raise NotEnabled, "Direct MongoDB queries are not enabled. Call Parse::MongoDB.configure first." unless available?
 
         @client ||= begin
-          ::Mongo::Client.new(uri)
-        rescue => e
-          raise ConnectionError, "Failed to connect to MongoDB: #{e.message}"
-        end
+            ::Mongo::Client.new(uri)
+          rescue => e
+            raise ConnectionError, "Failed to connect to MongoDB: #{e.message}"
+          end
       end
 
       # Reset the client connection (useful for testing)
@@ -234,10 +234,10 @@ module Parse
             # MongoDB _id becomes Parse objectId
             # Guard against BSON::ObjectId not being defined when mongo gem is not loaded
             result["objectId"] = if defined?(BSON::ObjectId) && value.is_a?(BSON::ObjectId)
-                                   value.to_s
-                                 else
-                                   value
-                                 end
+                value.to_s
+              else
+                value
+              end
           when "_created_at"
             # MongoDB _created_at becomes Parse createdAt
             result["createdAt"] = convert_date_to_parse(value)
@@ -356,7 +356,7 @@ module Parse
           ::Time.at(value).utc
         else
           raise ::ArgumentError, "Cannot convert #{value.class} to MongoDB date. " \
-            "Expected Date, Time, DateTime, String, or Integer."
+                "Expected Date, Time, DateTime, String, or Integer."
         end
       end
 
@@ -394,7 +394,7 @@ module Parse
           {
             "__type" => "Pointer",
             "className" => class_name,
-            "objectId" => object_id
+            "objectId" => object_id,
           }
         else
           value

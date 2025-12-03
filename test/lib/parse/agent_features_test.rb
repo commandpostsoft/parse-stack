@@ -17,7 +17,7 @@ class AgentFeaturesTest < Minitest::Test
       Parse.setup(
         server_url: "http://localhost:1337/parse",
         application_id: "test-app-id",
-        api_key: "test-api-key"
+        api_key: "test-api-key",
       )
     end
     @agent = Parse::Agent.new
@@ -255,7 +255,7 @@ class AgentFeaturesTest < Minitest::Test
   def test_export_conversation_includes_conversation_history
     @agent.instance_variable_set(:@conversation_history, [
       { role: "user", content: "Hello" },
-      { role: "assistant", content: "Hi there" }
+      { role: "assistant", content: "Hi there" },
     ])
 
     exported = JSON.parse(@agent.export_conversation)
@@ -288,9 +288,9 @@ class AgentFeaturesTest < Minitest::Test
   def test_import_conversation_restores_history
     state = JSON.generate({
       conversation_history: [
-        { role: "user", content: "Test message" }
+        { role: "user", content: "Test message" },
       ],
-      token_usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 }
+      token_usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
     })
 
     result = @agent.import_conversation(state)
@@ -306,8 +306,8 @@ class AgentFeaturesTest < Minitest::Test
       token_usage: {
         prompt_tokens: 200,
         completion_tokens: 100,
-        total_tokens: 300
-      }
+        total_tokens: 300,
+      },
     })
 
     @agent.import_conversation(state)
@@ -322,7 +322,7 @@ class AgentFeaturesTest < Minitest::Test
     state = JSON.generate({
       conversation_history: [],
       token_usage: {},
-      permissions: "admin"
+      permissions: "admin",
     })
 
     agent.import_conversation(state)
@@ -335,7 +335,7 @@ class AgentFeaturesTest < Minitest::Test
     state = JSON.generate({
       conversation_history: [],
       token_usage: {},
-      permissions: "admin"
+      permissions: "admin",
     })
 
     agent.import_conversation(state, restore_permissions: true)
@@ -350,7 +350,7 @@ class AgentFeaturesTest < Minitest::Test
 
   def test_import_conversation_handles_missing_token_usage
     state = JSON.generate({
-      conversation_history: []
+      conversation_history: [],
     })
 
     result = @agent.import_conversation(state)
@@ -361,7 +361,7 @@ class AgentFeaturesTest < Minitest::Test
     # Set up state
     @agent.instance_variable_set(:@conversation_history, [
       { role: "user", content: "Question 1" },
-      { role: "assistant", content: "Answer 1" }
+      { role: "assistant", content: "Answer 1" },
     ])
     @agent.instance_variable_set(:@total_prompt_tokens, 150)
     @agent.instance_variable_set(:@total_completion_tokens, 75)
@@ -396,7 +396,7 @@ class AgentFeaturesTest < Minitest::Test
 
   def test_ask_streaming_clears_history_when_not_continuing
     @agent.instance_variable_set(:@conversation_history, [
-      { role: "user", content: "Old message" }
+      { role: "user", content: "Old message" },
     ])
 
     # We can't actually call the LLM, but we can check the method signature
@@ -455,7 +455,7 @@ class AgentFeaturesTest < Minitest::Test
       max_log_size: 2000,
       system_prompt: "Custom prompt",
       system_prompt_suffix: "Suffix",
-      pricing: { prompt: 0.01, completion: 0.03 }
+      pricing: { prompt: 0.01, completion: 0.03 },
     )
 
     assert_equal :write, agent.permissions
@@ -520,7 +520,7 @@ class AgentStreamingImplementationTest < Minitest::Test
       Parse.setup(
         server_url: "http://localhost:1337/parse",
         application_id: "test-app-id",
-        api_key: "test-api-key"
+        api_key: "test-api-key",
       )
     end
     @agent = Parse::Agent.new
@@ -547,7 +547,7 @@ class AgentPricingConstantTest < Minitest::Test
       Parse.setup(
         server_url: "http://localhost:1337/parse",
         application_id: "test-app-id",
-        api_key: "test-api-key"
+        api_key: "test-api-key",
       )
     end
   end
