@@ -390,22 +390,34 @@ module Parse
         # authentication information when building request and responses.
         conn.use Parse::Middleware::BodyBuilder
 
-        if opts[:cache].present? && opts[:expires].to_i > 0
-          # advanced: provide a REDIS url, we'll configure a Moneta Redis store.
-          if opts[:cache].is_a?(String) && opts[:cache].starts_with?("redis://")
-            begin
-              opts[:cache] = Moneta.new(:Redis, url: opts[:cache])
-            rescue LoadError
-              puts "[Parse::Middleware::Caching] Did you forget to load the redis gem (Gemfile)?"
-              raise
+        if opts[:cache].present?
+          if opts[:expires].to_i <= 0
+            warn "[Parse::Client] Cache store provided but :expires is not set or is 0. " \
+                 "Caching will be disabled. Set :expires to enable caching (e.g., expires: 10)."
+          else
+            # advanced: provide a REDIS url, we'll configure a Moneta Redis store.
+            if opts[:cache].is_a?(String) && opts[:cache].starts_with?("redis://")
+              begin
+                opts[:cache] = Moneta.new(:Redis, url: opts[:cache])
+              rescue LoadError
+                puts "[Parse::Middleware::Caching] Did you forget to load the redis gem (Gemfile)?"
+                raise
+              end
+            end
+
+            unless [:key?, :[], :delete, :store].all? { |method| opts[:cache].respond_to?(method) }
+              raise ArgumentError, "Parse::Client option :cache needs to be a type of Moneta store"
+            end
+            self.cache = opts[:cache]
+            conn.use Parse::Middleware::Caching, self.cache, { expires: opts[:expires].to_i }
+
+            # Inform about opt-in cache behavior
+            unless Parse.default_query_cache
+              warn "[Parse::Client] Caching middleware enabled (expires: #{opts[:expires]}s). " \
+                   "Queries do NOT use cache by default. Use `cache: true` on queries to opt-in, " \
+                   "or set `Parse.default_query_cache = true` for opt-out behavior."
             end
           end
-
-          unless [:key?, :[], :delete, :store].all? { |method| opts[:cache].respond_to?(method) }
-            raise ArgumentError, "Parse::Client option :cache needs to be a type of Moneta store"
-          end
-          self.cache = opts[:cache]
-          conn.use Parse::Middleware::Caching, self.cache, { expires: opts[:expires].to_i }
         end
 
         yield(conn) if block_given?

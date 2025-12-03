@@ -3061,14 +3061,31 @@ cursor.each_page { |page| process(page) }  # Continues where it left off
 ```
 
 #### :cache
-A `true`, `false` or integer value. If you are using the built-in caching middleware, `Parse::Middleware::Caching`, setting this to `false` will prevent it from using a previously cached result if available. You may pass an integer value, which will allow this request to be cached for the specified number of seconds. The default value is `true`, which uses the [`:expires`](#expires) value that was passed when [configuring the client](#connection-setup).
+A `true`, `false` or integer value. If you are using the built-in caching middleware, `Parse::Middleware::Caching`, setting this to `true` will use a previously cached result if available. Setting to `false` will prevent caching. You may pass an integer value, which will allow this request to be cached for the specified number of seconds. **The default value is `false`** (queries do not use cache unless explicitly enabled).
 
 ```ruby
-# don't use a cached result if available
-Song.all limit: 500, cache: false
+# explicitly use cache for this request
+Song.all limit: 500, cache: true
 
 # cache this particular request for 60 seconds
 Song.all limit: 500, cache: 1.minute
+
+# don't use cache (default behavior)
+Song.all limit: 500, cache: false
+```
+
+To change the default caching behavior globally, use the `Parse.default_query_cache` configuration:
+
+```ruby
+# Enable cache by default (opt-out behavior)
+Parse.default_query_cache = true
+Song.first                           # Uses cache
+Song.query(cache: false).first       # Explicitly bypasses cache
+
+# Disable cache by default (opt-in behavior, this is the default)
+Parse.default_query_cache = false
+Song.first                           # Does NOT use cache
+Song.query(cache: true).first        # Explicitly uses cache
 ```
 
 You may access the shared cache for the default client connection through `Parse.cache`. This is useful if you

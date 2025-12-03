@@ -82,6 +82,19 @@ module Parse
   #   song.fetch!(cache: true)  # Uses cached data if available
   @cache_write_on_fetch = true
 
+  # Configuration for default query caching behavior.
+  # When set to false (default), queries do NOT use cache unless explicitly enabled.
+  # When set to true, queries use cache by default (opt-out behavior).
+  # This only affects queries - individual queries can always override with cache: true/false.
+  # @example Enable cache by default (opt-out behavior)
+  #   Parse.default_query_cache = true
+  #   Song.first  # Uses cache
+  #   Song.query(cache: false).first  # Explicitly bypasses cache
+  # @example Default behavior (opt-in, cache disabled by default)
+  #   Song.first  # Does NOT use cache
+  #   Song.query(cache: true).first  # Explicitly uses cache
+  @default_query_cache = false
+
   # Configuration for experimental Agent MCP server feature.
   # The MCP (Model Context Protocol) server allows AI agents to interact with Parse data.
   # This feature requires TWO steps to enable for safety:
@@ -115,7 +128,7 @@ module Parse
 
   class << self
     attr_accessor :warn_on_query_issues, :autofetch_raise_on_missing_keys, :serialize_only_fetched_fields, :validate_query_keys,
-                  :live_query_enabled, :cache_write_on_fetch, :mcp_server_enabled, :mcp_server_port, :mcp_remote_api
+                  :live_query_enabled, :cache_write_on_fetch, :default_query_cache, :mcp_server_enabled, :mcp_server_port, :mcp_remote_api
 
     # Check if LiveQuery feature is enabled
     # @return [Boolean]

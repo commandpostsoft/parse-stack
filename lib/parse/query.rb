@@ -379,7 +379,7 @@ module Parse
       @limit = nil
       @skip = 0
       @table = table
-      @cache = true
+      @cache = Parse.default_query_cache
       @use_master_key = true
       @verbose_aggregate = false
       conditions constraints

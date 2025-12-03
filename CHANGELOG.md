@@ -1,5 +1,32 @@
 ## Parse-Stack Changelog
 
+### 3.1.7
+
+#### Breaking Changes
+
+- **CHANGED**: Query caching is now opt-in by default. Previously, queries used cache by default (`cache: true`). Now queries do NOT use cache unless explicitly enabled with `cache: true`. This provides more predictable behavior and ensures fresh data by default.
+
+#### New Features
+
+- **NEW**: Added `Parse.default_query_cache` configuration option to control the default caching behavior for queries:
+  - `false` (default): Queries do NOT use cache unless explicitly enabled with `cache: true`
+  - `true`: Queries use cache by default (opt-out behavior, previous behavior)
+
+```ruby
+# Default behavior (opt-in to cache)
+Song.first                           # Does NOT use cache
+Song.query(cache: true).first        # Explicitly uses cache
+
+# To restore previous behavior (opt-out of cache)
+Parse.default_query_cache = true
+Song.first                           # Uses cache
+Song.query(cache: false).first       # Explicitly bypasses cache
+```
+
+- **IMPROVED**: Added informative cache configuration messages during client setup:
+  - Warns when a cache store is provided but `:expires` is not set (caching will be disabled)
+  - Informs users about opt-in cache behavior and how to enable opt-out mode when caching is enabled
+
 ### 3.1.6
 
 #### Code Quality Improvements
