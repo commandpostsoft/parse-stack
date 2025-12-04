@@ -1,5 +1,21 @@
 ## Parse-Stack Changelog
 
+### 3.1.8
+
+#### Bug Fixes
+
+- **FIXED**: Date property parsing now gracefully handles empty strings, whitespace-only strings, and hashes with missing/empty `iso` values. Previously, assigning an empty string (`""`) or a hash like `{"__type":"Date","iso":""}` to a `:date` property would raise `Date::Error: invalid date`. Now these values are converted to `nil` instead of crashing.
+
+- **IMPROVED**: Date string values are now trimmed of leading/trailing whitespace before parsing. A date string like `"  2025-12-04T15:15:05.446Z  "` will now parse correctly instead of potentially failing.
+
+The following date inputs now safely return `nil` instead of raising an error:
+- Empty string: `""`
+- Whitespace-only string: `"   "`
+- Hash with empty iso: `{"__type":"Date","iso":""}`
+- Hash with whitespace iso: `{"__type":"Date","iso":"   "}`
+- Hash with missing iso: `{"__type":"Date"}`
+- Hash with nil iso: `{"__type":"Date","iso":nil}`
+
 ### 3.1.7
 
 #### Breaking Changes

@@ -1,6 +1,12 @@
 require_relative "../../test_helper"
 require "minitest/autorun"
 
+# Test model for date property tests (must be named for ActiveModel 8.x)
+class DatePropertyTestModel < Parse::Object
+  parse_class "DatePropertyTestModel"
+  property :test_date, :date
+end
+
 class DateTest < Minitest::Test
   def test_parse_date_class_constants
     assert_equal Parse::Model::TYPE_DATE, Parse::Date.parse_class
@@ -202,5 +208,87 @@ class DateTest < Minitest::Test
     datetime_obj = DateTime.parse(iso_string)
     parse_date_from_datetime = Parse::Date.parse(datetime_obj.iso8601(3))
     assert_instance_of Parse::Date, parse_date_from_datetime
+  end
+
+  # Tests for empty/nil/whitespace date value handling (fix for Date::Error on empty strings)
+  def test_date_property_handles_empty_string
+    obj = DatePropertyTestModel.new
+    obj.test_date = ""
+    assert_nil obj.test_date, "Empty string should result in nil date"
+  end
+
+  def test_date_property_handles_whitespace_only_string
+    obj = DatePropertyTestModel.new
+    obj.test_date = "   "
+    assert_nil obj.test_date, "Whitespace-only string should result in nil date"
+  end
+
+  def test_date_property_handles_empty_iso_in_hash
+    obj = DatePropertyTestModel.new
+    obj.test_date = { "__type" => "Date", "iso" => "" }
+    assert_nil obj.test_date, "Hash with empty iso should result in nil date"
+  end
+
+  def test_date_property_handles_whitespace_iso_in_hash
+    obj = DatePropertyTestModel.new
+    obj.test_date = { "__type" => "Date", "iso" => "   " }
+    assert_nil obj.test_date, "Hash with whitespace-only iso should result in nil date"
+  end
+
+  def test_date_property_handles_missing_iso_in_hash
+    obj = DatePropertyTestModel.new
+    obj.test_date = { "__type" => "Date" }
+    assert_nil obj.test_date, "Hash with missing iso key should result in nil date"
+  end
+
+  def test_date_property_handles_nil_iso_in_hash
+    obj = DatePropertyTestModel.new
+    obj.test_date = { "__type" => "Date", "iso" => nil }
+    assert_nil obj.test_date, "Hash with nil iso should result in nil date"
+  end
+
+  def test_date_property_trims_whitespace_from_valid_date
+    obj = DatePropertyTestModel.new
+    obj.test_date = "  2025-12-04T15:15:05.446Z  "
+    assert_instance_of Parse::Date, obj.test_date, "Date with leading/trailing whitespace should parse"
+    assert_equal 2025, obj.test_date.year
+    assert_equal 12, obj.test_date.month
+    assert_equal 4, obj.test_date.day
+  end
+
+  def test_date_property_trims_whitespace_from_hash_iso
+    obj = DatePropertyTestModel.new
+    obj.test_date = { "__type" => "Date", "iso" => "  2025-12-04T15:15:05.446Z  " }
+    assert_instance_of Parse::Date, obj.test_date, "Date hash with whitespace iso should parse"
+    assert_equal 2025, obj.test_date.year
+    assert_equal 12, obj.test_date.month
+    assert_equal 4, obj.test_date.day
+  end
+
+  def test_date_property_valid_string_still_works
+    obj = DatePropertyTestModel.new
+    obj.test_date = "2025-12-04T15:15:05.446Z"
+    assert_instance_of Parse::Date, obj.test_date
+    assert_equal 2025, obj.test_date.year
+  end
+
+  def test_date_property_valid_hash_still_works
+    obj = DatePropertyTestModel.new
+    obj.test_date = { "__type" => "Date", "iso" => "2025-12-04T15:15:05.446Z" }
+    assert_instance_of Parse::Date, obj.test_date
+    assert_equal 2025, obj.test_date.year
+  end
+
+  def test_date_property_symbol_key_iso_in_hash
+    obj = DatePropertyTestModel.new
+    obj.test_date = { __type: "Date", iso: "2025-12-04T15:15:05.446Z" }
+    assert_instance_of Parse::Date, obj.test_date
+    assert_equal 2025, obj.test_date.year
+  end
+
+  def test_date_property_symbol_key_empty_iso_in_hash
+    obj = DatePropertyTestModel.new
+    obj.test_date = { __type: "Date", iso: "" }
+    assert_nil obj.test_date, "Hash with symbol key empty iso should result in nil date"
   end
 end

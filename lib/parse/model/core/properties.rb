@@ -632,10 +632,11 @@ module Parse
           val = val.parse_date
           # if the value is a hash, then it may be the Parse hash format for an iso date.
         elsif val.is_a?(Hash) # val.respond_to?(:iso8601)
-          val = Parse::Date.parse(val["iso"] || val[:iso])
+          iso_val = (val["iso"] || val[:iso]).to_s.strip.presence
+          val = iso_val ? Parse::Date.parse(iso_val) : nil
         elsif val.is_a?(String)
           # if it's a string, try parsing the date
-          val = Parse::Date.parse val
+          val = (stripped = val.strip).present? ? Parse::Date.parse(stripped) : nil
           #elsif val.present?
           #  pus "[Parse::Stack] Invalid date value '#{val}' assigned to #{self.class}##{key}, it should be a Parse::Date or DateTime."
           #   raise ValueError, "Invalid date value '#{val}' assigned to #{self.class}##{key}, it should be a Parse::Date or DateTime."
