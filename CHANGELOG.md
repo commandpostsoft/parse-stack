@@ -1,5 +1,38 @@
 ## Parse-Stack Changelog
 
+### 3.1.9
+
+#### New Features
+
+- **NEW**: Added `fetch_cache!` method to `Parse::Pointer`. This allows fetching a pointer with caching enabled, matching the API available on `Parse::Object`. Previously, calling `fetch_cache!` on a pointer would raise `NoMethodError`.
+
+```ruby
+# Fetch a pointer with caching enabled
+capture = capture_pointer.fetch_cache!
+
+# Partial fetch with caching
+capture = capture_pointer.fetch_cache!(keys: [:title, :status])
+
+# With includes
+capture = capture_pointer.fetch_cache!(keys: [:title], includes: [:project])
+```
+
+- **NEW**: Added `cache:` parameter to `Parse::Pointer#fetch`. This allows controlling caching behavior when fetching pointers, consistent with `Parse::Object#fetch!`.
+
+```ruby
+# Fetch with full caching (read and write)
+capture = pointer.fetch(cache: true)
+
+# Fetch bypassing cache completely
+capture = pointer.fetch(cache: false)
+
+# Fetch with write-only cache (skip read, update cache)
+capture = pointer.fetch(cache: :write_only)
+
+# Fetch with specific TTL
+capture = pointer.fetch(cache: 300)  # Cache for 5 minutes
+```
+
 ### 3.1.8
 
 #### Bug Fixes
