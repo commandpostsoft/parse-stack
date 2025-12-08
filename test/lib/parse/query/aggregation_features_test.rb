@@ -529,4 +529,132 @@ class TestQueryAggregationFeatures < Minitest::Test
       assert_match(/^\d{4}-\d{2}-\d{2}T/, created_at_constraint["$gte"], "Should be in ISO format")
     end
   end
+
+  # Test deduplicate_consecutive_match_stages
+  def test_deduplicate_removes_identical_consecutive_match_stages
+    pipeline = [
+      { "$match" => { "status" => "active" } },
+      { "$match" => { "status" => "active" } },
+      { "$group" => { "_id" => "$category" } },
+    ]
+
+    result = @query.send(:deduplicate_consecutive_match_stages, pipeline)
+
+    assert_equal 2, result.size
+    assert_equal({ "$match" => { "status" => "active" } }, result[0])
+    assert_equal({ "$group" => { "_id" => "$category" } }, result[1])
+  end
+
+  def test_deduplicate_merges_different_consecutive_match_stages
+    pipeline = [
+      { "$match" => { "status" => "active" } },
+      { "$match" => { "category" => "books" } },
+      { "$group" => { "_id" => "$author" } },
+    ]
+
+    result = @query.send(:deduplicate_consecutive_match_stages, pipeline)
+
+    assert_equal 2, result.size
+    assert_equal({ "$group" => { "_id" => "$author" } }, result[1])
+
+    # The merged $match should use $and
+    merged_match = result[0]["$match"]
+    assert merged_match.key?("$and"), "Merged match should use $and"
+    assert_equal 2, merged_match["$and"].size
+    assert_includes merged_match["$and"], { "status" => "active" }
+    assert_includes merged_match["$and"], { "category" => "books" }
+  end
+
+  def test_deduplicate_merges_multiple_consecutive_match_stages
+    pipeline = [
+      { "$match" => { "a" => 1 } },
+      { "$match" => { "b" => 2 } },
+      { "$match" => { "c" => 3 } },
+      { "$group" => { "_id" => "$field" } },
+    ]
+
+    result = @query.send(:deduplicate_consecutive_match_stages, pipeline)
+
+    assert_equal 2, result.size
+
+    merged_match = result[0]["$match"]
+    assert merged_match.key?("$and")
+    assert_equal 3, merged_match["$and"].size
+  end
+
+  def test_deduplicate_preserves_non_consecutive_match_stages
+    pipeline = [
+      { "$match" => { "status" => "active" } },
+      { "$lookup" => { "from" => "users" } },
+      { "$match" => { "role" => "admin" } },
+    ]
+
+    result = @query.send(:deduplicate_consecutive_match_stages, pipeline)
+
+    assert_equal 3, result.size
+    assert_equal({ "$match" => { "status" => "active" } }, result[0])
+    assert_equal({ "$lookup" => { "from" => "users" } }, result[1])
+    assert_equal({ "$match" => { "role" => "admin" } }, result[2])
+  end
+
+  def test_deduplicate_handles_empty_pipeline
+    result = @query.send(:deduplicate_consecutive_match_stages, [])
+
+    assert_equal [], result
+  end
+
+  def test_deduplicate_handles_single_match_stage
+    pipeline = [{ "$match" => { "status" => "active" } }]
+
+    result = @query.send(:deduplicate_consecutive_match_stages, pipeline)
+
+    assert_equal 1, result.size
+    assert_equal({ "$match" => { "status" => "active" } }, result[0])
+  end
+
+  def test_deduplicate_handles_pipeline_with_no_match_stages
+    pipeline = [
+      { "$group" => { "_id" => "$category" } },
+      { "$sort" => { "count" => -1 } },
+    ]
+
+    result = @query.send(:deduplicate_consecutive_match_stages, pipeline)
+
+    assert_equal 2, result.size
+    assert_equal pipeline, result
+  end
+
+  def test_deduplicate_handles_match_stages_with_existing_and
+    pipeline = [
+      { "$match" => { "$and" => [{ "a" => 1 }, { "b" => 2 }] } },
+      { "$match" => { "c" => 3 } },
+    ]
+
+    result = @query.send(:deduplicate_consecutive_match_stages, pipeline)
+
+    assert_equal 1, result.size
+
+    merged_match = result[0]["$match"]
+    assert merged_match.key?("$and")
+    # Should flatten the existing $and and add the new condition
+    assert_equal 3, merged_match["$and"].size
+    assert_includes merged_match["$and"], { "a" => 1 }
+    assert_includes merged_match["$and"], { "b" => 2 }
+    assert_includes merged_match["$and"], { "c" => 3 }
+  end
+
+  def test_deduplicate_preserves_complex_match_conditions
+    pipeline = [
+      { "$match" => { "_p_project" => "Project$123", "grant" => "full" } },
+      { "$match" => { "_p_project" => "Project$123", "grant" => "full" } },
+      { "$group" => { "_id" => "$_p_extTeam" } },
+    ]
+
+    result = @query.send(:deduplicate_consecutive_match_stages, pipeline)
+
+    # Should remove the duplicate
+    assert_equal 2, result.size
+    assert_equal({ "_p_project" => "Project$123", "grant" => "full" }, result[0]["$match"])
+    assert_equal({ "$group" => { "_id" => "$_p_extTeam" } }, result[1])
+  end
 end

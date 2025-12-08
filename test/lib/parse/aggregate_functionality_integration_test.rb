@@ -470,4 +470,271 @@ class AggregateFunctionalityIntegrationTest < Minitest::Test
       end
     end
   end
+
+  # Tests for deduplicate_consecutive_match_stages optimization
+
+  def test_pipeline_deduplicates_consecutive_identical_match_stages
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
+
+    with_parse_server do
+      with_timeout(25, "duplicate match stage deduplication test") do
+        puts "\n=== Testing Pipeline Deduplication: Identical Match+Match ==="
+
+        # Create test users
+        users_data = [
+          { name: "Alice", age: 30, city: "Seattle", salary: 95000, active: true },
+          { name: "Bob", age: 28, city: "Portland", salary: 85000, active: true },
+          { name: "Carol", age: 35, city: "Seattle", salary: 110000, active: false },
+        ]
+
+        users_data.each do |data|
+          user = AggregateFunctionalityUser.new(data)
+          assert user.save, "User should save"
+        end
+
+        puts "Created 3 test users"
+
+        # Create a query that would generate duplicate $match stages
+        # by manually building a pipeline with consecutive identical matches
+        query = AggregateFunctionalityUser.query
+
+        # Build pipeline with duplicate match stages manually
+        pipeline_with_duplicates = [
+          { "$match" => { "active" => true } },
+          { "$match" => { "active" => true } },  # Duplicate
+          { "$group" => { "_id" => "$city", "count" => { "$sum" => 1 } } },
+        ]
+
+        aggregation = query.aggregate(pipeline_with_duplicates)
+        actual_pipeline = aggregation.instance_variable_get(:@pipeline)
+
+        puts "\n--- Pipeline Before vs After Deduplication ---"
+        puts "Input pipeline: #{pipeline_with_duplicates.length} stages"
+        puts "Output pipeline: #{actual_pipeline.length} stages"
+
+        require "json"
+        puts "\nActual pipeline:"
+        puts JSON.pretty_generate(actual_pipeline)
+
+        # Verify duplicate $match was removed
+        match_stages = actual_pipeline.select { |s| s.key?("$match") }
+        assert_equal 1, match_stages.length, "Should have deduplicated to 1 $match stage"
+
+        puts "✅ Duplicate $match stages were deduplicated"
+
+        # Verify results are still correct
+        results = aggregation.results
+        assert results.length >= 1, "Should still return valid results"
+
+        puts "✅ Pipeline deduplication: identical Match+Match test passed"
+      end
+    end
+  end
+
+  def test_pipeline_merges_consecutive_different_match_stages
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
+
+    with_parse_server do
+      with_timeout(25, "different match stage merging test") do
+        puts "\n=== Testing Pipeline Deduplication: Different Match+Match ==="
+
+        # Create test users
+        users_data = [
+          { name: "Alice", age: 30, city: "Seattle", salary: 95000, active: true },
+          { name: "Bob", age: 28, city: "Portland", salary: 85000, active: true },
+          { name: "Carol", age: 35, city: "Seattle", salary: 110000, active: false },
+        ]
+
+        users_data.each do |data|
+          user = AggregateFunctionalityUser.new(data)
+          assert user.save, "User should save"
+        end
+
+        puts "Created 3 test users"
+
+        query = AggregateFunctionalityUser.query
+
+        # Build pipeline with consecutive different match stages
+        pipeline_with_separate_matches = [
+          { "$match" => { "active" => true } },
+          { "$match" => { "city" => "Seattle" } },  # Different condition
+          { "$group" => { "_id" => "$name", "salary" => { "$first" => "$salary" } } },
+        ]
+
+        aggregation = query.aggregate(pipeline_with_separate_matches)
+        actual_pipeline = aggregation.instance_variable_get(:@pipeline)
+
+        puts "\n--- Pipeline Before vs After Merging ---"
+        puts "Input pipeline: #{pipeline_with_separate_matches.length} stages"
+        puts "Output pipeline: #{actual_pipeline.length} stages"
+
+        require "json"
+        puts "\nActual pipeline:"
+        puts JSON.pretty_generate(actual_pipeline)
+
+        # Verify matches were merged into one
+        match_stages = actual_pipeline.select { |s| s.key?("$match") }
+        assert_equal 1, match_stages.length, "Should have merged to 1 $match stage"
+
+        # Verify the merged $match uses $and
+        merged_match = match_stages.first["$match"]
+        assert merged_match.key?("$and"), "Merged match should use $and"
+        assert_equal 2, merged_match["$and"].length, "Should have 2 conditions in $and"
+
+        puts "✅ Different $match stages were merged using $and"
+
+        # Verify results are still correct (should find Alice - active and in Seattle)
+        results = aggregation.results
+        assert results.length >= 1, "Should find at least 1 result (Alice)"
+
+        puts "✅ Pipeline deduplication: different Match+Match merge test passed"
+      end
+    end
+  end
+
+  def test_pipeline_merges_triple_consecutive_match_stages
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
+
+    with_parse_server do
+      with_timeout(25, "triple match stage merging test") do
+        puts "\n=== Testing Pipeline Deduplication: Match+Match+Match (Duplicate and New) ==="
+
+        # Create test users
+        users_data = [
+          { name: "Alice", age: 30, city: "Seattle", salary: 95000, active: true },
+          { name: "Bob", age: 28, city: "Portland", salary: 85000, active: true },
+          { name: "Carol", age: 35, city: "Seattle", salary: 110000, active: false },
+          { name: "Dave", age: 40, city: "Seattle", salary: 120000, active: true },
+        ]
+
+        users_data.each do |data|
+          user = AggregateFunctionalityUser.new(data)
+          assert user.save, "User should save"
+        end
+
+        puts "Created 4 test users"
+
+        query = AggregateFunctionalityUser.query
+
+        # Build pipeline with 3 consecutive match stages: 2 identical + 1 new
+        pipeline_with_triple_matches = [
+          { "$match" => { "active" => true } },
+          { "$match" => { "active" => true } },  # Duplicate - should be skipped
+          { "$match" => { "city" => "Seattle" } },  # New condition - should be merged
+          { "$group" => { "_id" => "$name", "salary" => { "$first" => "$salary" } } },
+        ]
+
+        aggregation = query.aggregate(pipeline_with_triple_matches)
+        actual_pipeline = aggregation.instance_variable_get(:@pipeline)
+
+        puts "\n--- Pipeline Before vs After Optimization ---"
+        puts "Input pipeline: #{pipeline_with_triple_matches.length} stages (3 $match + 1 $group)"
+        puts "Output pipeline: #{actual_pipeline.length} stages"
+
+        require "json"
+        puts "\nActual pipeline:"
+        puts JSON.pretty_generate(actual_pipeline)
+
+        # Verify all matches were merged/deduplicated into one
+        match_stages = actual_pipeline.select { |s| s.key?("$match") }
+        assert_equal 1, match_stages.length, "Should have optimized to 1 $match stage"
+
+        # Verify the merged $match has $and with only unique conditions
+        merged_match = match_stages.first["$match"]
+        assert merged_match.key?("$and"), "Merged match should use $and"
+
+        # Should have 2 unique conditions (active:true was deduplicated, city:Seattle was merged)
+        assert_equal 2, merged_match["$and"].length, "Should have 2 unique conditions in $and"
+
+        puts "✅ Triple $match stages (duplicate + new) were optimized to single $match with $and"
+
+        # Verify results are correct (Alice and Dave - active and in Seattle)
+        results = aggregation.results
+        assert results.length >= 2, "Should find at least 2 results (Alice and Dave)"
+
+        puts "✅ Pipeline deduplication: Match+Match+Match (duplicate and new) test passed"
+      end
+    end
+  end
+
+  def test_pipeline_preserves_match_stages_separated_by_lookup
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
+
+    with_parse_server do
+      with_timeout(25, "match-lookup-match-match preservation test") do
+        puts "\n=== Testing Pipeline Deduplication: Match+Lookup+Match+Match ==="
+
+        # Create test users
+        users_data = [
+          { name: "Alice", age: 30, city: "Seattle", salary: 95000, active: true },
+          { name: "Bob", age: 28, city: "Portland", salary: 85000, active: true },
+          { name: "Carol", age: 35, city: "Seattle", salary: 110000, active: false },
+        ]
+
+        users_data.each do |data|
+          user = AggregateFunctionalityUser.new(data)
+          assert user.save, "User should save"
+        end
+
+        puts "Created 3 test users"
+
+        query = AggregateFunctionalityUser.query
+
+        # Build pipeline with match-lookup-match-match pattern
+        # The first $match should remain separate (before $lookup)
+        # The two consecutive $match stages after $lookup should be merged
+        pipeline_with_lookup = [
+          { "$match" => { "active" => true } },
+          { "$lookup" => {
+            "from" => "AggregateFunctionalityUser",
+            "localField" => "city",
+            "foreignField" => "city",
+            "as" => "citymates",
+          } },
+          { "$match" => { "city" => "Seattle" } },
+          { "$match" => { "salary" => { "$gte" => 90000 } } },  # Should be merged with previous
+          { "$project" => { "name" => 1, "citymates" => { "$size" => "$citymates" } } },
+        ]
+
+        aggregation = query.aggregate(pipeline_with_lookup)
+        actual_pipeline = aggregation.instance_variable_get(:@pipeline)
+
+        puts "\n--- Pipeline Before vs After Optimization ---"
+        puts "Input pipeline: #{pipeline_with_lookup.length} stages"
+        puts "Output pipeline: #{actual_pipeline.length} stages"
+
+        require "json"
+        puts "\nActual pipeline:"
+        puts JSON.pretty_generate(actual_pipeline)
+
+        # Verify structure: should be $match, $lookup, $match (merged), $project
+        match_stages = actual_pipeline.select { |s| s.key?("$match") }
+        lookup_stages = actual_pipeline.select { |s| s.key?("$lookup") }
+
+        assert_equal 2, match_stages.length, "Should have 2 $match stages (one before lookup, one merged after)"
+        assert_equal 1, lookup_stages.length, "Should have 1 $lookup stage"
+
+        # Find the positions of $match stages
+        first_match_idx = actual_pipeline.index { |s| s.key?("$match") }
+        lookup_idx = actual_pipeline.index { |s| s.key?("$lookup") }
+        last_match_idx = actual_pipeline.rindex { |s| s.key?("$match") }
+
+        assert first_match_idx < lookup_idx, "First $match should be before $lookup"
+        assert lookup_idx < last_match_idx, "Second $match should be after $lookup"
+
+        # Verify the post-lookup match was merged (should have $and)
+        post_lookup_match = actual_pipeline[last_match_idx]["$match"]
+        assert post_lookup_match.key?("$and"), "Post-lookup matches should be merged with $and"
+        assert_equal 2, post_lookup_match["$and"].length, "Should have 2 conditions in merged $and"
+
+        puts "✅ Match before $lookup preserved, consecutive matches after $lookup merged"
+
+        # Verify results are correct
+        results = aggregation.results
+        assert results.length >= 1, "Should find at least 1 result"
+
+        puts "✅ Pipeline deduplication: Match+Lookup+Match+Match test passed"
+      end
+    end
+  end
 end

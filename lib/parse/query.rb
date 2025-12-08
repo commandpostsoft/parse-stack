@@ -1801,7 +1801,8 @@ module Parse
         pipeline << { "$project" => project_stage }
       end
 
-      pipeline
+      # Optimize pipeline by merging consecutive $match stages
+      deduplicate_consecutive_match_stages(pipeline)
     end
 
     # Build $lookup stages for included pointer fields in direct MongoDB queries.
@@ -2198,6 +2199,40 @@ module Parse
       response.result
     end
 
+    # Merge consecutive $match stages in an aggregation pipeline.
+    # This optimization combines redundant stages that can occur when building
+    # pipelines from multiple constraint sources. Identical stages are deduplicated,
+    # and non-identical consecutive $match stages are merged using $and.
+    # @param pipeline [Array<Hash>] the aggregation pipeline stages
+    # @return [Array<Hash>] the optimized pipeline with merged $match stages
+    # @api private
+    def deduplicate_consecutive_match_stages(pipeline)
+      return pipeline if pipeline.empty?
+
+      result = []
+      pipeline.each do |stage|
+        if stage.is_a?(Hash) && stage.key?("$match") &&
+           result.last.is_a?(Hash) && result.last.key?("$match")
+          prev_match = result.last["$match"]
+          curr_match = stage["$match"]
+
+          # Skip if identical
+          next if prev_match == curr_match
+
+          # Merge the two $match stages using $and
+          # Handle cases where either side might already have $and
+          prev_conditions = prev_match.key?("$and") ? prev_match["$and"] : [prev_match]
+          curr_conditions = curr_match.key?("$and") ? curr_match["$and"] : [curr_match]
+
+          # Replace the previous $match with the merged version
+          result[-1] = { "$match" => { "$and" => prev_conditions + curr_conditions } }
+        else
+          result << stage
+        end
+      end
+      result
+    end
+
     # Create an Aggregation object for executing arbitrary MongoDB pipelines
     # @param pipeline [Array<Hash>] the MongoDB aggregation pipeline stages
     # @param verbose [Boolean] whether to print verbose debug output for the aggregation
@@ -2332,6 +2367,9 @@ module Parse
       if use_mongo_direct.nil? && lookup_stages && lookup_stages.any? && defined?(Parse::MongoDB) && Parse::MongoDB.enabled?
         use_mongo_direct = true
       end
+
+      # Optimize pipeline by merging consecutive $match stages
+      complete_pipeline = deduplicate_consecutive_match_stages(complete_pipeline)
 
       Aggregation.new(self, complete_pipeline, verbose: verbose, mongo_direct: use_mongo_direct || false)
     end
@@ -2637,6 +2675,9 @@ module Parse
       if @skip > 0
         pipeline << { "$skip" => @skip }
       end
+
+      # Optimize pipeline by merging consecutive $match stages
+      pipeline = deduplicate_consecutive_match_stages(pipeline)
 
       [pipeline, has_lookup_stages]
     end

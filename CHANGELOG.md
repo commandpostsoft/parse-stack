@@ -1,5 +1,30 @@
 ## Parse-Stack Changelog
 
+### 3.1.10
+
+#### Performance Improvements
+
+- **IMPROVED**: Aggregation pipeline optimization now automatically merges consecutive `$match` stages. This reduces redundant pipeline stages that can occur when building complex queries from multiple constraint sources.
+  - Identical consecutive `$match` stages are deduplicated (removed)
+  - Different consecutive `$match` stages are merged using `$and`
+  - Non-consecutive `$match` stages (separated by `$lookup`, `$group`, etc.) are preserved
+
+```ruby
+# Before optimization (generated pipeline):
+[
+  { "$match" => { "status" => "active" } },
+  { "$match" => { "status" => "active" } },  # Duplicate
+  { "$match" => { "category" => "books" } }, # Different
+  { "$group" => { "_id" => "$author" } }
+]
+
+# After optimization:
+[
+  { "$match" => { "$and" => [{ "status" => "active" }, { "category" => "books" }] } },
+  { "$group" => { "_id" => "$author" } }
+]
+```
+
 ### 3.1.9
 
 #### New Features
