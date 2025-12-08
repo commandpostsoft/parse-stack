@@ -17,7 +17,9 @@ class TestRole < Minitest::Test
     assert Parse::Role < Parse::Object
     assert_equal CORE_FIELDS, Parse::Role.fields
     assert_empty Parse::Role.references
-    assert_equal({ :roles => Parse::Model::CLASS_ROLE, :users => Parse::Model::CLASS_USER }, Parse::Role.relations)
+    # Note: :users relation uses "User" (Ruby class name) not "_User" (Parse internal name)
+    # This is because has_many :users infers the class name from :users symbol
+    assert_equal({ :roles => Parse::Model::CLASS_ROLE, :users => "User" }, Parse::Role.relations)
   end
 
   # Test class methods

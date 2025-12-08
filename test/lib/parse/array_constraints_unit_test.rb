@@ -466,12 +466,19 @@ class ArrayConstraintsUnitTest < Minitest::Test
     # Verify both constraints are present in the pipeline
     all_matches = match_stages.map { |s| s["$match"] }
 
-    # Check for regular constraint
-    has_category = all_matches.any? { |m| m["category"] == "reports" }
+    # The pipeline combines constraints inside $and when both regular and aggregation constraints exist
+    # Check for regular constraint (may be at top level or inside $and)
+    has_category = all_matches.any? do |m|
+      m["category"] == "reports" ||
+        (m["$and"].is_a?(Array) && m["$and"].any? { |c| c["category"] == "reports" })
+    end
     assert has_category, "Should include regular category constraint"
 
-    # Check for the $or from empty_or_nil
-    has_or = all_matches.any? { |m| m["$or"].is_a?(Array) }
+    # Check for the $or from empty_or_nil (may be at top level or inside $and)
+    has_or = all_matches.any? do |m|
+      m["$or"].is_a?(Array) ||
+        (m["$and"].is_a?(Array) && m["$and"].any? { |c| c["$or"].is_a?(Array) })
+    end
     assert has_or, "Should include $or from empty_or_nil constraint"
 
     puts "✅ Combined constraints correctly present in pipeline"

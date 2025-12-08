@@ -128,20 +128,22 @@ class TestEqualsLinkedPointer < Minitest::Test
     query = Parse::Query.new("ObjectA")
     query.where(:author.equals_linked_pointer => { through: :project, field: :owner })
 
-    pipeline = query.build_aggregation_pipeline
+    # build_aggregation_pipeline returns [pipeline, has_lookup_stages] tuple
+    pipeline, _has_lookup_stages = query.build_aggregation_pipeline
 
     assert_instance_of Array, pipeline
+    # Pipeline has $match (with $expr), $addFields, and $lookup stages
     assert_equal 3, pipeline.length
 
-    # Should contain the addFields, lookup and match stages
-    addfields_stage = pipeline[0]
-    assert addfields_stage.key?("$addFields")
+    # Stages can be in any order, so look for each type
+    addfields_stage = pipeline.find { |s| s.key?("$addFields") }
+    assert addfields_stage, "Should have $addFields stage"
 
-    lookup_stage = pipeline[1]
-    assert lookup_stage.key?("$lookup")
+    lookup_stage = pipeline.find { |s| s.key?("$lookup") }
+    assert lookup_stage, "Should have $lookup stage"
 
-    match_stage = pipeline[2]
-    assert match_stage.key?("$match")
+    match_stage = pipeline.find { |s| s.key?("$match") }
+    assert match_stage, "Should have $match stage"
     assert match_stage["$match"].key?("$expr")
   end
 
@@ -150,26 +152,37 @@ class TestEqualsLinkedPointer < Minitest::Test
     query.where(:status => "active")
     query.where(:author.equals_linked_pointer => { through: :project, field: :owner })
 
-    pipeline = query.build_aggregation_pipeline
+    # build_aggregation_pipeline returns [pipeline, has_lookup_stages] tuple
+    pipeline, _has_lookup_stages = query.build_aggregation_pipeline
 
     assert_instance_of Array, pipeline
-    assert_equal 4, pipeline.length
+    # Pipeline is optimized: regular $match and $expr $match are merged into single $match
+    # So we have: merged $match, $addFields, $lookup = 3 stages
+    assert_equal 3, pipeline.length
 
-    # Should have initial $match for regular constraints
-    initial_match = pipeline[0]
-    assert initial_match.key?("$match")
-    assert_equal "active", initial_match["$match"]["status"]
+    # The merged $match has both constraints in $and
+    match_stage = pipeline.find { |s| s.key?("$match") }
+    assert match_stage, "Should have $match stage"
 
-    # Then addFields, lookup and expr match
-    addfields_stage = pipeline[1]
-    assert addfields_stage.key?("$addFields")
+    # The $match should have $and with both constraints merged
+    assert match_stage["$match"].key?("$and"), "Match should use $and for merged constraints"
+    and_conditions = match_stage["$match"]["$and"]
 
-    lookup_stage = pipeline[2]
-    assert lookup_stage.key?("$lookup")
+    # Check for status constraint inside $and
+    has_status = and_conditions.any? { |c| c["status"] == "active" }
+    assert has_status, "Should have status constraint in $and"
 
-    expr_match_stage = pipeline[3]
-    assert expr_match_stage.key?("$match")
-    assert expr_match_stage["$match"].key?("$expr")
+    # Check for $expr constraint inside $and
+    has_expr = and_conditions.any? { |c| c.key?("$expr") }
+    assert has_expr, "Should have $expr constraint in $and"
+
+    # Should have $addFields stage
+    addfields_stage = pipeline.find { |s| s.key?("$addFields") }
+    assert addfields_stage, "Should have $addFields stage"
+
+    # Should have $lookup stage
+    lookup_stage = pipeline.find { |s| s.key?("$lookup") }
+    assert lookup_stage, "Should have $lookup stage"
   end
 
   def test_query_build_aggregation_pipeline_with_limit_and_skip
@@ -178,7 +191,8 @@ class TestEqualsLinkedPointer < Minitest::Test
     query.limit(10)
     query.skip(5)
 
-    pipeline = query.build_aggregation_pipeline
+    # build_aggregation_pipeline returns [pipeline, has_lookup_stages] tuple
+    pipeline, _has_lookup_stages = query.build_aggregation_pipeline
 
     # Should include limit and skip stages
     assert pipeline.any? { |stage| stage.key?("$limit") && stage["$limit"] == 10 }
@@ -272,19 +286,20 @@ class TestEqualsLinkedPointer < Minitest::Test
     # Should require aggregation pipeline
     assert query.requires_aggregation_pipeline?
 
-    pipeline = query.build_aggregation_pipeline
+    # build_aggregation_pipeline returns [pipeline, has_lookup_stages] tuple
+    pipeline, _has_lookup_stages = query.build_aggregation_pipeline
     assert_instance_of Array, pipeline
     assert_equal 3, pipeline.length
 
-    # Should contain the addFields, lookup and match stages with $ne
-    addfields_stage = pipeline[0]
-    assert addfields_stage.key?("$addFields")
+    # Stages can be in any order, so look for each type
+    addfields_stage = pipeline.find { |s| s.key?("$addFields") }
+    assert addfields_stage, "Should have $addFields stage"
 
-    lookup_stage = pipeline[1]
-    assert lookup_stage.key?("$lookup")
+    lookup_stage = pipeline.find { |s| s.key?("$lookup") }
+    assert lookup_stage, "Should have $lookup stage"
 
-    match_stage = pipeline[2]
-    assert match_stage.key?("$match")
+    match_stage = pipeline.find { |s| s.key?("$match") }
+    assert match_stage, "Should have $match stage"
     assert match_stage["$match"].key?("$expr")
     assert match_stage["$match"]["$expr"].key?("$ne")
   end
@@ -298,13 +313,21 @@ class TestEqualsLinkedPointer < Minitest::Test
 
     assert query.requires_aggregation_pipeline?
 
-    pipeline = query.build_aggregation_pipeline
-    # Should have initial $match + 2 lookup stages + 2 match stages = 5 stages
-    assert pipeline.length >= 4  # At least initial match + some pipeline stages
+    # build_aggregation_pipeline returns [pipeline, has_lookup_stages] tuple
+    pipeline, _has_lookup_stages = query.build_aggregation_pipeline
 
-    # Should have initial $match for regular constraints
-    initial_match = pipeline[0]
-    assert initial_match.key?("$match")
-    assert_equal "active", initial_match["$match"]["status"]
+    # Pipeline is optimized: all consecutive $match stages are merged
+    # Should have: merged $match, $addFields (x2), $lookup (x2) = 5 stages
+    assert pipeline.length >= 4, "Pipeline should have at least 4 stages"
+
+    # The $match stage should contain the status constraint (possibly merged with $expr)
+    match_stage = pipeline.find { |s| s.key?("$match") }
+    assert match_stage, "Should have $match stage"
+
+    # Status constraint can be at top level or inside $and (if merged)
+    match_content = match_stage["$match"]
+    has_status = match_content["status"] == "active" ||
+      (match_content["$and"].is_a?(Array) && match_content["$and"].any? { |c| c["status"] == "active" })
+    assert has_status, "Should have $match for status constraint"
   end
 end

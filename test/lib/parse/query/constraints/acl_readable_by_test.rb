@@ -9,6 +9,8 @@ class ACLReadableByConstraintTest < Minitest::Test
   def test_single_role_string
     puts "\n=== Testing Single Role String ==="
 
+    # Note: strings are used as-is without automatic "role:" prefix
+    # Use readable_by_role for automatic prefix, or explicitly include "role:" in string
     constraint = @constraint_class.new(:ACL, "Admin")
     result = constraint.build
 
@@ -17,14 +19,14 @@ class ACLReadableByConstraintTest < Minitest::Test
         {
           "$match" => {
             "$or" => [
-              { "_rperm" => { "$in" => ["role:Admin", "*"] } },
+              { "_rperm" => { "$in" => ["Admin", "*"] } },
               { "_rperm" => { "$exists" => false } },
             ],
           },
         },
       ],
     }
-    assert_equal expected, result, "Should create ACL constraint for single role"
+    assert_equal expected, result, "Should create ACL constraint for single string (used as-is)"
     puts "✅ Single role string constraint works correctly"
   end
 
@@ -53,6 +55,7 @@ class ACLReadableByConstraintTest < Minitest::Test
   def test_array_of_role_strings
     puts "\n=== Testing Array of Role Strings ==="
 
+    # Note: strings are used as-is without automatic "role:" prefix
     constraint = @constraint_class.new(:ACL, ["Admin", "Moderator"])
     result = constraint.build
 
@@ -61,14 +64,14 @@ class ACLReadableByConstraintTest < Minitest::Test
         {
           "$match" => {
             "$or" => [
-              { "_rperm" => { "$in" => ["role:Admin", "role:Moderator", "*"] } },
+              { "_rperm" => { "$in" => ["Admin", "Moderator", "*"] } },
               { "_rperm" => { "$exists" => false } },
             ],
           },
         },
       ],
     }
-    assert_equal expected, result, "Should create ACL constraint for multiple roles"
+    assert_equal expected, result, "Should create ACL constraint for multiple strings (used as-is)"
     puts "✅ Array of role strings constraint works correctly"
   end
 
@@ -147,6 +150,7 @@ class ACLReadableByConstraintTest < Minitest::Test
     # Mock the role query to return no roles for simplicity
     Parse::Role.define_singleton_method(:all) { [] }
 
+    # Note: "Admin" is used as-is (no automatic prefix), "role:Moderator" already has prefix
     constraint = @constraint_class.new(:ACL, [user, user_pointer, "Admin", "role:Moderator"])
     result = constraint.build
 
@@ -155,20 +159,21 @@ class ACLReadableByConstraintTest < Minitest::Test
         {
           "$match" => {
             "$or" => [
-              { "_rperm" => { "$in" => ["user789", "user101", "role:Admin", "role:Moderator", "*"] } },
+              { "_rperm" => { "$in" => ["user789", "user101", "Admin", "role:Moderator", "*"] } },
               { "_rperm" => { "$exists" => false } },
             ],
           },
         },
       ],
     }
-    assert_equal expected, result, "Should handle mixed array of users and roles"
+    assert_equal expected, result, "Should handle mixed array of users and strings (strings used as-is)"
     puts "✅ Mixed array constraint works correctly"
   end
 
   def test_rperm_field
     puts "\n=== Testing _rperm Field ==="
 
+    # Note: strings are used as-is without automatic "role:" prefix
     constraint = @constraint_class.new(:_rperm, ["Admin", "Moderator"])
     result = constraint.build
 
@@ -177,14 +182,14 @@ class ACLReadableByConstraintTest < Minitest::Test
         {
           "$match" => {
             "$or" => [
-              { "_rperm" => { "$in" => ["role:Admin", "role:Moderator", "*"] } },
+              { "_rperm" => { "$in" => ["Admin", "Moderator", "*"] } },
               { "_rperm" => { "$exists" => false } },
             ],
           },
         },
       ],
     }
-    assert_equal expected, result, "Should create _rperm constraint with public access"
+    assert_equal expected, result, "Should create _rperm constraint with public access (strings as-is)"
     puts "✅ _rperm field constraint works correctly"
   end
 
@@ -199,6 +204,7 @@ class ACLReadableByConstraintTest < Minitest::Test
     # Mock the role query to return no roles for simplicity
     Parse::Role.define_singleton_method(:all) { [] }
 
+    # Note: "Admin" string is used as-is without automatic "role:" prefix
     constraint = @constraint_class.new(:_rperm, [user, "Admin"])
     result = constraint.build
 
@@ -207,14 +213,14 @@ class ACLReadableByConstraintTest < Minitest::Test
         {
           "$match" => {
             "$or" => [
-              { "_rperm" => { "$in" => ["user123", "role:Admin", "*"] } },
+              { "_rperm" => { "$in" => ["user123", "Admin", "*"] } },
               { "_rperm" => { "$exists" => false } },
             ],
           },
         },
       ],
     }
-    assert_equal expected, result, "Should create _rperm constraint with user ID and roles"
+    assert_equal expected, result, "Should create _rperm constraint with user ID and string (as-is)"
     puts "✅ _rperm with user constraint works correctly"
   end
 

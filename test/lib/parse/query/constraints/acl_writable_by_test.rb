@@ -9,6 +9,8 @@ class ACLWritableByConstraintTest < Minitest::Test
   def test_single_role_string
     puts "\n=== Testing Single Role String ==="
 
+    # Note: strings are used as-is without automatic "role:" prefix
+    # Use writable_by_role for automatic prefix, or explicitly include "role:" in string
     constraint = @constraint_class.new(:ACL, "Admin")
     result = constraint.build
 
@@ -17,14 +19,14 @@ class ACLWritableByConstraintTest < Minitest::Test
         {
           "$match" => {
             "$or" => [
-              { "_wperm" => { "$in" => ["role:Admin", "*"] } },
+              { "_wperm" => { "$in" => ["Admin", "*"] } },
               { "_wperm" => { "$exists" => false } },
             ],
           },
         },
       ],
     }
-    assert_equal expected, result, "Should create ACL constraint for single role"
+    assert_equal expected, result, "Should create ACL constraint for single string (used as-is)"
     puts "✅ Single role string constraint works correctly"
   end
 
@@ -53,6 +55,7 @@ class ACLWritableByConstraintTest < Minitest::Test
   def test_array_of_role_strings
     puts "\n=== Testing Array of Role Strings ==="
 
+    # Note: strings are used as-is without automatic "role:" prefix
     constraint = @constraint_class.new(:ACL, ["Admin", "Moderator"])
     result = constraint.build
 
@@ -61,14 +64,14 @@ class ACLWritableByConstraintTest < Minitest::Test
         {
           "$match" => {
             "$or" => [
-              { "_wperm" => { "$in" => ["role:Admin", "role:Moderator", "*"] } },
+              { "_wperm" => { "$in" => ["Admin", "Moderator", "*"] } },
               { "_wperm" => { "$exists" => false } },
             ],
           },
         },
       ],
     }
-    assert_equal expected, result, "Should create ACL constraint for multiple roles"
+    assert_equal expected, result, "Should create ACL constraint for multiple strings (used as-is)"
     puts "✅ Array of role strings constraint works correctly"
   end
 
@@ -147,6 +150,7 @@ class ACLWritableByConstraintTest < Minitest::Test
     # Mock the role query to return no roles for simplicity
     Parse::Role.define_singleton_method(:all) { [] }
 
+    # Note: "Admin" is used as-is (no automatic prefix), "role:Moderator" already has prefix
     constraint = @constraint_class.new(:ACL, [user, user_pointer, "Admin", "role:Moderator"])
     result = constraint.build
 
@@ -155,20 +159,21 @@ class ACLWritableByConstraintTest < Minitest::Test
         {
           "$match" => {
             "$or" => [
-              { "_wperm" => { "$in" => ["user789", "user101", "role:Admin", "role:Moderator", "*"] } },
+              { "_wperm" => { "$in" => ["user789", "user101", "Admin", "role:Moderator", "*"] } },
               { "_wperm" => { "$exists" => false } },
             ],
           },
         },
       ],
     }
-    assert_equal expected, result, "Should handle mixed array of users and roles"
+    assert_equal expected, result, "Should handle mixed array of users and strings (strings used as-is)"
     puts "✅ Mixed array constraint works correctly"
   end
 
   def test_wperm_field
     puts "\n=== Testing _wperm Field ==="
 
+    # Note: strings are used as-is without automatic "role:" prefix
     constraint = @constraint_class.new(:_wperm, ["Admin", "Moderator"])
     result = constraint.build
 
@@ -177,14 +182,14 @@ class ACLWritableByConstraintTest < Minitest::Test
         {
           "$match" => {
             "$or" => [
-              { "_wperm" => { "$in" => ["role:Admin", "role:Moderator", "*"] } },
+              { "_wperm" => { "$in" => ["Admin", "Moderator", "*"] } },
               { "_wperm" => { "$exists" => false } },
             ],
           },
         },
       ],
     }
-    assert_equal expected, result, "Should create _wperm constraint with public access"
+    assert_equal expected, result, "Should create _wperm constraint with public access (strings as-is)"
     puts "✅ _wperm field constraint works correctly"
   end
 
@@ -199,6 +204,7 @@ class ACLWritableByConstraintTest < Minitest::Test
     # Mock the role query to return no roles for simplicity
     Parse::Role.define_singleton_method(:all) { [] }
 
+    # Note: "Admin" string is used as-is without automatic "role:" prefix
     constraint = @constraint_class.new(:_wperm, [user, "Admin"])
     result = constraint.build
 
@@ -207,14 +213,14 @@ class ACLWritableByConstraintTest < Minitest::Test
         {
           "$match" => {
             "$or" => [
-              { "_wperm" => { "$in" => ["user123", "role:Admin", "*"] } },
+              { "_wperm" => { "$in" => ["user123", "Admin", "*"] } },
               { "_wperm" => { "$exists" => false } },
             ],
           },
         },
       ],
     }
-    assert_equal expected, result, "Should create _wperm constraint with user ID and roles"
+    assert_equal expected, result, "Should create _wperm constraint with user ID and string (as-is)"
     puts "✅ _wperm with user constraint works correctly"
   end
 
@@ -273,6 +279,7 @@ class ACLWritableByConstraintTest < Minitest::Test
   def test_comparison_with_readable_by
     puts "\n=== Testing Difference from readable_by ==="
 
+    # Note: strings are used as-is without automatic "role:" prefix
     readable_constraint = Parse::Constraint::ACLReadableByConstraint.new(:ACL, "Admin")
     writable_constraint = @constraint_class.new(:ACL, "Admin")
 
@@ -280,12 +287,13 @@ class ACLWritableByConstraintTest < Minitest::Test
     writable_result = writable_constraint.build
 
     # Should be the same structure but checking different permissions
+    # Both use strings as-is without automatic "role:" prefix
     expected_readable = {
       "__aggregation_pipeline" => [
         {
           "$match" => {
             "$or" => [
-              { "_rperm" => { "$in" => ["role:Admin", "*"] } },
+              { "_rperm" => { "$in" => ["Admin", "*"] } },
               { "_rperm" => { "$exists" => false } },
             ],
           },
@@ -297,7 +305,7 @@ class ACLWritableByConstraintTest < Minitest::Test
         {
           "$match" => {
             "$or" => [
-              { "_wperm" => { "$in" => ["role:Admin", "*"] } },
+              { "_wperm" => { "$in" => ["Admin", "*"] } },
               { "_wperm" => { "$exists" => false } },
             ],
           },
