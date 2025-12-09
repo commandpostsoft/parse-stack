@@ -66,6 +66,13 @@ module Parse
         client.schema parse_class
       end
 
+      # System classes that cannot be created or modified via the schema API.
+      # These are managed automatically by Parse Server.
+      SCHEMA_READONLY_CLASSES = [
+        Parse::Model::CLASS_PUSH_STATUS,
+        Parse::Model::CLASS_SCHEMA
+      ].freeze
+
       # A class method for non-destructive auto upgrading a remote schema based
       # on the properties and relations you have defined in your local model. If
       # the collection doesn't exist, we create the schema. If the collection already
@@ -75,6 +82,12 @@ module Parse
       # @return [Parse::Response] if the remote schema was modified.
       # @return [Boolean] if no changes were made to the schema, it returns true.
       def auto_upgrade!
+        # Skip read-only system classes that Parse Server manages automatically
+        if SCHEMA_READONLY_CLASSES.include?(parse_class)
+          warn "[Parse] Skipping #{parse_class} - managed automatically by Parse Server"
+          return true
+        end
+
         unless client.master_key.present?
           warn "[Parse] Schema changes for #{parse_class} is only available with the master key!"
           return false

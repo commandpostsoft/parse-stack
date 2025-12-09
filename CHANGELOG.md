@@ -1,5 +1,11 @@
 ## Parse-Stack Changelog
 
+### 3.1.11
+
+#### Bug Fixes
+
+- **FIXED**: `auto_upgrade!` now skips read-only system classes (`_PushStatus`, `_SCHEMA`) during schema upgrades. These classes are managed automatically by Parse Server and cannot be created or modified via the schema API. Previously, running `rake parse:upgrade` would fail with "Class _PushStatus does not exist" if push notifications hadn't been used yet.
+
 ### 3.1.10
 
 #### Performance Improvements
