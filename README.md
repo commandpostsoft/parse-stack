@@ -11,6 +11,7 @@ A full featured Active Model ORM and Ruby REST API for Parse-Server. [Parse Stac
 - **Schema Introspection & Migration** - Compare local models with server schema and generate migrations
 - **Enhanced Role Management** - Helper methods for role hierarchies, user management, and membership queries
 - **Read Preference Support** - Direct read queries to MongoDB secondary replicas
+- **Class-Level Permissions (CLP)** - Define and filter protected fields based on roles and user ownership
 - Advanced ACL query constraints (readable_by, writable_by)
 - Full transaction support with automatic retry
 - Comprehensive integration testing with Docker
@@ -469,6 +470,13 @@ For complete details, see [CHANGELOG.md](./CHANGELOG.md) and [Releases](https://
   - [Parse::Bytes](#parsebytes)
   - [Parse::TimeZone](#parsetimezone)
   - [Parse::ACL](#parseacl)
+  - [Parse::CLP (Class-Level Permissions)](#parseclp-class-level-permissions)
+    - [Defining CLPs in Models](#defining-clps-in-models)
+    - [Filtering Data for Webhook Responses](#filtering-data-for-webhook-responses)
+    - [Protected Fields Intersection Logic](#protected-fields-intersection-logic)
+    - [Push CLPs to Parse Server](#push-clps-to-parse-server)
+    - [Fetch and Inspect CLPs](#fetch-and-inspect-clps)
+    - [Owner-Based Access with userField](#owner-based-access-with-userfield)
   - [Parse::Session](#parsesession)
   - [Parse::Installation](#parseinstallation)
   - [Parse::Product](#parseproduct)
@@ -1178,6 +1186,157 @@ data.acl # => ACL({"role:Admin"=>{"read"=>true, "write"=>true}})
 ```
 
 For more information about Parse record ACLs, see the documentation at  [Security](http://docs.parseplatform.org/rest/guide/#security)
+
+### Parse::CLP (Class-Level Permissions)
+
+Class-Level Permissions (CLPs) control access at the schema level, determining who can perform operations on a class and which fields are visible to different users/roles. Unlike ACLs (which are per-object), CLPs apply to the entire class.
+
+#### Defining CLPs in Models
+
+Use the `set_clp` and `protect_fields` DSL methods to define CLPs:
+
+```ruby
+class Song < Parse::Object
+  property :title, :string
+  property :artist, :string
+  property :internal_notes, :string
+  property :royalty_data, :string
+  belongs_to :owner
+
+  # Set operation-level permissions
+  set_clp :find, public: true
+  set_clp :get, public: true
+  set_clp :create, public: false, roles: ["Admin", "Editor"]
+  set_clp :update, public: false, roles: ["Admin", "Editor"]
+  set_clp :delete, public: false, roles: ["Admin"]
+
+  # Protect fields from certain users (use camelCase for JSON field names)
+  protect_fields "*", [:internalNotes, :royaltyData]  # Hidden from everyone
+  protect_fields "role:Admin", []                      # Admins see everything
+  protect_fields "userField:owner", []                 # Owners see their own data
+end
+```
+
+**Supported Operations:** `:find`, `:get`, `:count`, `:create`, `:update`, `:delete`, `:addField`
+
+**Supported Patterns:**
+- `"*"` - Public (everyone)
+- `"role:RoleName"` - Users with specific role
+- `"userField:fieldName"` - Users referenced in a pointer field
+- `"authenticated"` - Any authenticated user
+- User objectId string - Specific user
+
+#### Filtering Data for Webhook Responses
+
+When returning data from webhooks, use `filter_for_user` to apply CLP field protection:
+
+```ruby
+# In a webhook handler
+def after_find(request)
+  user = request.user
+  roles = Song.roles_for_user(user)
+
+  # Filter each object for the requesting user
+  filtered_results = request.objects.map do |song|
+    song.filter_for_user(user, roles: roles)
+  end
+
+  # Or use the class method for arrays
+  filtered_results = Song.filter_results_for_user(request.objects, user, roles: roles)
+
+  { objects: filtered_results }
+end
+```
+
+#### Protected Fields Intersection Logic
+
+When a user matches multiple patterns, the protected fields are the **intersection** of all matching patterns. A field is only hidden if it's protected by ALL patterns that apply to the user:
+
+```ruby
+protect_fields "*", [:owner, :secret, :internal]  # Hide from everyone
+protect_fields "role:Admin", [:owner]             # Admins: only owner hidden
+protect_fields "userField:owner", []              # Owners see everything
+
+# User with Admin role matches "*" and "role:Admin":
+# - "*" protects: [owner, secret, internal]
+# - "role:Admin" protects: [owner]
+# - Intersection: [owner] - only this field is hidden
+# - "secret" and "internal" become visible (cleared by role pattern)
+
+# An empty array [] means "no fields protected" (user sees everything)
+# If ANY matching pattern has [], the intersection is empty (nothing hidden)
+```
+
+#### Push CLPs to Parse Server
+
+CLPs are automatically included when upgrading schemas:
+
+```ruby
+# Include CLPs in schema upgrade (default)
+Song.auto_upgrade!
+
+# Skip CLPs during schema upgrade
+Song.auto_upgrade!(include_clp: false)
+
+# Update only CLPs (no schema changes)
+Song.update_clp!
+```
+
+#### Fetch and Inspect CLPs
+
+```ruby
+# Fetch current CLPs from server
+clp = Song.fetch_clp
+
+# Check operation permissions
+clp.find_allowed?("*")           # => true (public find allowed)
+clp.create_allowed?("*")         # => false (public create denied)
+clp.role_allowed?(:create, "Admin")  # => true
+clp.requires_authentication?(:update)  # => false
+
+# Get protected fields for a pattern
+clp.protected_fields_for("*")          # => ["internalNotes", "royaltyData"]
+clp.protected_fields_for("role:Admin") # => []
+
+# Use fetched CLP for filtering
+filtered = song.filter_for_user(user, roles: roles, clp: clp)
+```
+
+#### Owner-Based Access with userField
+
+The `userField:fieldName` pattern allows owners (users referenced in a pointer field) to have different visibility:
+
+```ruby
+class Document < Parse::Object
+  property :content, :string
+  property :secret, :string
+  belongs_to :owner
+
+  # Hide secret and owner from everyone
+  protect_fields "*", [:secret, :owner]
+  # But owners of the document can see everything
+  protect_fields "userField:owner", []
+end
+
+# When filtering:
+doc_data = {
+  "content" => "Public content",
+  "secret" => "Private data",
+  "owner" => { "objectId" => "user123", "__type" => "Pointer" }
+}
+
+clp = Document.class_permissions
+
+# Owner sees everything
+clp.filter_fields(doc_data, user: "user123")
+# => { "content" => "...", "secret" => "...", "owner" => {...} }
+
+# Non-owner has protected fields hidden
+clp.filter_fields(doc_data, user: "other_user")
+# => { "content" => "..." }
+```
+
+This also works with arrays of pointers (e.g., `owners: [user1, user2]`).
 
 ### [Parse::Session](https://www.modernistik.com/gems/parse-stack/Parse/Session.html)
 This class represents the data and columns contained in the standard Parse `_Session` collection. You may add additional properties and methods to this class. See [Session API Reference](https://www.modernistik.com/gems/parse-stack/Parse/Session.html). You may call `Parse.use_shortnames!` to use `Session` in addition to `Parse::Session`.

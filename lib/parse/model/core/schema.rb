@@ -78,10 +78,15 @@ module Parse
       # the collection doesn't exist, we create the schema. If the collection already
       # exists, the current schema is fetched, and only add the additional fields
       # that are missing.
+      #
+      # Also updates Class-Level Permissions (CLPs) if defined on the model using
+      # the `set_clp` and `protect_fields` DSL methods.
+      #
       # @note This feature requires use of the master_key. No columns or fields are removed, this is a safe non-destructive upgrade.
+      # @param include_clp [Boolean] whether to also update CLPs (default: true)
       # @return [Parse::Response] if the remote schema was modified.
       # @return [Boolean] if no changes were made to the schema, it returns true.
-      def auto_upgrade!
+      def auto_upgrade!(include_clp: true)
         # Skip read-only system classes that Parse Server manages automatically
         if SCHEMA_READONLY_CLASSES.include?(parse_class)
           warn "[Parse] Skipping #{parse_class} - managed automatically by Parse Server"
@@ -117,10 +122,23 @@ module Parse
             h[k] = v if remote_fields[k.to_s].nil?
             h
           end
-          return true if current_schema[:fields].empty?
+
+          # Add CLP updates if configured and requested
+          if include_clp && respond_to?(:class_permissions) && class_permissions.present?
+            current_schema[:classLevelPermissions] = class_permissions.as_json
+          end
+
+          return true if current_schema[:fields].empty? && !current_schema[:classLevelPermissions]
           return update_schema(current_schema)
         end
-        create_schema
+
+        # Create new schema (class doesn't exist)
+        initial_schema = schema
+        # Include CLPs in initial schema creation if configured
+        if include_clp && respond_to?(:class_permissions) && class_permissions.present?
+          initial_schema[:classLevelPermissions] = class_permissions.as_json
+        end
+        client.create_schema parse_class, initial_schema
       end
     end
   end

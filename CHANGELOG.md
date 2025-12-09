@@ -1,5 +1,86 @@
 ## Parse-Stack Changelog
 
+### 3.2.0
+
+#### New Features
+
+- **NEW**: Added comprehensive Class-Level Permissions (CLP) support for protecting fields and controlling access at the schema level. CLPs allow you to hide sensitive fields from users based on roles, user ownership, and authentication status.
+
+**DSL for Defining CLPs:**
+
+```ruby
+class Song < Parse::Object
+  property :title, :string
+  property :artist, :string
+  property :internal_notes, :string
+  property :royalty_data, :string
+  belongs_to :owner
+
+  # Set operation-level permissions
+  set_clp :find, public: true
+  set_clp :get, public: true
+  set_clp :create, public: false, roles: ["Admin", "Editor"]
+  set_clp :update, public: false, roles: ["Admin", "Editor"]
+  set_clp :delete, public: false, roles: ["Admin"]
+
+  # Protect fields from certain users
+  protect_fields "*", [:internal_notes, :royalty_data]  # Hidden from everyone
+  protect_fields "role:Admin", []                        # Admins see everything
+  protect_fields "userField:owner", []                   # Owners see their own data
+end
+```
+
+**Filter Data for Webhook Responses:**
+
+```ruby
+# Filter a single object for a user
+filtered = song.filter_for_user(current_user, roles: ["Member"])
+
+# Filter an array of results
+filtered_results = Song.filter_results_for_user(songs, current_user, roles: user_roles)
+
+# Use a custom or fetched CLP
+server_clp = Song.fetch_clp
+filtered = song.filter_for_user(current_user, roles: roles, clp: server_clp)
+```
+
+**Protected Fields Intersection Logic:**
+
+When a user matches multiple patterns (e.g., public `*`, a role, and `userField:owner`), the protected fields are the **intersection** of all matching patterns. This matches Parse Server's behavior:
+
+```ruby
+protect_fields "*", [:owner, :secret, :internal]  # Hide from everyone
+protect_fields "role:Admin", [:owner]             # Admins only see owner hidden
+protect_fields "userField:owner", []              # Owners see everything
+
+# A user with Admin role matching both "*" and "role:Admin":
+# - Intersection: only "owner" is hidden (common to both patterns)
+# - "secret" and "internal" are visible (cleared by role pattern)
+```
+
+**Push CLPs to Parse Server:**
+
+```ruby
+# Automatically includes CLPs in schema upgrades
+Song.auto_upgrade!
+
+# Update only CLPs without schema changes
+Song.update_clp!
+
+# Fetch current CLPs from server
+clp = Song.fetch_clp
+clp.find_allowed?("role:Admin")     # => true
+clp.protected_fields_for("*")       # => ["internal_notes", "royalty_data"]
+```
+
+**Supported Patterns:**
+
+- `"*"` - Public (everyone)
+- `"role:RoleName"` - Users with specific role
+- `"userField:fieldName"` - Users referenced in a pointer field
+- `"authenticated"` - Any authenticated user
+- `"userId"` - Specific user by objectId
+
 ### 3.1.12
 
 #### New Features

@@ -22,6 +22,7 @@ require_relative "time_zone"
 require_relative "phone"
 require_relative "email"
 require_relative "acl"
+require_relative "clp"
 require_relative "push"
 require_relative "core/actions"
 require_relative "core/fetching"
@@ -370,6 +371,154 @@ module Parse
       def acl(acls, owner: nil)
         raise "[#{self}.acl DEPRECATED] - Use `#{self}.default_acl` instead."
       end
+
+      # @!group Class-Level Permissions (CLP)
+
+      # The Class-Level Permissions for this model.
+      # CLPs control access to the class at the schema level.
+      # @return [Parse::CLP] the CLP instance for this class
+      # @see Parse::CLP
+      def class_permissions
+        @class_permissions ||= Parse::CLP.new
+      end
+
+      alias_method :clp, :class_permissions
+
+      # Set a class-level permission for a specific operation.
+      # This is the main DSL method for configuring CLPs in your model.
+      #
+      # @param operation [Symbol] the operation (:find, :get, :count, :create, :update, :delete, :addField)
+      # @param public [Boolean, nil] whether public access is allowed
+      # @param roles [Array<String>, String] role names that have access
+      # @param users [Array<String>, String] user objectIds that have access
+      # @param pointer_fields [Array<String>, String] pointer field names for userField access
+      # @param requires_authentication [Boolean] whether authentication is required
+      #
+      # @example Basic usage
+      #   class Song < Parse::Object
+      #     # Allow public read
+      #     set_clp :find, public: true
+      #     set_clp :get, public: true
+      #
+      #     # Restrict write operations to specific roles
+      #     set_clp :create, public: false, roles: ["Admin", "Editor"]
+      #     set_clp :update, public: false, roles: ["Admin", "Editor"]
+      #     set_clp :delete, public: false, roles: ["Admin"]
+      #   end
+      #
+      # @example Requiring authentication
+      #   class PrivateData < Parse::Object
+      #     set_clp :find, requires_authentication: true
+      #     set_clp :get, requires_authentication: true
+      #   end
+      #
+      # @see Parse::CLP#set_permission
+      def set_clp(operation, public: nil, roles: [], users: [], pointer_fields: [], requires_authentication: false)
+        class_permissions.set_permission(
+          operation,
+          public_access: public,
+          roles: Array(roles),
+          users: Array(users),
+          pointer_fields: Array(pointer_fields),
+          requires_authentication: requires_authentication
+        )
+      end
+
+      alias_method :set_class_permission, :set_clp
+
+      # Define protected fields that should be hidden from certain users/roles.
+      # This is used to implement field-level security.
+      #
+      # @param pattern [String, Symbol] the pattern to apply protection for:
+      #   - "*" or :public - applies to all users (public)
+      #   - "role:RoleName" - applies to users in a specific role
+      #   - "userField:fieldName" - applies to users referenced in a pointer field
+      #   - user objectId - applies to a specific user
+      # @param fields [Array<String, Symbol>] field names to hide from this pattern.
+      #   An empty array means the user can see all fields.
+      #
+      # @example Hide fields from public but allow admins to see everything
+      #   class User < Parse::Object
+      #     property :email, :string
+      #     property :phone, :string
+      #     property :internal_notes, :string
+      #
+      #     # Hide sensitive fields from public
+      #     protect_fields "*", [:email, :phone, :internal_notes]
+      #
+      #     # Admins can see everything (empty array = no restrictions)
+      #     protect_fields "role:Admin", []
+      #
+      #     # Users can see their own data
+      #     protect_fields "userField:objectId", []
+      #   end
+      #
+      # @example Hide metadata from non-owners
+      #   class Image < Parse::Object
+      #     property :url, :string
+      #     property :metadata, :object  # GPS, camera info, etc.
+      #     belongs_to :owner, as: :user
+      #
+      #     # Hide metadata from everyone
+      #     protect_fields "*", [:metadata]
+      #
+      #     # But owners can see their own image metadata
+      #     protect_fields "userField:owner", []
+      #   end
+      #
+      # @see Parse::CLP#set_protected_fields
+      def protect_fields(pattern, fields)
+        pattern = "*" if pattern.to_sym == :public rescue pattern
+        class_permissions.set_protected_fields(pattern, Array(fields))
+      end
+
+      alias_method :set_protected_fields, :protect_fields
+
+      # Fetch the current CLP from the Parse Server for this class.
+      # @param client [Parse::Client] optional client to use
+      # @return [Parse::CLP] the CLP from the server
+      def fetch_clp(client: nil)
+        client ||= self.client
+        response = client.schema(parse_class)
+        return Parse::CLP.new unless response.success?
+
+        clp_data = response.result["classLevelPermissions"] || {}
+        Parse::CLP.new(clp_data)
+      end
+
+      alias_method :fetch_class_permissions, :fetch_clp
+
+      # Update the CLP on the Parse Server for this class.
+      # Merges local CLP with any existing server CLP.
+      #
+      # @param client [Parse::Client] optional client to use
+      # @param replace [Boolean] if true, replaces server CLP entirely; otherwise merges
+      # @return [Parse::Response] the response from the server
+      #
+      # @example Push local CLP to server
+      #   Song.update_clp!
+      #
+      # @example Replace server CLP entirely
+      #   Song.update_clp!(replace: true)
+      def update_clp!(client: nil, replace: false)
+        client ||= self.client
+
+        unless client.master_key.present?
+          warn "[Parse] CLP changes for #{parse_class} require the master key!"
+          return nil
+        end
+
+        clp_data = class_permissions.as_json
+        return nil if clp_data.empty?
+
+        schema_update = { "classLevelPermissions" => clp_data }
+        client.update_schema(parse_class, schema_update)
+      end
+
+      alias_method :update_class_permissions!, :update_clp!
+
+      # @!endgroup
+
     end # << self
 
     # @return [String] the Parse class for this object.
@@ -385,6 +534,85 @@ module Parse
     def schema
       self.class.schema
     end
+
+    # @!group Field Filtering (CLP)
+
+    # Filter this object's fields based on Class-Level Permissions for a user.
+    # Uses the CLP configured on the model class to determine which fields
+    # should be visible to the given user/roles context.
+    #
+    # This is useful for filtering webhook responses or API data before
+    # sending to clients.
+    #
+    # @param user [Parse::User, String, nil] the user or user ID
+    # @param roles [Array<String>] role names the user belongs to
+    # @param authenticated [Boolean] whether the user is authenticated
+    # @param clp [Parse::CLP, nil] optional CLP to use (defaults to class CLP)
+    # @return [Hash] filtered data hash with protected fields removed
+    #
+    # @example Filter object for a specific user
+    #   song = Song.first
+    #   filtered = song.filter_for_user(current_user, roles: ["Member"])
+    #
+    # @example Filter for unauthenticated access
+    #   filtered = song.filter_for_user(nil)
+    #
+    # @see Parse::CLP#filter_fields
+    def filter_for_user(user, roles: [], authenticated: nil, clp: nil)
+      clp ||= self.class.class_permissions
+      return as_json unless clp.present?
+
+      clp.filter_fields(as_json, user: user, roles: roles, authenticated: authenticated)
+    end
+
+    # Filter an array of Parse objects or hashes for a user.
+    # Class method that applies CLP filtering to multiple results.
+    #
+    # @param objects [Array<Parse::Object, Hash>] array of objects or hashes to filter
+    # @param user [Parse::User, String, nil] the user or user ID
+    # @param roles [Array<String>] role names the user belongs to
+    # @param authenticated [Boolean] whether the user is authenticated
+    # @param clp [Parse::CLP, nil] optional CLP to use (defaults to class CLP)
+    # @return [Array<Hash>] filtered data hashes with protected fields removed
+    #
+    # @example Filter query results for a user
+    #   songs = Song.query(artist: "Beatles").results
+    #   filtered = Song.filter_results_for_user(songs, current_user, roles: user_roles)
+    #
+    # @see Parse::CLP#filter_fields
+    def self.filter_results_for_user(objects, user, roles: [], authenticated: nil, clp: nil)
+      clp ||= class_permissions
+      return objects.map { |o| o.is_a?(Parse::Object) ? o.as_json : o } unless clp.present?
+
+      objects.map do |obj|
+        data = obj.is_a?(Parse::Object) ? obj.as_json : obj
+        clp.filter_fields(data, user: user, roles: roles, authenticated: authenticated)
+      end
+    end
+
+    # Fetch a user's roles for use with field filtering.
+    # Convenience method to get role names that can be passed to filter methods.
+    #
+    # @param user [Parse::User] the user to get roles for
+    # @return [Array<String>] role names (without "role:" prefix)
+    #
+    # @example Get roles and filter
+    #   roles = Song.roles_for_user(current_user)
+    #   filtered = song.filter_for_user(current_user, roles: roles)
+    def self.roles_for_user(user)
+      return [] unless user.is_a?(Parse::User) || user.is_a?(Parse::Pointer)
+      return [] unless defined?(Parse::Role)
+
+      user_id = user.respond_to?(:id) ? user.id : user.to_s
+      return [] if user_id.blank?
+
+      Parse::Role.all(users: user).map(&:name)
+    rescue => e
+      warn "[Parse] Error fetching roles for user: #{e.message}"
+      []
+    end
+
+    # @!endgroup
 
     # @return [Hash] a json-hash representing this object.
     # @param opts [Hash] options for serialization
