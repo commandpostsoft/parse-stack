@@ -90,6 +90,38 @@ class MongoDBOperatorsIntegrationTest < Minitest::Test
         assert_equal parse_names, direct_names, "starts_with results should match"
         assert_equal 2, direct_names.length, "Should find 2 products starting with iPhone"
 
+        # --- Test 2b: ends_with ---
+        puts "\n--- Test: ends_with operator ---"
+
+        parse_results = ProductOperatorTest.query(:name.ends_with => "Pro").all
+        parse_names = parse_results.map(&:name).sort
+        puts "Parse Server (:name.ends_with => 'Pro'): #{parse_names.inspect}"
+
+        direct_results = ProductOperatorTest.query(:name.ends_with => "Pro").results_direct
+        direct_names = direct_results.map(&:name).sort
+        puts "MongoDB Direct (:name.ends_with => 'Pro'): #{direct_names.inspect}"
+
+        assert_equal parse_names, direct_names, "ends_with results should match"
+        assert_equal 2, direct_names.length, "Should find 2 products ending with Pro"
+
+        # --- Test 2c: ends_with with special characters ---
+        puts "\n--- Test: ends_with with special characters ---"
+
+        # Add a product with special characters in name for testing
+        special_product = ProductOperatorTest.new(name: "Test File v1.0", description: "Test", category: "Test", tags: ["test"], price: 1)
+        special_product.save!
+
+        parse_results = ProductOperatorTest.query(:name.ends_with => "v1.0").all
+        parse_names = parse_results.map(&:name).sort
+        puts "Parse Server (:name.ends_with => 'v1.0'): #{parse_names.inspect}"
+
+        direct_results = ProductOperatorTest.query(:name.ends_with => "v1.0").results_direct
+        direct_names = direct_results.map(&:name).sort
+        puts "MongoDB Direct (:name.ends_with => 'v1.0'): #{direct_names.inspect}"
+
+        assert_equal parse_names, direct_names, "ends_with with special chars results should match"
+        assert_equal 1, direct_names.length, "Should find 1 product ending with v1.0"
+
         # --- Test 3: Regex with description field ---
         puts "\n--- Test: Regex on description ---"
 

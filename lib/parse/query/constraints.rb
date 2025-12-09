@@ -1994,6 +1994,42 @@ module Parse
       end
     end
 
+    # Equivalent to using the `$regex` Parse query operation with a suffix pattern.
+    # This is useful for matching fields that end with a specific string.
+    #
+    #  # Find files whose name ends with ".pdf"
+    #  File.where(:name.ends_with => ".pdf")
+    #  # Generates: "name": { "$regex": "\\.pdf$", "$options": "i" }
+    #
+    class EndsWithConstraint < Constraint
+      # @!method ends_with
+      # A registered method on a symbol to create the constraint. Maps to Parse operator "$regex".
+      # @example
+      #  q.where :field.ends_with => "suffix"
+      # @return [EndsWithConstraint]
+      constraint_keyword :$regex
+      register :ends_with
+
+      # @return [Hash] the compiled constraint.
+      def build
+        value = formatted_value
+        unless value.is_a?(String)
+          raise ArgumentError, "#{self.class}: Value must be a string for ends_with constraint"
+        end
+
+        # Validate length to prevent performance issues
+        if value.length > Parse::RegexSecurity::MAX_PATTERN_LENGTH
+          raise ArgumentError, "#{self.class}: Value too long (#{value.length} chars, max #{Parse::RegexSecurity::MAX_PATTERN_LENGTH})"
+        end
+
+        # Escape special regex characters in the suffix
+        escaped_value = Regexp.escape(value)
+        regex_pattern = "#{escaped_value}$"
+
+        { @operation.operand => { :$regex => regex_pattern, :$options => "i" } }
+      end
+    end
+
     # A convenience constraint that combines greater-than-or-equal and less-than-or-equal
     # constraints for date/time range queries. This is equivalent to using both $gte and $lte.
     #

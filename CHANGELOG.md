@@ -1,5 +1,23 @@
 ## Parse-Stack Changelog
 
+### 3.1.12
+
+#### New Features
+
+- **NEW**: Added `ends_with` query constraint for matching string fields that end with a specific suffix. This complements the existing `starts_with` and `contains` constraints.
+
+```ruby
+# Find files ending with .pdf
+Document.where(:filename.ends_with => ".pdf")
+# Generates: {"filename": {"$regex": "\\.pdf$", "$options": "i"}}
+
+# Find users with a specific email domain
+User.where(:email.ends_with => "@example.com")
+
+# Special regex characters are automatically escaped
+Product.where(:sku.ends_with => "v1.0")
+```
+
 ### 3.1.11
 
 #### Bug Fixes
