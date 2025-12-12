@@ -2,6 +2,48 @@
 
 ### 3.2.1
 
+#### New Features
+
+- **NEW**: Added `set_default_clp` method to set a default permission for all CLP operations at once. This is important because Parse Server treats missing operations as `{}` (no access, master key only).
+
+```ruby
+class Document < Parse::Object
+  # Set all operations to public by default
+  set_default_clp public: true
+
+  # Or require authentication for all operations
+  set_default_clp requires_authentication: true
+
+  # Or restrict all operations to specific roles
+  set_default_clp roles: ["Admin", "Editor"]
+
+  # Then override specific operations as needed
+  set_clp :delete, public: false, roles: ["Admin"]
+end
+```
+
+- **NEW**: Added `set_read_user_fields` and `set_write_user_fields` for pointer-based permissions. These allow users referenced by pointer fields to have read/write access to objects.
+
+```ruby
+class Document < Parse::Object
+  belongs_to :owner, as: :user
+  belongs_to :editor, as: :user
+
+  # Owner can read, editor can write
+  set_read_user_fields [:owner]
+  set_write_user_fields [:editor]
+
+  # Snake_case field names are auto-converted to camelCase
+end
+```
+
+- **NEW**: Added `reset_clp!` method to reset CLPs to public defaults. Useful for clearing restrictive permissions that may have accumulated on the server.
+
+```ruby
+# Reset all CLPs to public access
+Song.reset_clp!
+```
+
 #### Improvements
 
 - **IMPROVED**: CLP methods now automatically convert snake_case Ruby property names to camelCase Parse Server field names. This provides consistency with the rest of the Parse Stack framework where you define properties in snake_case.
@@ -12,7 +54,7 @@
 class Document < Parse::Object
   property :internal_notes, :string
   property :secret_data, :string
-  property :owner_user, :pointer, as: :user
+  belongs_to :owner_user, as: :user
 
   # Field names are auto-converted
   protect_fields "*", [:internal_notes, :secret_data]
@@ -33,8 +75,8 @@ end
 
 ```ruby
 class Document < Parse::Object
-  property :owner_field, :pointer, as: :user
-  property :editor_field, :pointer, as: :user
+  belongs_to :owner_field, as: :user
+  belongs_to :editor_field, as: :user
 
   # pointer_fields are auto-converted
   set_clp :update, pointer_fields: [:owner_field, :editor_field]
@@ -42,7 +84,27 @@ class Document < Parse::Object
 end
 ```
 
+- **IMPROVED**: Added `include_defaults` parameter to `CLP#as_json`. When `true`, includes default permissions for all undefined operations (useful when pushing complete CLP to server).
+
+```ruby
+clp = Parse::CLP.new
+clp.set_default_permission(public: true)
+clp.set_permission(:delete, roles: ["Admin"])
+
+# Without defaults - only explicitly set operations
+clp.as_json
+# => {"delete" => {"role:Admin" => true}}
+
+# With defaults - all operations included
+clp.as_json(include_defaults: true)
+# => {"find" => {"*" => true}, "get" => {"*" => true}, ... "delete" => {"role:Admin" => true}}
+```
+
 #### Bug Fixes
+
+- **FIXED**: `auto_upgrade!` now resets CLPs before applying new ones. Parse Server merges CLP updates rather than replacing them, so old restrictive permissions could persist and cause "Permission denied" errors. Now `auto_upgrade!` first resets CLPs to public defaults, then applies the model's CLP configuration.
+
+- **FIXED**: `as_json(include_defaults: true)` now properly includes all operations even when no explicit `set_default_clp` is called. Previously, models with only `protect_fields` (no operation permissions) would send CLPs without operation keys, causing "Permission denied" errors. Now defaults to public access for all operations when `include_defaults: true`.
 
 - **FIXED**: Test setup for role membership now correctly uses `add_users()` method for adding users to roles (roles use Parse Relations, not Array properties).
 

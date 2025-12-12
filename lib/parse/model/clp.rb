@@ -60,8 +60,14 @@ module Parse
   #
   # @see https://docs.parseplatform.org/rest/guide/#class-level-permissions
   class CLP
-    # Valid CLP operation keys
+    # Valid CLP operation keys for permission-based access
     OPERATIONS = %i[find get count create update delete addField].freeze
+
+    # Pointer-permission keys (users in these fields get read/write access)
+    POINTER_PERMISSIONS = %i[readUserFields writeUserFields].freeze
+
+    # All valid CLP keys
+    ALL_KEYS = (OPERATIONS + POINTER_PERMISSIONS + [:protectedFields]).freeze
 
     # @return [Hash] the raw CLP hash
     attr_reader :permissions
@@ -83,11 +89,48 @@ module Parse
           @protected_fields = value.transform_keys(&:to_s)
         elsif OPERATIONS.include?(key_sym)
           @permissions[key_sym] = value.transform_keys(&:to_s)
+        elsif POINTER_PERMISSIONS.include?(key_sym)
+          # readUserFields and writeUserFields are arrays of field names
+          @permissions[key_sym] = Array(value)
         else
-          # Store any other keys (like requiresAuthentication, etc.)
+          # Store any other keys
           @permissions[key_sym] = value
         end
       end
+    end
+
+    # Set pointer-permission fields for read access.
+    # Users pointed to by these fields can read the object.
+    # @param fields [Array<String, Symbol>] pointer field names
+    # @return [self]
+    # @example
+    #   clp.set_read_user_fields(:owner, :collaborators)
+    def set_read_user_fields(*fields)
+      @permissions[:readUserFields] = fields.flatten.map(&:to_s)
+      self
+    end
+
+    # Set pointer-permission fields for write access.
+    # Users pointed to by these fields can write to the object.
+    # @param fields [Array<String, Symbol>] pointer field names
+    # @return [self]
+    # @example
+    #   clp.set_write_user_fields(:owner)
+    def set_write_user_fields(*fields)
+      @permissions[:writeUserFields] = fields.flatten.map(&:to_s)
+      self
+    end
+
+    # Get the read user fields.
+    # @return [Array<String>] pointer field names for read access
+    def read_user_fields
+      @permissions[:readUserFields] || []
+    end
+
+    # Get the write user fields.
+    # @return [Array<String>] pointer field names for write access
+    def write_user_fields
+      @permissions[:writeUserFields] || []
     end
 
     # Set permissions for a specific operation.
@@ -255,20 +298,79 @@ module Parse
       data.reject { |key, _| fields_to_hide.include?(key.to_s) }
     end
 
+    # The default permission to use for operations not explicitly set.
+    # When set, `as_json` will include this for all undefined operations.
+    # @return [Hash, nil] the default permission hash (e.g., { "*" => true })
+    attr_accessor :default_permission
+
+    # Default public permission used as fallback when include_defaults is true
+    # but no explicit default_permission has been set.
+    DEFAULT_PUBLIC_PERMISSION = { "*" => true }.freeze
+
     # Convert to Parse Server CLP format.
+    #
+    # IMPORTANT: Parse Server interprets missing operations as {} (no access).
+    # If you have protectedFields but no operations defined, the class becomes
+    # effectively master-key-only. Use `set_default_permission` or `include_defaults`
+    # to ensure all operations are included.
+    #
+    # @param include_defaults [Boolean] whether to include default permissions
+    #   for operations that haven't been explicitly set. When true, uses
+    #   @default_permission if set, otherwise falls back to public access.
     # @return [Hash] the CLP hash suitable for schema updates
-    def as_json(*_args)
+    def as_json(include_defaults: nil)
       result = {}
+
+      # Determine if we should include defaults
+      # Auto-enable if any CLP settings exist and no explicit choice made
+      should_include_defaults = if include_defaults.nil?
+        present? && @default_permission
+      else
+        include_defaults
+      end
+
+      # Determine the default permission to use
+      # Use explicit default_permission if set, otherwise fall back to public
+      effective_default = @default_permission || DEFAULT_PUBLIC_PERMISSION
 
       # Add operation permissions
       OPERATIONS.each do |op|
-        result[op.to_s] = @permissions[op] if @permissions[op]
+        if @permissions[op]
+          result[op.to_s] = @permissions[op]
+        elsif should_include_defaults
+          result[op.to_s] = effective_default.dup
+        end
+      end
+
+      # Add pointer permissions (readUserFields, writeUserFields)
+      POINTER_PERMISSIONS.each do |perm|
+        result[perm.to_s] = @permissions[perm] if @permissions[perm]&.any?
       end
 
       # Add protected fields
       result["protectedFields"] = @protected_fields unless @protected_fields.empty?
 
       result
+    end
+
+    # Set the default permission for operations not explicitly configured.
+    # This ensures that when CLPs are pushed to Parse Server, all operations
+    # have explicit permissions (avoiding the implicit {} = no access behavior).
+    #
+    # @param public_access [Boolean] whether public access is allowed
+    # @param requires_authentication [Boolean] whether authentication is required
+    # @param roles [Array<String>] role names that have access
+    # @return [self]
+    # @example
+    #   clp.set_default_permission(public_access: true)  # Default to public
+    #   clp.set_default_permission(requires_authentication: true)  # Default to auth required
+    def set_default_permission(public_access: nil, requires_authentication: false, roles: [])
+      perm = {}
+      perm["*"] = true if public_access == true
+      perm["requiresAuthentication"] = true if requires_authentication
+      Array(roles).each { |role| perm["role:#{role}"] = true }
+      @default_permission = perm.empty? ? nil : perm
+      self
     end
 
     alias_method :to_h, :as_json

@@ -592,3 +592,293 @@ class TestCLPModelDSL < Minitest::Test
     refute other_result.key?("owner")
   end
 end
+
+# =============================================================================
+# Unit Tests for New CLP Features (3.2.1+)
+# =============================================================================
+
+class TestCLPDefaultPermissions < Minitest::Test
+  def setup
+    @clp = Parse::CLP.new
+  end
+
+  def test_set_default_permission_public
+    @clp.set_default_permission(public_access: true)
+    assert_equal({ "*" => true }, @clp.default_permission)
+  end
+
+  def test_set_default_permission_requires_auth
+    @clp.set_default_permission(requires_authentication: true)
+    assert_equal({ "requiresAuthentication" => true }, @clp.default_permission)
+  end
+
+  def test_set_default_permission_with_roles
+    @clp.set_default_permission(roles: ["Admin", "Editor"])
+    assert_equal({ "role:Admin" => true, "role:Editor" => true }, @clp.default_permission)
+  end
+
+  def test_as_json_includes_defaults_when_set
+    @clp.set_default_permission(public_access: true)
+    @clp.set_protected_fields("*", ["secret"])
+
+    json = @clp.as_json
+
+    # All operations should have default permission
+    %w[find get count create update delete addField].each do |op|
+      assert json.key?(op), "Should include #{op}"
+      assert_equal({ "*" => true }, json[op])
+    end
+
+    assert json.key?("protectedFields")
+  end
+
+  def test_as_json_explicit_permissions_override_defaults
+    @clp.set_default_permission(public_access: true)
+    @clp.set_permission(:delete, roles: ["Admin"])
+
+    json = @clp.as_json
+
+    # Delete should have role permission, not default
+    assert_equal({ "role:Admin" => true }, json["delete"])
+
+    # Others should have default
+    assert_equal({ "*" => true }, json["find"])
+  end
+
+  def test_as_json_without_defaults_excludes_undefined_operations
+    @clp.set_permission(:find, public_access: true)
+    @clp.set_protected_fields("*", ["secret"])
+
+    json = @clp.as_json
+
+    assert json.key?("find")
+    refute json.key?("get"), "Should not include undefined operations without defaults"
+    refute json.key?("create")
+  end
+
+  def test_as_json_include_defaults_false_overrides
+    @clp.set_default_permission(public_access: true)
+    @clp.set_permission(:find, public_access: true)
+
+    json = @clp.as_json(include_defaults: false)
+
+    assert json.key?("find")
+    refute json.key?("get"), "Should not include defaults when include_defaults: false"
+  end
+end
+
+class TestCLPPointerPermissions < Minitest::Test
+  def setup
+    @clp = Parse::CLP.new
+  end
+
+  def test_set_read_user_fields
+    @clp.set_read_user_fields(:owner, :collaborators)
+    assert_equal %w[owner collaborators], @clp.read_user_fields
+  end
+
+  def test_set_write_user_fields
+    @clp.set_write_user_fields(:owner)
+    assert_equal %w[owner], @clp.write_user_fields
+  end
+
+  def test_as_json_includes_pointer_permissions
+    @clp.set_read_user_fields(:owner, :editor)
+    @clp.set_write_user_fields(:owner)
+
+    json = @clp.as_json
+
+    assert_equal %w[owner editor], json["readUserFields"]
+    assert_equal %w[owner], json["writeUserFields"]
+  end
+
+  def test_parse_data_handles_pointer_permissions
+    data = {
+      "find" => { "*" => true },
+      "readUserFields" => ["owner", "collaborators"],
+      "writeUserFields" => ["owner"]
+    }
+
+    @clp.parse_data(data)
+
+    assert_equal %w[owner collaborators], @clp.read_user_fields
+    assert_equal %w[owner], @clp.write_user_fields
+  end
+
+  def test_pointer_permissions_constant
+    assert_includes Parse::CLP::POINTER_PERMISSIONS, :readUserFields
+    assert_includes Parse::CLP::POINTER_PERMISSIONS, :writeUserFields
+  end
+end
+
+class TestCLPSnakeCaseConversion < Minitest::Test
+  # Test model with snake_case properties
+  class SnakeCaseDoc < Parse::Object
+    property :internal_notes, :string
+    property :secret_data, :string
+    property :owner_user, :pointer, as: :user
+    property :custom_field, :string, field: "myCustomField"
+  end
+
+  def teardown
+    # Reset class permissions after each test
+    SnakeCaseDoc.instance_variable_set(:@class_permissions, nil)
+  end
+
+  def test_protect_fields_converts_snake_case_to_camel_case
+    SnakeCaseDoc.protect_fields "*", [:internal_notes, :secret_data]
+
+    clp = SnakeCaseDoc.class_permissions
+    fields = clp.protected_fields["*"]
+
+    assert_includes fields, "internalNotes"
+    assert_includes fields, "secretData"
+    refute_includes fields, "internal_notes"
+  end
+
+  def test_protect_fields_uses_field_map_for_custom_fields
+    SnakeCaseDoc.protect_fields "*", [:custom_field]
+
+    clp = SnakeCaseDoc.class_permissions
+    fields = clp.protected_fields["*"]
+
+    assert_includes fields, "myCustomField"
+    refute_includes fields, "customField"
+  end
+
+  def test_protect_fields_converts_userField_pattern
+    SnakeCaseDoc.protect_fields "userField:owner_user", []
+
+    clp = SnakeCaseDoc.class_permissions
+
+    assert clp.protected_fields.key?("userField:ownerUser")
+    refute clp.protected_fields.key?("userField:owner_user")
+  end
+
+  def test_set_clp_converts_pointer_fields
+    SnakeCaseDoc.set_clp :update, pointer_fields: [:owner_user]
+
+    clp = SnakeCaseDoc.class_permissions
+    perm = clp.permissions[:update]
+
+    # Pointer fields are stored as symbols internally
+    assert perm["pointerFields"].include?(:ownerUser) || perm["pointerFields"].include?("ownerUser"),
+      "Expected pointerFields to include ownerUser, got: #{perm['pointerFields'].inspect}"
+  end
+
+  def test_set_read_user_fields_converts_snake_case
+    SnakeCaseDoc.set_read_user_fields :owner_user
+
+    clp = SnakeCaseDoc.class_permissions
+
+    assert_includes clp.read_user_fields, "ownerUser"
+    refute_includes clp.read_user_fields, "owner_user"
+  end
+
+  def test_set_write_user_fields_converts_snake_case
+    SnakeCaseDoc.set_write_user_fields :owner_user
+
+    clp = SnakeCaseDoc.class_permissions
+
+    assert_includes clp.write_user_fields, "ownerUser"
+    refute_includes clp.write_user_fields, "owner_user"
+  end
+end
+
+class TestCLPDefaultCLPMethod < Minitest::Test
+  class DefaultCLPDoc < Parse::Object
+    property :title, :string
+  end
+
+  def teardown
+    DefaultCLPDoc.instance_variable_set(:@class_permissions, nil)
+  end
+
+  def test_set_default_clp_public
+    DefaultCLPDoc.set_default_clp public: true
+
+    json = DefaultCLPDoc.class_permissions.as_json
+
+    %w[find get count create update delete addField].each do |op|
+      assert json.key?(op), "Should include #{op}"
+      assert_equal({ "*" => true }, json[op])
+    end
+  end
+
+  def test_set_default_clp_requires_authentication
+    DefaultCLPDoc.set_default_clp requires_authentication: true
+
+    json = DefaultCLPDoc.class_permissions.as_json
+
+    %w[find get count create update delete addField].each do |op|
+      assert json.key?(op)
+      assert_equal({ "requiresAuthentication" => true }, json[op])
+    end
+  end
+
+  def test_set_default_clp_with_roles
+    DefaultCLPDoc.set_default_clp roles: ["Admin"]
+
+    json = DefaultCLPDoc.class_permissions.as_json
+
+    %w[find get count create update delete addField].each do |op|
+      assert json.key?(op)
+      assert_equal({ "role:Admin" => true }, json[op])
+    end
+  end
+
+  def test_set_default_clp_then_override_specific_operation
+    DefaultCLPDoc.set_default_clp public: true
+    DefaultCLPDoc.set_clp :delete, public: false, roles: ["Admin"]
+
+    json = DefaultCLPDoc.class_permissions.as_json
+
+    # Most operations should be public
+    assert_equal({ "*" => true }, json["find"])
+    assert_equal({ "*" => true }, json["get"])
+
+    # Delete should be restricted
+    assert_equal({ "role:Admin" => true }, json["delete"])
+  end
+end
+
+class TestCLPCompleteCLPOutput < Minitest::Test
+  class CompleteCLPDoc < Parse::Object
+    property :title, :string
+    property :secret, :string
+    property :owner_user, :pointer, as: :user
+  end
+
+  def teardown
+    CompleteCLPDoc.instance_variable_set(:@class_permissions, nil)
+  end
+
+  def test_complete_clp_has_all_components
+    CompleteCLPDoc.set_default_clp public: true
+    CompleteCLPDoc.set_clp :delete, roles: ["Admin"]
+    CompleteCLPDoc.set_read_user_fields :owner_user
+    CompleteCLPDoc.set_write_user_fields :owner_user
+    CompleteCLPDoc.protect_fields "*", [:secret]
+    CompleteCLPDoc.protect_fields "role:Admin", []
+
+    json = CompleteCLPDoc.class_permissions.as_json
+
+    # Operations
+    assert json.key?("find")
+    assert json.key?("get")
+    assert json.key?("count")
+    assert json.key?("create")
+    assert json.key?("update")
+    assert json.key?("delete")
+    assert json.key?("addField")
+
+    # Pointer permissions
+    assert_equal ["ownerUser"], json["readUserFields"]
+    assert_equal ["ownerUser"], json["writeUserFields"]
+
+    # Protected fields
+    assert json.key?("protectedFields")
+    assert json["protectedFields"].key?("*")
+    assert json["protectedFields"].key?("role:Admin")
+  end
+end
