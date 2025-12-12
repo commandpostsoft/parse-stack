@@ -665,6 +665,29 @@ class TestCLPDefaultPermissions < Minitest::Test
     assert json.key?("find")
     refute json.key?("get"), "Should not include defaults when include_defaults: false"
   end
+
+  # This test covers the edge case that caused "Permission denied" errors:
+  # When a model has only protect_fields (no set_default_clp), and auto_upgrade!
+  # calls as_json(include_defaults: true), all operations should still be included
+  # with public access as the fallback default.
+  def test_as_json_include_defaults_true_without_set_default_permission
+    # Only set protected fields, no set_default_permission or set_permission
+    @clp.set_protected_fields("*", ["secret_field"])
+
+    # This is what auto_upgrade! does
+    json = @clp.as_json(include_defaults: true)
+
+    # All operations should be included with public access (the fallback default)
+    %w[find get count create update delete addField].each do |op|
+      assert json.key?(op), "Should include #{op} operation"
+      assert_equal({ "*" => true }, json[op], "#{op} should default to public access"
+      )
+    end
+
+    # Protected fields should also be included
+    assert json.key?("protectedFields")
+    assert_equal ["secret_field"], json["protectedFields"]["*"]
+  end
 end
 
 class TestCLPPointerPermissions < Minitest::Test
