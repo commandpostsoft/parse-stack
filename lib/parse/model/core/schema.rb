@@ -73,6 +73,37 @@ module Parse
         Parse::Model::CLASS_SCHEMA
       ].freeze
 
+      # Default CLP that grants public access to all operations.
+      # Used to reset CLPs before applying new ones.
+      DEFAULT_PUBLIC_CLP = {
+        "find" => { "*" => true },
+        "get" => { "*" => true },
+        "count" => { "*" => true },
+        "create" => { "*" => true },
+        "update" => { "*" => true },
+        "delete" => { "*" => true },
+        "addField" => { "*" => true }
+      }.freeze
+
+      # Reset the CLP on the server to public defaults.
+      # This clears any existing restrictive permissions.
+      #
+      # @param client [Parse::Client] optional client to use
+      # @return [Parse::Response] the response from the server
+      #
+      # @example Reset CLPs to public
+      #   Song.reset_clp!
+      def reset_clp!(client: nil)
+        client ||= self.client
+
+        unless client.master_key.present?
+          warn "[Parse] CLP reset for #{parse_class} requires the master key!"
+          return nil
+        end
+
+        client.update_schema(parse_class, { "classLevelPermissions" => DEFAULT_PUBLIC_CLP })
+      end
+
       # A class method for non-destructive auto upgrading a remote schema based
       # on the properties and relations you have defined in your local model. If
       # the collection doesn't exist, we create the schema. If the collection already
@@ -123,9 +154,15 @@ module Parse
             h
           end
 
-          # Add CLP updates if configured and requested
+          # Handle CLP updates if configured and requested
           if include_clp && respond_to?(:class_permissions) && class_permissions.present?
-            current_schema[:classLevelPermissions] = class_permissions.as_json
+            # First, reset CLPs to public defaults to clear any old restrictive permissions.
+            # Parse Server merges CLPs rather than replacing them, so old keys can persist
+            # and cause "Permission denied" errors if not explicitly cleared.
+            reset_clp!
+
+            # Now apply the new CLP configuration
+            current_schema[:classLevelPermissions] = class_permissions.as_json(include_defaults: true)
           end
 
           return true if current_schema[:fields].empty? && !current_schema[:classLevelPermissions]
@@ -136,7 +173,7 @@ module Parse
         initial_schema = schema
         # Include CLPs in initial schema creation if configured
         if include_clp && respond_to?(:class_permissions) && class_permissions.present?
-          initial_schema[:classLevelPermissions] = class_permissions.as_json
+          initial_schema[:classLevelPermissions] = class_permissions.as_json(include_defaults: true)
         end
         client.create_schema parse_class, initial_schema
       end

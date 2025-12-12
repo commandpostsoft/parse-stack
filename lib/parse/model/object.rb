@@ -384,6 +384,90 @@ module Parse
 
       alias_method :clp, :class_permissions
 
+      # Set default permissions for all CLP operations at once.
+      # This is useful for establishing a baseline before customizing specific operations.
+      #
+      # @param public [Boolean] whether public access is allowed for all operations
+      # @param roles [Array<String>] role names that have access to all operations
+      # @param requires_authentication [Boolean] whether authentication is required for all operations
+      #
+      # @example Public read, authenticated write
+      #   class Document < Parse::Object
+      #     # Start with public read access for all operations
+      #     set_default_clp public: true
+      #
+      #     # Then restrict write operations
+      #     set_clp :create, requires_authentication: true
+      #     set_clp :update, requires_authentication: true
+      #     set_clp :delete, public: false, roles: ["Admin"]
+      #   end
+      #
+      # @example Role-based access for everything
+      #   class AdminReport < Parse::Object
+      #     # Only admins can do anything
+      #     set_default_clp public: false, roles: ["Admin"]
+      #   end
+      #
+      # @example Authenticated users only
+      #   class PrivateData < Parse::Object
+      #     # Require authentication for all operations
+      #     set_default_clp requires_authentication: true
+      #   end
+      def set_default_clp(public: nil, roles: [], requires_authentication: false)
+        # Set the default permission on the CLP instance
+        # This will be used by as_json to fill in missing operations
+        class_permissions.set_default_permission(
+          public_access: public,
+          roles: Array(roles),
+          requires_authentication: requires_authentication
+        )
+
+        # Also explicitly set all operations to ensure they're included
+        Parse::CLP::OPERATIONS.each do |operation|
+          set_clp(operation, public: public, roles: roles, requires_authentication: requires_authentication)
+        end
+      end
+
+      # Set pointer-permission fields for read access.
+      # Users pointed to by these fields can read objects of this class.
+      # This is an alternative to ACLs for owner-based access control.
+      #
+      # @param fields [Array<Symbol, String>] pointer field names (snake_case supported)
+      # @example
+      #   class Document < Parse::Object
+      #     belongs_to :owner, as: :user
+      #     belongs_to :editor, as: :user
+      #
+      #     # Only owner and editor can read
+      #     set_read_user_fields :owner, :editor
+      #   end
+      def set_read_user_fields(*fields)
+        converted = fields.flatten.map do |f|
+          field_sym = f.to_sym
+          field_map[field_sym] || f.to_s.camelize(:lower)
+        end
+        class_permissions.set_read_user_fields(*converted)
+      end
+
+      # Set pointer-permission fields for write access.
+      # Users pointed to by these fields can write to objects of this class.
+      #
+      # @param fields [Array<Symbol, String>] pointer field names (snake_case supported)
+      # @example
+      #   class Document < Parse::Object
+      #     belongs_to :owner, as: :user
+      #
+      #     # Only owner can write
+      #     set_write_user_fields :owner
+      #   end
+      def set_write_user_fields(*fields)
+        converted = fields.flatten.map do |f|
+          field_sym = f.to_sym
+          field_map[field_sym] || f.to_s.camelize(:lower)
+        end
+        class_permissions.set_write_user_fields(*converted)
+      end
+
       # Set a class-level permission for a specific operation.
       # This is the main DSL method for configuring CLPs in your model.
       #
