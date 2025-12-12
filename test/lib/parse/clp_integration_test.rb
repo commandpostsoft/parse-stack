@@ -61,6 +61,43 @@ class CLPIntegrationTest < Minitest::Test
     property :field_c, :string
   end
 
+  # Model for testing set_default_clp
+  class DefaultCLPTestDoc < Parse::Object
+    parse_class "DefaultCLPTestDoc"
+
+    property :title, :string
+    property :secret_field, :string
+  end
+
+  # Model for testing snake_case field conversion
+  class SnakeCaseTestDoc < Parse::Object
+    parse_class "SnakeCaseTestDoc"
+
+    property :public_title, :string
+    property :internal_notes, :string
+    property :secret_data, :string
+    belongs_to :owner_user, as: :user
+  end
+
+  # Model for comprehensive CLP testing
+  class CompleteCLPDoc < Parse::Object
+    parse_class "CompleteCLPDoc"
+
+    property :title, :string
+    property :public_data, :string
+    property :internal_notes, :string
+    property :owner_secret, :string
+    belongs_to :owner_user, as: :user
+  end
+
+  # Model for testing requiresAuthentication
+  class RequiresAuthDoc < Parse::Object
+    parse_class "RequiresAuthDoc"
+
+    property :title, :string
+    property :data, :string
+  end
+
   # Helper to configure CLP on a model dynamically
   def configure_protected_document_clp(admin_role_name)
     # Reset any existing CLP
@@ -111,6 +148,50 @@ class CLPIntegrationTest < Minitest::Test
     MultiRoleDocument.protect_fields "role:#{role_a_name}", ["fieldA", "fieldB"]
     MultiRoleDocument.protect_fields "role:#{role_b_name}", ["fieldB", "fieldC"]
     # User with both roles: intersection = ["fieldB"]
+  end
+
+  def configure_default_clp_test_doc(admin_role_name)
+    DefaultCLPTestDoc.instance_variable_set(:@class_permissions, nil)
+
+    # Set all operations to public by default
+    DefaultCLPTestDoc.set_default_clp public: true
+    # Override delete to require admin role
+    DefaultCLPTestDoc.set_clp :delete, public: false, roles: [admin_role_name]
+    # Protect secret_field from public
+    DefaultCLPTestDoc.protect_fields :public, [:secret_field]
+  end
+
+  def configure_snake_case_test_doc
+    SnakeCaseTestDoc.instance_variable_set(:@class_permissions, nil)
+
+    # Test snake_case to camelCase conversion
+    SnakeCaseTestDoc.set_default_clp public: true
+    # Use snake_case field names - should be converted to camelCase
+    SnakeCaseTestDoc.protect_fields :public, [:internal_notes, :secret_data]
+    # Use snake_case in userField pattern
+    SnakeCaseTestDoc.protect_fields "userField:owner_user", []
+  end
+
+  def configure_complete_clp_doc(admin_role_name)
+    CompleteCLPDoc.instance_variable_set(:@class_permissions, nil)
+
+    # Set defaults for all operations
+    CompleteCLPDoc.set_default_clp public: true
+    # Restrict delete to admins
+    CompleteCLPDoc.set_clp :delete, public: false, roles: [admin_role_name]
+    # Protect sensitive fields using snake_case
+    CompleteCLPDoc.protect_fields :public, [:internal_notes, :owner_secret, :owner_user]
+    CompleteCLPDoc.protect_fields "role:#{admin_role_name}", [:owner_secret]  # Admins can see internal_notes but not owner_secret
+    CompleteCLPDoc.protect_fields "userField:owner_user", []  # Owners see everything
+  end
+
+  def configure_requires_auth_doc
+    RequiresAuthDoc.instance_variable_set(:@class_permissions, nil)
+
+    # Set find to require authentication
+    RequiresAuthDoc.set_clp :find, public: false, requires_authentication: true
+    RequiresAuthDoc.set_clp :get, public: false, requires_authentication: true
+    RequiresAuthDoc.set_clp :create, public: true
   end
 
   # ==========================================================================
@@ -1035,6 +1116,280 @@ class CLPIntegrationTest < Minitest::Test
         auth_filtered = clp.filter_fields(doc.as_json, user: @regular_user.id, authenticated: true)
         assert auth_filtered["publicField"]
         refute auth_filtered.key?("authenticatedOnlyField"), "Should be hidden from authenticated"
+      end
+    end
+  end
+
+  # ==========================================================================
+  # Integration Tests for New CLP Features (3.2.1+)
+  # ==========================================================================
+
+  def test_set_default_clp_pushes_all_operations_to_server
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
+
+    with_parse_server do
+      with_timeout(20, "set_default_clp integration test") do
+        setup_test_roles
+
+        # Configure CLP with dynamic admin role name
+        configure_default_clp_test_doc(@admin_role_name)
+
+        # Push schema with CLPs
+        DefaultCLPTestDoc.auto_upgrade!
+
+        # Fetch schema from server
+        schema_response = Parse.client.schema("DefaultCLPTestDoc")
+        assert schema_response.success?, "Schema fetch should succeed"
+
+        clps = schema_response.result["classLevelPermissions"]
+        puts "Server CLPs: #{clps.inspect}"
+
+        # Verify all operations are present on server
+        %w[find get count create update addField].each do |op|
+          assert clps.key?(op), "Server should have #{op} operation"
+          assert_equal(({ "*" => true }), clps[op], "#{op} should be public")
+        end
+
+        # Delete should be restricted to admin role
+        assert clps.key?("delete")
+        assert clps["delete"].key?("role:#{@admin_role_name}"), "delete should require admin role"
+
+        # Protected fields should be present
+        assert clps.key?("protectedFields")
+        assert clps["protectedFields"]["*"].include?("secretField")
+      end
+    end
+  end
+
+  def test_snake_case_fields_converted_on_server
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
+
+    with_parse_server do
+      with_timeout(20, "snake_case conversion integration test") do
+        setup_test_users
+
+        # Configure CLP with snake_case field names
+        configure_snake_case_test_doc
+
+        # Push schema
+        SnakeCaseTestDoc.auto_upgrade!
+
+        # Fetch schema from server
+        schema_response = Parse.client.schema("SnakeCaseTestDoc")
+        clps = schema_response.result["classLevelPermissions"]
+
+        puts "Protected fields on server: #{clps['protectedFields'].inspect}"
+
+        # Verify camelCase conversion
+        assert clps["protectedFields"]["*"].include?("internalNotes"),
+          "internal_notes should be converted to internalNotes"
+        assert clps["protectedFields"]["*"].include?("secretData"),
+          "secret_data should be converted to secretData"
+
+        # Verify userField pattern conversion
+        assert clps["protectedFields"].key?("userField:ownerUser"),
+          "userField:owner_user should be converted to userField:ownerUser"
+
+        # Create a document and verify field filtering works
+        doc = SnakeCaseTestDoc.new
+        doc.public_title = "Test Document"
+        doc.internal_notes = "Secret notes"
+        doc.secret_data = "Hidden data"
+        doc.owner_user = @owner_user
+        assert doc.save
+
+        # Query as regular user (not owner) - should not see protected fields
+        logged_in = login_user(@regular_username, @regular_password)
+
+        # Make raw HTTP request to verify server filtering
+        require "net/http"
+        require "json"
+
+        uri = URI("#{Parse.client.server_url}classes/SnakeCaseTestDoc/#{doc.id}")
+        http = Net::HTTP.new(uri.host, uri.port)
+        request = Net::HTTP::Get.new(uri)
+        request["X-Parse-Application-Id"] = Parse.client.application_id
+        request["X-Parse-REST-API-Key"] = Parse.client.api_key
+        request["X-Parse-Session-Token"] = logged_in.session_token
+
+        response = http.request(request)
+        raw_json = JSON.parse(response.body)
+
+        puts "Non-owner response fields: #{raw_json.keys.inspect}"
+
+        assert raw_json.key?("publicTitle"), "Should see publicTitle"
+        refute raw_json.key?("internalNotes"), "Should NOT see internalNotes"
+        refute raw_json.key?("secretData"), "Should NOT see secretData"
+
+        # Now query as owner - should see everything due to userField:ownerUser
+        owner_logged_in = login_user(@owner_username, @owner_password)
+
+        request2 = Net::HTTP::Get.new(uri)
+        request2["X-Parse-Application-Id"] = Parse.client.application_id
+        request2["X-Parse-REST-API-Key"] = Parse.client.api_key
+        request2["X-Parse-Session-Token"] = owner_logged_in.session_token
+
+        response2 = http.request(request2)
+        owner_json = JSON.parse(response2.body)
+
+        puts "Owner response fields: #{owner_json.keys.inspect}"
+
+        assert owner_json.key?("publicTitle"), "Owner should see publicTitle"
+        assert owner_json.key?("internalNotes"), "Owner should see internalNotes"
+        assert owner_json.key?("secretData"), "Owner should see secretData"
+      end
+    end
+  end
+
+  def test_requires_authentication_blocks_unauthenticated_requests
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
+
+    with_parse_server do
+      with_timeout(20, "requiresAuthentication integration test") do
+        setup_test_users
+
+        # Configure CLP with requiresAuthentication
+        configure_requires_auth_doc
+
+        # Push schema
+        RequiresAuthDoc.auto_upgrade!
+
+        # Create a document with master key
+        doc = RequiresAuthDoc.new
+        doc.title = "Auth Required Doc"
+        doc.data = "Some data"
+        assert doc.save
+
+        # Try to query WITHOUT session token - should fail
+        require "net/http"
+        require "json"
+
+        uri = URI("#{Parse.client.server_url}classes/RequiresAuthDoc")
+        http = Net::HTTP.new(uri.host, uri.port)
+
+        # Request without session token
+        request = Net::HTTP::Get.new(uri)
+        request["X-Parse-Application-Id"] = Parse.client.application_id
+        request["X-Parse-REST-API-Key"] = Parse.client.api_key
+        # No session token!
+
+        response = http.request(request)
+        raw_json = JSON.parse(response.body)
+
+        puts "Unauthenticated response: #{response.code} - #{raw_json.inspect}"
+
+        # Should get permission denied
+        assert response.code != "200" || raw_json["error"],
+          "Unauthenticated request should be denied"
+
+        # Now try WITH session token - should succeed
+        logged_in = login_user(@regular_username, @regular_password)
+
+        request2 = Net::HTTP::Get.new(uri)
+        request2["X-Parse-Application-Id"] = Parse.client.application_id
+        request2["X-Parse-REST-API-Key"] = Parse.client.api_key
+        request2["X-Parse-Session-Token"] = logged_in.session_token
+
+        response2 = http.request(request2)
+        auth_json = JSON.parse(response2.body)
+
+        puts "Authenticated response: #{response2.code} - #{auth_json.keys.inspect}"
+
+        assert_equal "200", response2.code, "Authenticated request should succeed"
+        assert auth_json.key?("results"), "Should have results"
+      end
+    end
+  end
+
+  def test_complete_clp_with_all_features
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
+
+    with_parse_server do
+      with_timeout(25, "complete CLP integration test") do
+        setup_test_users
+        setup_test_roles
+
+        # Configure CLP with dynamic role name
+        configure_complete_clp_doc(@admin_role_name)
+
+        # Push schema
+        CompleteCLPDoc.auto_upgrade!
+
+        # Verify schema was pushed correctly
+        schema_response = Parse.client.schema("CompleteCLPDoc")
+        clps = schema_response.result["classLevelPermissions"]
+
+        puts "\n=== Complete CLP Schema ==="
+        puts JSON.pretty_generate(clps)
+
+        # Create test document owned by owner_user
+        doc = CompleteCLPDoc.new
+        doc.title = "Complete Test"
+        doc.public_data = "Public info"
+        doc.internal_notes = "Admin can see this"
+        doc.owner_secret = "Only owner sees this"
+        doc.owner_user = @owner_user
+        assert doc.save
+
+        require "net/http"
+        require "json"
+
+        uri = URI("#{Parse.client.server_url}classes/CompleteCLPDoc/#{doc.id}")
+        http = Net::HTTP.new(uri.host, uri.port)
+
+        # Test 1: Public user (no special role) - sees only public fields
+        puts "\n=== Test 1: Regular User ==="
+        regular_logged_in = login_user(@regular_username, @regular_password)
+        request = Net::HTTP::Get.new(uri)
+        request["X-Parse-Application-Id"] = Parse.client.application_id
+        request["X-Parse-REST-API-Key"] = Parse.client.api_key
+        request["X-Parse-Session-Token"] = regular_logged_in.session_token
+
+        response = http.request(request)
+        regular_json = JSON.parse(response.body)
+        puts "Regular user sees: #{regular_json.keys.sort.inspect}"
+
+        assert regular_json.key?("title"), "Regular user sees title"
+        assert regular_json.key?("publicData"), "Regular user sees publicData"
+        refute regular_json.key?("internalNotes"), "Regular user does NOT see internalNotes"
+        refute regular_json.key?("ownerSecret"), "Regular user does NOT see ownerSecret"
+
+        # Test 2: Admin user - sees internal_notes but not owner_secret
+        puts "\n=== Test 2: Admin User ==="
+        admin_logged_in = login_user(@admin_username, @admin_password)
+        request2 = Net::HTTP::Get.new(uri)
+        request2["X-Parse-Application-Id"] = Parse.client.application_id
+        request2["X-Parse-REST-API-Key"] = Parse.client.api_key
+        request2["X-Parse-Session-Token"] = admin_logged_in.session_token
+
+        response2 = http.request(request2)
+        admin_json = JSON.parse(response2.body)
+        puts "Admin user sees: #{admin_json.keys.sort.inspect}"
+
+        assert admin_json.key?("title"), "Admin sees title"
+        assert admin_json.key?("internalNotes"), "Admin sees internalNotes (intersection with role)"
+        # Note: Due to intersection logic, admin should see internalNotes
+        # but whether they see ownerSecret depends on how Parse Server implements intersection
+
+        # Test 3: Owner - sees everything
+        puts "\n=== Test 3: Owner User ==="
+        owner_logged_in = login_user(@owner_username, @owner_password)
+        request3 = Net::HTTP::Get.new(uri)
+        request3["X-Parse-Application-Id"] = Parse.client.application_id
+        request3["X-Parse-REST-API-Key"] = Parse.client.api_key
+        request3["X-Parse-Session-Token"] = owner_logged_in.session_token
+
+        response3 = http.request(request3)
+        owner_json = JSON.parse(response3.body)
+        puts "Owner user sees: #{owner_json.keys.sort.inspect}"
+
+        assert owner_json.key?("title"), "Owner sees title"
+        assert owner_json.key?("publicData"), "Owner sees publicData"
+        assert owner_json.key?("internalNotes"), "Owner sees internalNotes"
+        assert owner_json.key?("ownerSecret"), "Owner sees ownerSecret"
+        assert owner_json.key?("ownerUser"), "Owner sees ownerUser"
+
+        puts "\n=== Complete CLP Test Passed ==="
       end
     end
   end
