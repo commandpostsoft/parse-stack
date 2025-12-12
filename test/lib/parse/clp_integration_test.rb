@@ -154,25 +154,20 @@ class CLPIntegrationTest < Minitest::Test
     @role_a_name = "RoleA_#{SecureRandom.hex(4)}"
     @role_b_name = "RoleB_#{SecureRandom.hex(4)}"
 
-    @admin_role = Parse::Role.new({
-      name: @admin_role_name,
-      users: [@admin_user],
-      roles: []
-    })
+    # Create admin role and add user via relation (not constructor)
+    # users is a has_many :through relation, so must use add_users()
+    @admin_role = Parse::Role.new(name: @admin_role_name)
+    @admin_role.add_users(@admin_user)
     assert @admin_role.save, "Should save admin role"
 
-    @role_a = Parse::Role.new({
-      name: @role_a_name,
-      users: [@regular_user],
-      roles: []
-    })
+    # Create RoleA with regular user
+    @role_a = Parse::Role.new(name: @role_a_name)
+    @role_a.add_users(@regular_user)
     assert @role_a.save, "Should save RoleA"
 
-    @role_b = Parse::Role.new({
-      name: @role_b_name,
-      users: [@regular_user],
-      roles: []
-    })
+    # Create RoleB with regular user
+    @role_b = Parse::Role.new(name: @role_b_name)
+    @role_b.add_users(@regular_user)
     assert @role_b.save, "Should save RoleB"
 
     puts "Created test roles: admin=#{@admin_role.name}, roleA=#{@role_a.name}, roleB=#{@role_b.name}"
@@ -552,6 +547,8 @@ class CLPIntegrationTest < Minitest::Test
 
   # ==========================================================================
   # Parse Server CLP Enforcement Tests (Session Token)
+  # These tests verify that Parse Server enforces CLPs at the API level,
+  # meaning ANY client (JS, Swift, etc.) will have fields filtered.
   # ==========================================================================
 
   def test_parse_server_enforces_clp_with_session_token
@@ -599,6 +596,408 @@ class CLPIntegrationTest < Minitest::Test
 
         refute filtered.key?("internalNotes"), "internalNotes should be filtered"
         refute filtered.key?("secretData"), "secretData should be filtered"
+      end
+    end
+  end
+
+  # ==========================================================================
+  # Raw HTTP Tests - Verify Parse Server enforces CLPs for ANY client
+  # These tests use raw HTTP requests to simulate non-Ruby clients (JS, Swift, etc.)
+  # ==========================================================================
+
+  def test_raw_http_request_without_master_key_has_fields_filtered_by_server
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
+
+    require "net/http"
+    require "json"
+
+    with_parse_server do
+      with_timeout(25, "Raw HTTP CLP enforcement test") do
+        setup_test_users
+        setup_test_roles
+
+        # Create schema and push CLPs to server
+        ProtectedDocument.auto_upgrade!(include_clp: false)
+        configure_protected_document_clp(@admin_role_name)
+        clp_result = ProtectedDocument.update_clp!
+
+        if clp_result.nil? || (clp_result.respond_to?(:success?) && !clp_result.success?)
+          skip "Server does not support protectedFields CLP configuration"
+        end
+
+        # Create a document with master key (all fields populated)
+        doc = ProtectedDocument.new
+        doc.title = "Raw HTTP Test Doc"
+        doc.content = "Public content"
+        doc.internal_notes = "SECRET: Should be hidden by Parse Server"
+        doc.secret_data = "TOP SECRET: Also hidden by Parse Server"
+        doc.author = @admin_user
+        assert doc.save, "Should save document with master key"
+
+        # Login as regular user to get session token
+        logged_in = login_user(@regular_username, @regular_password)
+        session_token = logged_in.session_token
+
+        # Get Parse Server connection details
+        server_url = Parse.client.server_url
+        app_id = Parse.client.application_id
+        api_key = Parse.client.api_key
+
+        # Make raw HTTP GET request - simulating a JavaScript client
+        # This request does NOT use master key, only session token
+        uri = URI("#{server_url}classes/ProtectedDocument/#{doc.id}")
+        http = Net::HTTP.new(uri.host, uri.port)
+        http.use_ssl = uri.scheme == "https"
+
+        request = Net::HTTP::Get.new(uri)
+        request["X-Parse-Application-Id"] = app_id
+        request["X-Parse-REST-API-Key"] = api_key
+        request["X-Parse-Session-Token"] = session_token
+        request["Content-Type"] = "application/json"
+
+        response = http.request(request)
+        assert_equal "200", response.code, "Should get 200 OK"
+
+        # Parse the raw JSON response from Parse Server
+        raw_json = JSON.parse(response.body)
+
+        # CRITICAL ASSERTIONS: Parse Server MUST filter these fields
+        # If these fail, Parse Server is not enforcing protectedFields
+        assert raw_json.key?("title"), "title should be in server response"
+        assert raw_json.key?("content"), "content should be in server response"
+
+        refute raw_json.key?("internalNotes"),
+          "SECURITY FAILURE: internalNotes was returned by Parse Server! " \
+          "Server should filter protected fields."
+
+        refute raw_json.key?("secretData"),
+          "SECURITY FAILURE: secretData was returned by Parse Server! " \
+          "Server should filter protected fields."
+      end
+    end
+  end
+
+  def test_raw_http_admin_role_sees_all_fields
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
+
+    require "net/http"
+    require "json"
+
+    with_parse_server do
+      with_timeout(30, "Raw HTTP admin role test") do
+        setup_test_users
+        setup_test_roles
+
+        # Create schema and push CLPs to server
+        ProtectedDocument.auto_upgrade!(include_clp: false)
+        configure_protected_document_clp(@admin_role_name)
+        clp_result = ProtectedDocument.update_clp!
+
+        if clp_result.nil? || (clp_result.respond_to?(:success?) && !clp_result.success?)
+          skip "Server does not support protectedFields CLP configuration"
+        end
+
+        # Create a document with master key
+        doc = ProtectedDocument.new
+        doc.title = "Admin Access Test"
+        doc.internal_notes = "Admin should see this"
+        doc.secret_data = "Admin should also see this"
+        assert doc.save, "Should save document"
+
+        # Login as ADMIN user (who is in the admin role)
+        logged_in_admin = login_user(@admin_username, @admin_password)
+        session_token = logged_in_admin.session_token
+
+        # Get Parse Server connection details
+        server_url = Parse.client.server_url
+        app_id = Parse.client.application_id
+        api_key = Parse.client.api_key
+
+        # Make raw HTTP GET request as admin user
+        uri = URI("#{server_url}classes/ProtectedDocument/#{doc.id}")
+        http = Net::HTTP.new(uri.host, uri.port)
+        http.use_ssl = uri.scheme == "https"
+
+        request = Net::HTTP::Get.new(uri)
+        request["X-Parse-Application-Id"] = app_id
+        request["X-Parse-REST-API-Key"] = api_key
+        request["X-Parse-Session-Token"] = session_token
+        request["Content-Type"] = "application/json"
+
+        response = http.request(request)
+        assert_equal "200", response.code, "Should get 200 OK"
+
+        raw_json = JSON.parse(response.body)
+
+        # Admin role has empty protected fields [], so should see everything
+        # Parse Server protectedFields intersection logic:
+        # - User matches "*" (public) -> protects ["internalNotes", "secretData"]
+        # - User matches "role:AdminRole" -> protects [] (nothing)
+        # - Intersection = [] (nothing protected, admin sees all)
+        assert raw_json.key?("title"), "Admin should see title"
+        assert raw_json.key?("internalNotes"), "Admin should see internalNotes (role has [] protection)"
+        assert raw_json.key?("secretData"), "Admin should see secretData (role has [] protection)"
+      end
+    end
+  end
+
+  def test_raw_http_query_filters_protected_fields
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
+
+    require "net/http"
+    require "json"
+    require "uri"
+
+    with_parse_server do
+      with_timeout(25, "Raw HTTP query CLP test") do
+        setup_test_users
+        setup_test_roles
+
+        # Create schema and push CLPs to server
+        ProtectedDocument.auto_upgrade!(include_clp: false)
+        configure_protected_document_clp(@admin_role_name)
+        clp_result = ProtectedDocument.update_clp!
+
+        if clp_result.nil? || (clp_result.respond_to?(:success?) && !clp_result.success?)
+          skip "Server does not support protectedFields CLP configuration"
+        end
+
+        # Create multiple documents
+        3.times do |i|
+          doc = ProtectedDocument.new
+          doc.title = "Query Test Doc #{i}"
+          doc.internal_notes = "Secret notes #{i}"
+          doc.secret_data = "Secret data #{i}"
+          assert doc.save
+        end
+
+        # Login as regular user
+        logged_in = login_user(@regular_username, @regular_password)
+        session_token = logged_in.session_token
+
+        # Make raw HTTP query request (GET /classes/ProtectedDocument)
+        server_url = Parse.client.server_url
+        app_id = Parse.client.application_id
+        api_key = Parse.client.api_key
+
+        uri = URI("#{server_url}classes/ProtectedDocument")
+        http = Net::HTTP.new(uri.host, uri.port)
+        http.use_ssl = uri.scheme == "https"
+
+        request = Net::HTTP::Get.new(uri)
+        request["X-Parse-Application-Id"] = app_id
+        request["X-Parse-REST-API-Key"] = api_key
+        request["X-Parse-Session-Token"] = session_token
+        request["Content-Type"] = "application/json"
+
+        response = http.request(request)
+        assert_equal "200", response.code, "Should get 200 OK"
+
+        raw_json = JSON.parse(response.body)
+        results = raw_json["results"]
+        assert results.is_a?(Array), "Should have results array"
+        assert results.length >= 3, "Should have at least 3 documents"
+
+        # Verify ALL results have protected fields filtered
+        results.each_with_index do |result, idx|
+          assert result.key?("title"), "Result #{idx} should have title"
+
+          refute result.key?("internalNotes"),
+            "SECURITY FAILURE: Result #{idx} has internalNotes! Server must filter query results."
+
+          refute result.key?("secretData"),
+            "SECURITY FAILURE: Result #{idx} has secretData! Server must filter query results."
+        end
+      end
+    end
+  end
+
+  # ==========================================================================
+  # Webhook / Cloud Function CLP Filtering Tests
+  # These tests verify that CLP can be applied to webhook responses to filter
+  # fields based on the calling user's permissions.
+  # ==========================================================================
+
+  def test_webhook_applies_clp_to_filter_response_for_regular_user
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
+
+    with_parse_server do
+      with_timeout(20, "webhook CLP filter test") do
+        setup_test_users
+        setup_test_roles
+
+        # Setup CLP on the model
+        ProtectedDocument.auto_upgrade!(include_clp: false)
+        configure_protected_document_clp(@admin_role_name)
+
+        # Simulate webhook: fetch data with master key (full access)
+        doc = ProtectedDocument.new
+        doc.title = "User Profile"
+        doc.content = "Public bio"
+        doc.internal_notes = "Admin-only notes about this user"
+        doc.secret_data = "SSN: 123-45-6789"
+        assert doc.save
+
+        # === Simulate webhook handler: /getUserDetails ===
+        # Webhook receives request from a regular user (not admin)
+        # We have the user's session info and need to filter the response
+
+        # Method 1: Use filter_for_user on the object instance
+        filtered_response = doc.filter_for_user(@regular_user, roles: [])
+
+        assert filtered_response["title"], "Regular user should see title"
+        assert filtered_response["content"], "Regular user should see content"
+        refute filtered_response.key?("internalNotes"), "Regular user should NOT see internalNotes"
+        refute filtered_response.key?("secretData"), "Regular user should NOT see secretData"
+
+        # Method 2: Use class method for filtering multiple results
+        docs = ProtectedDocument.query.results
+        filtered_results = ProtectedDocument.filter_results_for_user(docs, @regular_user, roles: [])
+
+        filtered_results.each do |result|
+          refute result.key?("internalNotes"), "Filtered results should not have internalNotes"
+          refute result.key?("secretData"), "Filtered results should not have secretData"
+        end
+
+        # Method 3: Direct CLP filtering on raw hash data
+        raw_data = { "title" => "Test", "internalNotes" => "Secret", "secretData" => "Hidden" }
+        clp = ProtectedDocument.class_permissions
+        filtered_hash = clp.filter_fields(raw_data, user: @regular_user.id, roles: [])
+
+        assert filtered_hash["title"]
+        refute filtered_hash.key?("internalNotes")
+        refute filtered_hash.key?("secretData")
+      end
+    end
+  end
+
+  def test_webhook_applies_clp_to_allow_admin_full_access
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
+
+    with_parse_server do
+      with_timeout(20, "webhook CLP admin access test") do
+        setup_test_users
+        setup_test_roles
+
+        # Setup CLP on the model
+        ProtectedDocument.auto_upgrade!(include_clp: false)
+        configure_protected_document_clp(@admin_role_name)
+
+        # Create document with sensitive data
+        doc = ProtectedDocument.new
+        doc.title = "Sensitive Report"
+        doc.internal_notes = "For admin eyes only"
+        doc.secret_data = "Confidential data"
+        assert doc.save
+
+        # === Simulate webhook handler for admin user ===
+        # Admin user is in the admin role, which has [] (empty) protected fields
+        # Intersection with "*" pattern = [] (nothing hidden)
+
+        # Filter for admin - should see everything
+        admin_filtered = doc.filter_for_user(@admin_user, roles: [@admin_role_name])
+
+        assert admin_filtered["title"], "Admin should see title"
+        assert admin_filtered["internalNotes"], "Admin should see internalNotes"
+        assert admin_filtered["secretData"], "Admin should see secretData"
+      end
+    end
+  end
+
+  def test_webhook_applies_clp_with_owner_based_access
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
+
+    with_parse_server do
+      with_timeout(20, "webhook CLP owner access test") do
+        setup_test_users
+
+        # Setup CLP with userField pattern
+        OwnedDocument.auto_upgrade!(include_clp: false)
+        configure_owned_document_clp
+
+        # Create document owned by owner_user
+        doc = OwnedDocument.new
+        doc.title = "My Private Document"
+        doc.private_notes = "My personal notes"
+        doc.owner = @owner_user
+        assert doc.save
+
+        # === Simulate webhook: owner requests their own document ===
+        owner_response = doc.filter_for_user(@owner_user)
+
+        assert owner_response["title"], "Owner should see title"
+        assert owner_response["privateNotes"], "Owner should see their own privateNotes"
+        assert owner_response["owner"], "Owner should see owner field"
+
+        # === Simulate webhook: different user requests the document ===
+        other_user_response = doc.filter_for_user(@regular_user)
+
+        assert other_user_response["title"], "Other user should see title"
+        refute other_user_response.key?("privateNotes"), "Other user should NOT see privateNotes"
+        refute other_user_response.key?("owner"), "Other user should NOT see owner field"
+      end
+    end
+  end
+
+  def test_webhook_helper_method_for_filtering
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
+
+    with_parse_server do
+      with_timeout(20, "webhook helper method test") do
+        setup_test_users
+        setup_test_roles
+
+        ProtectedDocument.auto_upgrade!(include_clp: false)
+        configure_protected_document_clp(@admin_role_name)
+
+        # Create test documents
+        3.times do |i|
+          doc = ProtectedDocument.new
+          doc.title = "Document #{i}"
+          doc.content = "Content #{i}"
+          doc.internal_notes = "Secret #{i}"
+          doc.secret_data = "Hidden #{i}"
+          doc.save
+        end
+
+        # === Simulate a webhook that returns a list of documents ===
+        # This is the pattern you'd use in a real webhook handler:
+
+        # 1. Fetch data (with master key access)
+        all_docs = ProtectedDocument.query.results
+
+        # 2. Determine the calling user's context
+        calling_user = @regular_user
+        user_roles = []  # Regular user has no special roles
+
+        # 3. Apply CLP filtering before returning
+        filtered_response = ProtectedDocument.filter_results_for_user(
+          all_docs,
+          calling_user,
+          roles: user_roles
+        )
+
+        # 4. Verify the response is properly filtered
+        assert_equal 3, filtered_response.length
+        filtered_response.each do |doc_hash|
+          assert doc_hash.key?("title"), "Should have title"
+          assert doc_hash.key?("content"), "Should have content"
+          refute doc_hash.key?("internalNotes"), "Should NOT have internalNotes"
+          refute doc_hash.key?("secretData"), "Should NOT have secretData"
+        end
+
+        # Now filter for admin - should see all fields
+        admin_response = ProtectedDocument.filter_results_for_user(
+          all_docs,
+          @admin_user,
+          roles: [@admin_role_name]
+        )
+
+        admin_response.each do |doc_hash|
+          assert doc_hash.key?("title")
+          assert doc_hash.key?("internalNotes"), "Admin should see internalNotes"
+          assert doc_hash.key?("secretData"), "Admin should see secretData"
+        end
       end
     end
   end
