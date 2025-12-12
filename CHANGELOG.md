@@ -1,5 +1,51 @@
 ## Parse-Stack Changelog
 
+### 3.2.1
+
+#### Improvements
+
+- **IMPROVED**: CLP methods now automatically convert snake_case Ruby property names to camelCase Parse Server field names. This provides consistency with the rest of the Parse Stack framework where you define properties in snake_case.
+
+**`protect_fields` - field names and userField patterns:**
+
+```ruby
+class Document < Parse::Object
+  property :internal_notes, :string
+  property :secret_data, :string
+  property :owner_user, :pointer, as: :user
+
+  # Field names are auto-converted
+  protect_fields "*", [:internal_notes, :secret_data]
+  # Converts to: ["internalNotes", "secretData"]
+
+  # userField pattern field names are also converted
+  protect_fields "userField:owner_user", []
+  # Converts to: "userField:ownerUser"
+
+  # Custom field mappings are respected
+  property :custom_field, :string, field: "myCustomField"
+  protect_fields "*", [:custom_field]
+  # Converts to: ["myCustomField"]
+end
+```
+
+**`set_clp` - pointer_fields parameter:**
+
+```ruby
+class Document < Parse::Object
+  property :owner_field, :pointer, as: :user
+  property :editor_field, :pointer, as: :user
+
+  # pointer_fields are auto-converted
+  set_clp :update, pointer_fields: [:owner_field, :editor_field]
+  # Converts to: pointerFields: ["ownerField", "editorField"]
+end
+```
+
+#### Bug Fixes
+
+- **FIXED**: Test setup for role membership now correctly uses `add_users()` method for adding users to roles (roles use Parse Relations, not Array properties).
+
 ### 3.2.0
 
 #### New Features

@@ -414,12 +414,18 @@ module Parse
       #
       # @see Parse::CLP#set_permission
       def set_clp(operation, public: nil, roles: [], users: [], pointer_fields: [], requires_authentication: false)
+        # Convert snake_case pointer field names to camelCase
+        converted_pointer_fields = Array(pointer_fields).map do |field|
+          field_sym = field.to_sym
+          field_map[field_sym] || field.to_s.camelize(:lower)
+        end
+
         class_permissions.set_permission(
           operation,
           public_access: public,
           roles: Array(roles),
           users: Array(users),
-          pointer_fields: Array(pointer_fields),
+          pointer_fields: converted_pointer_fields,
           requires_authentication: requires_authentication
         )
       end
@@ -429,12 +435,16 @@ module Parse
       # Define protected fields that should be hidden from certain users/roles.
       # This is used to implement field-level security.
       #
+      # Field names are automatically converted from snake_case (Ruby convention)
+      # to camelCase (Parse Server convention). You can use either format.
+      #
       # @param pattern [String, Symbol] the pattern to apply protection for:
       #   - "*" or :public - applies to all users (public)
       #   - "role:RoleName" - applies to users in a specific role
       #   - "userField:fieldName" - applies to users referenced in a pointer field
       #   - user objectId - applies to a specific user
       # @param fields [Array<String, Symbol>] field names to hide from this pattern.
+      #   Use Ruby property names (snake_case) - they will be auto-converted.
       #   An empty array means the user can see all fields.
       #
       # @example Hide fields from public but allow admins to see everything
@@ -443,7 +453,7 @@ module Parse
       #     property :phone, :string
       #     property :internal_notes, :string
       #
-      #     # Hide sensitive fields from public
+      #     # Hide sensitive fields from public (use snake_case Ruby names)
       #     protect_fields "*", [:email, :phone, :internal_notes]
       #
       #     # Admins can see everything (empty array = no restrictions)
@@ -459,17 +469,42 @@ module Parse
       #     property :metadata, :object  # GPS, camera info, etc.
       #     belongs_to :owner, as: :user
       #
-      #     # Hide metadata from everyone
+      #     # Hide metadata from everyone (auto-converts to "metadata" in Parse)
       #     protect_fields "*", [:metadata]
       #
       #     # But owners can see their own image metadata
       #     protect_fields "userField:owner", []
       #   end
       #
+      # @example Master key only fields
+      #   class SensitiveDoc < Parse::Object
+      #     property :admin_notes, :string
+      #     property :internal_score, :integer
+      #
+      #     # Only master key can see these fields
+      #     # (converts to ["adminNotes", "internalScore"] for Parse Server)
+      #     protect_fields "*", [:admin_notes, :internal_score]
+      #   end
+      #
       # @see Parse::CLP#set_protected_fields
       def protect_fields(pattern, fields)
         pattern = "*" if pattern.to_sym == :public rescue pattern
-        class_permissions.set_protected_fields(pattern, Array(fields))
+
+        # Convert userField:field_name pattern to use camelCase field name
+        if pattern.to_s.start_with?("userField:")
+          field_name = pattern.to_s.sub("userField:", "")
+          field_sym = field_name.to_sym
+          converted_field = field_map[field_sym] || field_name.camelize(:lower)
+          pattern = "userField:#{converted_field}"
+        end
+
+        # Convert snake_case Ruby property names to camelCase Parse field names
+        converted_fields = Array(fields).map do |field|
+          field_sym = field.to_sym
+          # Use field_map if available, otherwise convert to camelCase
+          field_map[field_sym] || field.to_s.camelize(:lower)
+        end
+        class_permissions.set_protected_fields(pattern, converted_fields)
       end
 
       alias_method :set_protected_fields, :protect_fields
