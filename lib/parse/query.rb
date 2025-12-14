@@ -1048,8 +1048,15 @@ module Parse
     # @param limit [Integer] the number of items to return (default: 1).
     # @return [Parse::Object] if limit == 1
     # @return [Array<Parse::Object>] if limit > 1
-    # @note Supports all constraint options like :keys, :includes, etc.
+    # @note Supports all constraint options like :keys, :includes, :limit, etc.
+    # @example
+    #   query.latest                          # single most recent
+    #   query.latest(5)                       # 5 most recent
+    #   query.latest(:user.eq => x)           # most recent for user
+    #   query.latest(:user.eq => x, limit: 5) # 5 most recent for user
     def latest(limit = 1, **options)
+      # Allow limit to be overridden via options
+      limit = options.delete(:limit) if options.key?(:limit)
       @results = nil if @limit != limit
       @limit = limit
       # Add created_at descending order if not already present
@@ -1063,8 +1070,15 @@ module Parse
     # @param limit [Integer] the number of items to return (default: 1).
     # @return [Parse::Object] if limit == 1
     # @return [Array<Parse::Object>] if limit > 1
-    # @note Supports all constraint options like :keys, :includes, etc.
+    # @note Supports all constraint options like :keys, :includes, :limit, etc.
+    # @example
+    #   query.last_updated                          # single most recently updated
+    #   query.last_updated(5)                       # 5 most recently updated
+    #   query.last_updated(:user.eq => x)           # most recently updated for user
+    #   query.last_updated(:user.eq => x, limit: 5) # 5 most recently updated for user
     def last_updated(limit = 1, **options)
+      # Allow limit to be overridden via options
+      limit = options.delete(:limit) if options.key?(:limit)
       @results = nil if @limit != limit
       @limit = limit
       # Add updated_at descending order if not already present

@@ -248,14 +248,19 @@ module Parse
       #  @return [Array<Parse::Object>] if count > 1
       # @overload latest(constraints = {})
       #  @param constraints [Hash] a set of {Parse::Query} constraints.
+      #   Supports a :limit key to override the default limit of 1.
       #  @example
       #   Object.latest(category: "news") # => most recent object in news category
+      #   Object.latest(:user.eq => user, limit: 5) # => 5 most recent for user
       #  @return [Parse::Object] the most recently created object matching constraints.
       def latest(constraints = {})
         fetch_count = 1
         if constraints.is_a?(Numeric)
           fetch_count = constraints.to_i
           constraints = {}
+        else
+          # Allow limit to be specified in constraints hash
+          fetch_count = constraints.delete(:limit) || 1
         end
         constraints.merge!({ limit: fetch_count, order: :created_at.desc })
         res = query(constraints).results
@@ -272,14 +277,19 @@ module Parse
       #  @return [Array<Parse::Object>] if count > 1
       # @overload last_updated(constraints = {})
       #  @param constraints [Hash] a set of {Parse::Query} constraints.
+      #   Supports a :limit key to override the default limit of 1.
       #  @example
       #   Object.last_updated(status: "active") # => most recently updated active object
+      #   Object.last_updated(:user.eq => user, limit: 3) # => 3 most recently updated for user
       #  @return [Parse::Object] the most recently updated object matching constraints.
       def last_updated(constraints = {})
         fetch_count = 1
         if constraints.is_a?(Numeric)
           fetch_count = constraints.to_i
           constraints = {}
+        else
+          # Allow limit to be specified in constraints hash
+          fetch_count = constraints.delete(:limit) || 1
         end
         constraints.merge!({ limit: fetch_count, order: :updated_at.desc })
         res = query(constraints).results

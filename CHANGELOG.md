@@ -1,5 +1,21 @@
 ## Parse-Stack Changelog
 
+### 3.2.2
+
+#### Improvements
+
+- **IMPROVED**: `latest` and `last_updated` methods now support a `limit:` option when passing constraints. This allows fetching multiple recent records while also filtering by query conditions.
+
+```ruby
+# Class methods
+Song.latest(:user.eq => user, limit: 5)       # 5 most recent for user
+Song.last_updated(status: "active", limit: 10) # 10 most recently updated active
+
+# Query instance methods
+query.latest(:user.eq => x, limit: 5)
+query.where(genre: "rock").last_updated(limit: 3)
+```
+
 ### 3.2.1
 
 #### New Features
