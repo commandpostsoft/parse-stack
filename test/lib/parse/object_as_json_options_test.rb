@@ -104,7 +104,32 @@ class ObjectAsJsonOptionsTest < Minitest::Test
     assert_equal except_result, exclude_keys_result
   end
 
-  # === :except takes precedence over :exclude_keys ===
+  # === :exclude option (alias for :except) ===
+
+  def test_exclude_excludes_single_field
+    result = @song.as_json(exclude: [:duration])
+
+    assert result.key?("title"), "Should include title"
+    assert result.key?("artist"), "Should include artist"
+    refute result.key?("duration"), "Should exclude duration"
+  end
+
+  def test_exclude_excludes_multiple_fields
+    result = @song.as_json(exclude: [:duration, :play_count])
+
+    assert result.key?("title"), "Should include title"
+    refute result.key?("duration"), "Should exclude duration"
+    refute result.key?("play_count"), "Should exclude play_count"
+  end
+
+  def test_exclude_works_same_as_except
+    except_result = @song.as_json(except: [:duration, :genre])
+    exclude_result = @song.as_json(exclude: [:duration, :genre])
+
+    assert_equal except_result, exclude_result
+  end
+
+  # === :except takes precedence over :exclude_keys and :exclude ===
 
   def test_except_takes_precedence_over_exclude_keys
     # When both are provided, :except wins
@@ -124,6 +149,74 @@ class ObjectAsJsonOptionsTest < Minitest::Test
     assert result.key?("artist"), "Should include artist"
     refute result.key?("duration"), "Should not include duration"
     refute result.key?("genre"), "Should not include genre"
+  end
+
+  def test_only_always_includes_identification_fields
+    result = @song.as_json(only: [:title])
+
+    # Should include specified field
+    assert result.key?("title"), "Should include title"
+
+    # Should also include identification fields automatically
+    assert result.key?("__type"), "Should include __type for identification"
+    assert result.key?("className"), "Should include className for identification"
+
+    # Should NOT include other fields
+    refute result.key?("artist"), "Should not include artist"
+    refute result.key?("duration"), "Should not include duration"
+  end
+
+  def test_only_includes_objectId_when_present
+    # Create object with objectId (simulating fetched object)
+    song_with_id = AsJsonTestSong.new(
+      "objectId" => "abc123",
+      "title" => "Test",
+      "createdAt" => "2024-01-01T00:00:00.000Z",
+      "updatedAt" => "2024-01-01T00:00:00.000Z"
+    )
+
+    result = song_with_id.as_json(only: [:title])
+
+    assert result.key?("title"), "Should include title"
+    assert result.key?("objectId"), "Should include objectId for identification"
+    assert_equal "abc123", result["objectId"]
+  end
+
+  # === :strict option (disables auto-including identification fields) ===
+
+  def test_only_with_strict_does_not_include_identification_fields
+    result = @song.as_json(only: [:title, :artist], strict: true)
+
+    assert result.key?("title"), "Should include title"
+    assert result.key?("artist"), "Should include artist"
+    refute result.key?("__type"), "Should NOT include __type with strict: true"
+    refute result.key?("className"), "Should NOT include className with strict: true"
+    refute result.key?("objectId"), "Should NOT include objectId with strict: true"
+  end
+
+  def test_strict_only_includes_exactly_specified_fields
+    song_with_id = AsJsonTestSong.new(
+      "objectId" => "abc123",
+      "title" => "Test",
+      "artist" => "Artist",
+      "createdAt" => "2024-01-01T00:00:00.000Z",
+      "updatedAt" => "2024-01-01T00:00:00.000Z"
+    )
+
+    result = song_with_id.as_json(only: [:title], strict: true)
+
+    assert result.key?("title"), "Should include title"
+    refute result.key?("objectId"), "Should NOT include objectId with strict"
+    refute result.key?("className"), "Should NOT include className with strict"
+    refute result.key?("__type"), "Should NOT include __type with strict"
+    refute result.key?("artist"), "Should NOT include artist"
+  end
+
+  def test_strict_false_is_default_behavior
+    result_default = @song.as_json(only: [:title])
+    result_explicit = @song.as_json(only: [:title], strict: false)
+
+    assert_equal result_default.keys.sort, result_explicit.keys.sort
   end
 
   # === Combined :only and :except ===

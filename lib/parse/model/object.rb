@@ -733,20 +733,41 @@ module Parse
 
     # @!endgroup
 
+    # Core identification fields that are always included in serialization
+    # unless strict: true is specified
+    IDENTIFICATION_FIELDS = %w[id objectId __type className].freeze
+
     # @return [Hash] a json-hash representing this object.
     # @param opts [Hash] options for serialization
     # @option opts [Boolean] :only_fetched when true (or when Parse.serialize_only_fetched_fields
     #   is true and this option is not explicitly set to false), only serialize fields that
     #   were fetched for partially fetched objects. This prevents autofetch during serialization.
-    # @option opts [Array<Symbol,String>] :only limit serialization to these fields
+    # @option opts [Array<Symbol,String>] :only limit serialization to these fields. By default,
+    #   identification fields (objectId, className, __type, id) are always included for proper
+    #   object identification. Use strict: true to disable this behavior.
     # @option opts [Array<Symbol,String>] :except exclude these fields from serialization
     # @option opts [Array<Symbol,String>] :exclude_keys alias for :except
+    # @option opts [Array<Symbol,String>] :exclude alias for :except
+    # @option opts [Boolean] :strict when true with :only, performs strict filtering without
+    #   automatically including identification fields. Default is false.
     def as_json(opts = nil)
       opts ||= {}
 
-      # Normalize :exclude_keys to :except (alias support)
-      if opts[:exclude_keys] && !opts[:except]
-        opts = opts.merge(except: opts[:exclude_keys])
+      # Normalize :exclude_keys and :exclude to :except (alias support)
+      if !opts[:except]
+        if opts[:exclude_keys]
+          opts = opts.merge(except: opts[:exclude_keys])
+        elsif opts[:exclude]
+          opts = opts.merge(except: opts[:exclude])
+        end
+      end
+
+      # When :only is specified without :strict, automatically include identification fields
+      # so the serialized object can be properly identified
+      if opts[:only] && !opts[:strict]
+        only_keys = Array(opts[:only]).map(&:to_s)
+        only_keys |= IDENTIFICATION_FIELDS
+        opts = opts.merge(only: only_keys)
       end
 
       # For selectively fetched objects (partial fetch), serialize only the fetched fields.
@@ -764,7 +785,8 @@ module Parse
           # Use the local field names which match the attribute methods
           only_keys = fetched_keys.map(&:to_s)
           # Always include Parse metadata fields for proper object identification
-          only_keys |= %w[id objectId __type className created_at updated_at]
+          only_keys |= IDENTIFICATION_FIELDS
+          only_keys |= %w[created_at updated_at]
           opts = opts.merge(only: only_keys)
         end
 

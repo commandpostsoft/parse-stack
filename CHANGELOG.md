@@ -1,5 +1,54 @@
 ## Parse-Stack Changelog
 
+### 3.2.3
+
+#### Improvements
+
+- **IMPROVED**: `PointerCollectionProxy#as_json` now supports the `pointers_only` option. By default it returns pointers (preserving backward compatibility), but you can set `pointers_only: false` to serialize objects with their fetched fields. This is useful when returning `has_many :through => :array` relationships in webhook responses.
+
+  When `pointers_only: false`:
+  - Partially hydrated objects serialize only their fetched fields (no autofetch triggered)
+  - Pointer-only objects (unfetched) remain as pointers
+  - Fully hydrated objects serialize all their fields
+
+```ruby
+# Default behavior - pointers for storage (backward compatible)
+capture.assets.as_json
+# => [{"__type"=>"Pointer", "className"=>"Asset", "objectId"=>"abc"}, ...]
+
+# Serialize with fetched fields (no autofetch, pointers stay as pointers)
+capture.assets.as_json(pointers_only: false)
+# => [{"objectId"=>"abc", "file"=>{...}, "caption"=>"My photo", ...}, ...]
+
+# In webhooks, manually override assets serialization:
+cloud_results.map do |capture|
+  json = capture.as_json
+  json['assets'] = capture.assets.as_json(pointers_only: false) if capture.assets.any?
+  json
+end
+```
+
+- **IMPROVED**: `Parse::Object#as_json` with `:only` option now automatically includes identification fields (`objectId`, `className`, `__type`, `id`) so serialized objects can always be properly identified. Use `strict: true` to disable this behavior for pure strict filtering.
+
+```ruby
+# Default: identification fields are always included
+song.as_json(only: [:title, :artist])
+# => {"objectId"=>"abc", "className"=>"Song", "__type"=>"Object", "title"=>"...", "artist"=>"..."}
+
+# With strict: true, only exactly specified fields are included
+song.as_json(only: [:title, :artist], strict: true)
+# => {"title"=>"...", "artist"=>"..."}
+```
+
+- **NEW**: Added `:exclude` as an alias for `:except` in `as_json` for more intuitive field exclusion.
+
+```ruby
+# All three are equivalent:
+song.as_json(except: [:acl, :created_at])
+song.as_json(exclude_keys: [:acl, :created_at])
+song.as_json(exclude: [:acl, :created_at])
+```
+
 ### 3.2.2
 
 #### Improvements
