@@ -1,8 +1,21 @@
 require "faraday"
-require "faraday_middleware"
+
+# Attempt to load the persistent connection adapter for better performance.
+# Falls back gracefully to the default adapter if not available.
+NET_HTTP_PERSISTENT_AVAILABLE = begin
+    require "faraday/net_http_persistent"
+    true
+  rescue LoadError
+    warn "[parse-stack] faraday-net_http_persistent gem not available. " \
+         "Using standard Net::HTTP adapter. For better performance, add " \
+         "'faraday-net_http_persistent' to your Gemfile."
+    false
+  end
+
 require "active_support"
 require "moneta"
-require "active_model_serializers"
+require "active_model/serialization"
+require "active_model/serializers/json"
 require "active_support/inflector"
 require "active_support/core_ext/object"
 require "active_support/core_ext/string"
@@ -16,6 +29,8 @@ require_relative "client/batch"
 require_relative "client/body_builder"
 require_relative "client/authentication"
 require_relative "client/caching"
+require_relative "client/logging"
+require_relative "client/profiling"
 require_relative "api/all"
 
 module Parse
@@ -160,7 +175,8 @@ module Parse
     #  The default retry count for the client when a specific request timesout or
     #  the service is unavailable. Defaults to {DEFAULT_RETRIES}.
     #  @return [String]
-    attr_accessor :cache, :retry_limit
+    attr_accessor :cache
+    attr_writer :retry_limit
     attr_reader :application_id, :api_key, :master_key, :server_url
     alias_method :app_id, :application_id
     # The client can support multiple sessions. The first session created, will be placed
@@ -218,12 +234,31 @@ module Parse
     # @option opts [String] :master_key The Parse application master key (optional).
     #    If this key is set, it will be sent on every request sent by the client
     #    and your models. Defaults to ENV['PARSE_SERVER_MASTER_KEY'].
-    # @option opts [Boolean] :logging It provides you additional logging information
-    #    of requests and responses. If set to the special symbol of *:debug*, it
-    #    will provide additional payload data in the log messages. This option affects
-    #    the logging performed by {Parse::Middleware::BodyBuilder}.
+    # @option opts [Boolean, Symbol] :logging Controls request/response logging.
+    #    - `true` - Enable logging at :info level
+    #    - `:debug` - Enable verbose logging with headers and body content
+    #    - `:warn` - Only log errors and warnings
+    #    - `false` or `nil` - Disable logging (default)
+    #    This configures both the new {Parse::Middleware::Logging} middleware
+    #    and the legacy {Parse::Middleware::BodyBuilder} logging.
+    # @option opts [Logger] :logger A custom logger instance for request/response logging.
+    #    Defaults to Logger.new(STDOUT) if not specified.
     # @option opts [Object] :adapter The connection adapter. By default it uses
-    #    the `Faraday.default_adapter` which is Net/HTTP.
+    #    `:net_http_persistent` for connection pooling. Set `connection_pooling: false`
+    #    to use the standard `Faraday.default_adapter` (Net/HTTP) instead.
+    # @option opts [Boolean, Hash] :connection_pooling Controls HTTP connection pooling.
+    #    Defaults to `true`, using the `:net_http_persistent` adapter for improved
+    #    performance through connection reuse. Set to `false` to disable pooling
+    #    and create a new connection for each request. This option is ignored if
+    #    `:adapter` is explicitly specified.
+    #    Pass a Hash to enable pooling with custom configuration:
+    #    - `:pool_size` [Integer] - Number of connections per thread (default: 1)
+    #    - `:idle_timeout` [Integer] - Seconds before closing idle connections (default: 5)
+    #    - `:keep_alive` [Integer] - HTTP Keep-Alive timeout in seconds
+    #    @example Custom connection pooling
+    #      Parse.setup(
+    #        connection_pooling: { pool_size: 5, idle_timeout: 60, keep_alive: 60 }
+    #      )
     # @option opts [Moneta::Transformer,Moneta::Expires] :cache A caching adapter of type
     #    {https://github.com/minad/moneta Moneta::Transformer} or
     #    {https://github.com/minad/moneta Moneta::Expires} that will be used
@@ -241,6 +276,21 @@ module Parse
     #    cache using the clear_cache! method on your Parse::Client instance.
     # @option opts [Hash] :faraday You may pass a hash of options that will be
     #    passed to the Faraday constructor.
+    # @option opts [String] :live_query_url The WebSocket URL for Parse LiveQuery server
+    #    (e.g., "wss://your-parse-server.com"). If not specified, falls back to
+    #    ENV["PARSE_LIVE_QUERY_URL"]. LiveQuery enables real-time subscriptions
+    #    to changes in Parse objects.
+    #    @example Enable LiveQuery
+    #      Parse.setup(
+    #        server_url: "https://your-server.com/parse",
+    #        application_id: "YOUR_APP_ID",
+    #        api_key: "YOUR_API_KEY",
+    #        live_query_url: "wss://your-server.com"
+    #      )
+    # @option opts [Hash] :live_query Advanced LiveQuery configuration options.
+    #    Pass a hash with custom settings for the LiveQuery client.
+    #    - :url [String] - WebSocket URL (alternative to :live_query_url)
+    #    - :auto_reconnect [Boolean] - Auto-reconnect on disconnect (default: true)
     # @raise Parse::Error::ConnectionError if the client was not properly configured with required keys or url.
     # @raise ArgumentError if the cache instance passed to the :cache option is not of Moneta::Transformer or Moneta::Expires
     # @see Parse::Middleware::BodyBuilder
@@ -252,7 +302,45 @@ module Parse
       @application_id = opts[:application_id] || opts[:app_id] || ENV["PARSE_SERVER_APPLICATION_ID"] || ENV["PARSE_APP_ID"]
       @api_key = opts[:api_key] || opts[:rest_api_key] || ENV["PARSE_SERVER_REST_API_KEY"] || ENV["PARSE_API_KEY"]
       @master_key = opts[:master_key] || ENV["PARSE_SERVER_MASTER_KEY"] || ENV["PARSE_MASTER_KEY"]
-      opts[:adapter] ||= Faraday.default_adapter
+
+      # Security warning for HTTP usage (except localhost/127.0.0.1 for development)
+      if @server_url&.start_with?("http://") && !@server_url.match?(%r{^http://(localhost|127\.0\.0\.1)(:|/)})
+        warn "[Parse::Client] SECURITY WARNING: Using HTTP instead of HTTPS for Parse server. " \
+             "This exposes credentials and data to network interception. " \
+             "Use HTTPS in production: #{@server_url}"
+      end
+
+      # Determine the HTTP adapter to use
+      # Priority: explicit :adapter > :connection_pooling setting > default (pooling enabled)
+      # Falls back to default adapter if net_http_persistent is not available
+      if opts[:adapter]
+        # User explicitly specified an adapter, use it directly
+        adapter = opts[:adapter]
+        adapter_options = {}
+      elsif opts[:connection_pooling] == false
+        # User explicitly disabled connection pooling
+        adapter = Faraday.default_adapter
+        adapter_options = {}
+      elsif opts[:connection_pooling].is_a?(Hash)
+        # User provided connection pooling with custom options
+        if NET_HTTP_PERSISTENT_AVAILABLE
+          adapter = :net_http_persistent
+          adapter_options = opts[:connection_pooling]
+        else
+          adapter = Faraday.default_adapter
+          adapter_options = {}
+        end
+      else
+        # Default: use persistent connections for better performance (if available)
+        if NET_HTTP_PERSISTENT_AVAILABLE
+          adapter = :net_http_persistent
+          adapter_options = {}
+        else
+          adapter = Faraday.default_adapter
+          adapter_options = {}
+        end
+      end
+
       opts[:expires] ||= 3
       if @server_url.nil? || @application_id.nil? || (@api_key.nil? && @master_key.nil?)
         raise Parse::Error::ConnectionError, "Please call Parse.setup(server_url:, application_id:, api_key:) to setup a client"
@@ -264,7 +352,21 @@ module Parse
       @conn = Faraday.new(opts[:faraday]) do |conn|
         #conn.request :json
 
-        conn.response :logger if opts[:logging]
+        # Configure logging if enabled
+        if opts[:logging].present?
+          # Configure the new structured logging middleware
+          Parse::Middleware::Logging.enabled = true
+          Parse::Middleware::Logging.logger = opts[:logger] if opts[:logger]
+          case opts[:logging]
+          when :debug
+            Parse::Middleware::Logging.log_level = :debug
+            Parse::Middleware::BodyBuilder.logging = true
+          when :warn
+            Parse::Middleware::Logging.log_level = :warn
+          else
+            Parse::Middleware::Logging.log_level = :info
+          end
+        end
 
         # This middleware handles sending the proper authentication headers to Parse
         # on each request.
@@ -276,38 +378,93 @@ module Parse
                  application_id: @application_id,
                  master_key: @master_key,
                  api_key: @api_key
+        # Request/response logging middleware (configured via Parse.logging_enabled)
+        conn.use Parse::Middleware::Logging
+
+        # Performance profiling middleware (configured via Parse.profiling_enabled)
+        conn.use Parse::Middleware::Profiling
+
         # This middleware turns the result from Parse into a Parse::Response object
         # and making sure request that are going out, follow the proper MIME format.
         # We place it after the Authentication middleware in case we need to use then
         # authentication information when building request and responses.
         conn.use Parse::Middleware::BodyBuilder
-        if opts[:logging].present? && opts[:logging] == :debug
-          Parse::Middleware::BodyBuilder.logging = true
-        end
 
-        if opts[:cache].present? && opts[:expires].to_i > 0
-          # advanced: provide a REDIS url, we'll configure a Moneta Redis store.
-          if opts[:cache].is_a?(String) && opts[:cache].starts_with?("redis://")
-            begin
-              opts[:cache] = Moneta.new(:Redis, url: opts[:cache])
-            rescue LoadError
-              puts "[Parse::Middleware::Caching] Did you forget to load the redis gem (Gemfile)?"
-              raise
+        if opts[:cache].present?
+          if opts[:expires].to_i <= 0
+            warn "[Parse::Client] Cache store provided but :expires is not set or is 0. " \
+                 "Caching will be disabled. Set :expires to enable caching (e.g., expires: 10)."
+          else
+            # advanced: provide a REDIS url, we'll configure a Moneta Redis store.
+            if opts[:cache].is_a?(String) && opts[:cache].starts_with?("redis://")
+              begin
+                opts[:cache] = Moneta.new(:Redis, url: opts[:cache])
+              rescue LoadError
+                puts "[Parse::Middleware::Caching] Did you forget to load the redis gem (Gemfile)?"
+                raise
+              end
+            end
+
+            unless [:key?, :[], :delete, :store].all? { |method| opts[:cache].respond_to?(method) }
+              raise ArgumentError, "Parse::Client option :cache needs to be a type of Moneta store"
+            end
+            self.cache = opts[:cache]
+            conn.use Parse::Middleware::Caching, self.cache, { expires: opts[:expires].to_i }
+
+            # Inform about opt-in cache behavior
+            unless Parse.default_query_cache
+              warn "[Parse::Client] Caching middleware enabled (expires: #{opts[:expires]}s). " \
+                   "Queries do NOT use cache by default. Use `cache: true` on queries to opt-in, " \
+                   "or set `Parse.default_query_cache = true` for opt-out behavior."
             end
           end
-
-          unless [:key?, :[], :delete, :store].all? { |method| opts[:cache].respond_to?(method) }
-            raise ArgumentError, "Parse::Client option :cache needs to be a type of Moneta store"
-          end
-          self.cache = opts[:cache]
-          conn.use Parse::Middleware::Caching, self.cache, { expires: opts[:expires].to_i }
         end
 
         yield(conn) if block_given?
 
-        conn.adapter opts[:adapter]
+        # Configure the adapter with optional settings
+        # For net_http_persistent:
+        # - pool_size must be passed as an adapter argument (constructor param, no setter)
+        # - idle_timeout and keep_alive have setters and are configured in the block
+        if adapter_options.any?
+          # Extract constructor arguments for the adapter
+          adapter_args = {}
+          adapter_args[:pool_size] = adapter_options[:pool_size] if adapter_options[:pool_size]
+
+          conn.adapter adapter, **adapter_args do |http|
+            http.idle_timeout = adapter_options[:idle_timeout] if adapter_options[:idle_timeout]
+            http.keep_alive = adapter_options[:keep_alive] if adapter_options[:keep_alive]
+          end
+        else
+          conn.adapter adapter
+        end
       end
       Parse::Client.clients[:default] ||= self
+
+      # Configure LiveQuery if URL provided
+      configure_live_query(opts)
+    end
+
+    # Configure LiveQuery with the given options
+    # @param opts [Hash] configuration options
+    # @option opts [String] :live_query_url WebSocket URL for LiveQuery server (wss://...)
+    # @api private
+    def configure_live_query(opts)
+      live_query_url = opts[:live_query_url] || ENV["PARSE_LIVE_QUERY_URL"]
+
+      return unless live_query_url || opts[:live_query]
+
+      require_relative "live_query"
+
+      live_query_opts = opts[:live_query].is_a?(Hash) ? opts[:live_query] : {}
+
+      Parse::LiveQuery.configure(
+        url: live_query_url || live_query_opts[:url],
+        application_id: @application_id,
+        client_key: @api_key,
+        master_key: @master_key,
+        **live_query_opts,
+      )
     end
 
     # If set, returns the current retry count for this instance. Otherwise,
@@ -405,6 +562,10 @@ module Parse
 
       if opts[:cache] == false
         headers[Parse::Middleware::Caching::CACHE_CONTROL] = "no-cache"
+      elsif opts[:cache] == :write_only
+        # Write-only mode: skip reading from cache, but still write to cache
+        # Useful for fetch!/reload! which want fresh data but should update cache
+        headers[Parse::Middleware::Caching::CACHE_WRITE_ONLY] = "true"
       elsif opts[:cache].is_a?(Numeric)
         # specify the cache duration of this request
         headers[Parse::Middleware::Caching::CACHE_EXPIRES_DURATION] = opts[:cache].to_s
@@ -475,13 +636,20 @@ module Parse
       if _retry_count > 0
         warn "[Parse:Retry] Retries remaining #{_retry_count} : #{response.request}"
         _retry_count -= 1
-        backoff_delay = RETRY_DELAY * (self.retry_limit - _retry_count)
-        _retry_delay = [0, RETRY_DELAY, backoff_delay].sample
+        # Use Retry-After header if available, otherwise use exponential backoff
+        retry_after = response.retry_after if response.respond_to?(:retry_after)
+        if retry_after && retry_after > 0
+          _retry_delay = retry_after
+          warn "[Parse:Retry] Using Retry-After header: #{_retry_delay}s"
+        else
+          backoff_delay = RETRY_DELAY * (self.retry_limit - _retry_count)
+          _retry_delay = [0, RETRY_DELAY, backoff_delay].sample
+        end
         sleep _retry_delay if _retry_delay > 0
         retry
       end
       raise
-    rescue Faraday::Error::ClientError, Net::OpenTimeout => e
+    rescue Faraday::ClientError, Net::OpenTimeout => e
       if _retry_count > 0
         warn "[Parse:Retry] Retries remaining #{_retry_count} : #{_request}"
         _retry_count -= 1
@@ -553,7 +721,7 @@ module Parse
       module ClassMethods
 
         # @return [Parse::Client] the current client for :default.
-        attr_accessor :client
+        attr_writer :client
 
         def client
           @client ||= Parse::Client.client #defaults to :default tag
@@ -594,20 +762,61 @@ module Parse
   # @return (see Parse.call_function)
   def self.trigger_job(name, body = {}, **opts)
     conn = opts[:session] || opts[:client] || :default
-    response = Parse::Client.client(conn).trigger_job(name, body)
+
+    # Extract request options for the API call
+    request_opts = {}
+    request_opts[:session_token] = opts[:session_token] if opts[:session_token]
+    request_opts[:master_key] = opts[:master_key] if opts[:master_key]
+
+    response = Parse::Client.client(conn).trigger_job(name, body, opts: request_opts)
     return response if opts[:raw].present?
     response.error? ? nil : response.result["result"]
+  end
+
+  # Helper method to trigger cloud jobs with a session token.
+  # This is a convenience method that ensures proper session token handling.
+  # @param name [String] the name of the cloud code job to trigger.
+  # @param body [Hash] the set of parameters to pass to the job.
+  # @param session_token [String] the session token for authenticated requests.
+  # @param opts [Hash] additional options (same as trigger_job).
+  # @return [Object] the result data of the response. nil if there was an error.
+  def self.trigger_job_with_session(name, body = {}, session_token, **opts)
+    opts[:session_token] = session_token
+    trigger_job(name, body, **opts)
   end
 
   # Helper method to call cloud functions and get results.
   # @param name [String] the name of the cloud code function to call.
   # @param body [Hash] the set of parameters to pass to the function.
   # @param opts [Hash] additional options.
+  # @option opts [String] :session_token The session token for authenticated requests.
+  # @option opts [Symbol] :session The client connection to use (alternative to :client).
+  # @option opts [Symbol] :client The client connection to use.
+  # @option opts [Boolean] :raw Whether to return the raw response object.
+  # @option opts [Boolean] :master_key Whether to use the master key for this request.
   # @return [Object] the result data of the response. nil if there was an error.
   def self.call_function(name, body = {}, **opts)
     conn = opts[:session] || opts[:client] || :default
-    response = Parse::Client.client(conn).call_function(name, body)
+
+    # Extract request options for the API call
+    request_opts = {}
+    request_opts[:session_token] = opts[:session_token] if opts[:session_token]
+    request_opts[:master_key] = opts[:master_key] if opts[:master_key]
+
+    response = Parse::Client.client(conn).call_function(name, body, opts: request_opts)
     return response if opts[:raw].present?
     response.error? ? nil : response.result["result"]
+  end
+
+  # Helper method to call cloud functions with a session token.
+  # This is a convenience method that ensures proper session token handling.
+  # @param name [String] the name of the cloud code function to call.
+  # @param body [Hash] the set of parameters to pass to the function.
+  # @param session_token [String] the session token for authenticated requests.
+  # @param opts [Hash] additional options (same as call_function).
+  # @return [Object] the result data of the response. nil if there was an error.
+  def self.call_function_with_session(name, body = {}, session_token, **opts)
+    opts[:session_token] = session_token
+    call_function(name, body, **opts)
   end
 end

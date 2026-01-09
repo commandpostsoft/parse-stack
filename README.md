@@ -1,18 +1,39 @@
 ![Parse Stack - The Parse Server Ruby Client SDK](https://raw.githubusercontent.com/modernistik/parse-stack/master/parse-stack.png?raw=true)
 
-A full featured Active Model ORM and Ruby REST API for Parse-Server. [Parse Stack](https://github.com/modernistik/parse-stack) is the [Parse Server](http://parseplatform.org/) SDK, REST Client and ORM framework for [Ruby](https://www.ruby-lang.org/en/). It provides a client adapter, a query engine, an object relational mapper (ORM) and a Cloud Code Webhooks rack application.
+# Parse Stack - Extended Edition
 
-Below is a [quick start guide](https://github.com/modernistik/parse-stack#overview), but you can also check out the full *[API Reference](https://www.modernistik.com/gems/parse-stack/index.html)* for more detailed information about our Parse Server SDK.
+A full featured Active Model ORM and Ruby REST API for Parse-Server. [Parse Stack](https://github.com/commandpostsoft/parse-stack) is the [Parse Server](http://parseplatform.org/) SDK, REST Client and ORM framework for [Ruby](https://www.ruby-lang.org/en/). It provides a client adapter, a query engine, an object relational mapper (ORM) and a Cloud Code Webhooks rack application.
 
-### Hire Us
+**This is an extended and enhanced fork with additional features including:**
+- MongoDB Aggregation Framework support
+- **MongoDB Atlas Search** - Full-text search, autocomplete, faceted search with direct MongoDB access
+- **Direct MongoDB Queries** - Bypass Parse Server for high-performance read operations
+- **Schema Introspection & Migration** - Compare local models with server schema and generate migrations
+- **Enhanced Role Management** - Helper methods for role hierarchies, user management, and membership queries
+- **Read Preference Support** - Direct read queries to MongoDB secondary replicas
+- **Class-Level Permissions (CLP)** - Define and filter protected fields based on roles and user ownership
+- Advanced ACL query constraints (readable_by, writable_by)
+- Full transaction support with automatic retry
+- Comprehensive integration testing with Docker
+- Enhanced change tracking and webhooks
+- Request idempotency system with Retry-After header support
+- Timezone support for date operations
+- Partial fetch with smart autofetch and serialization control
+- Multi-Factor Authentication (MFA/2FA) support
+- LiveQuery real-time subscriptions with TLS/SSL, circuit breaker, health monitoring (experimental)
+- AI/LLM Agent integration with security hardening (rate limiting, injection protection)
+- And many more improvements (see [CHANGELOG.md](./CHANGELOG.md))
 
-Interested in our work? You can find us here: [https://www.modernistik.com](https://www.modernistik.com)
+Below is a [quick start guide](#overview), but you can also check out the full *[API Reference](https://www.modernistik.com/gems/parse-stack/index.html)* for more detailed information about our Parse Server SDK.
+
+### Credits
+
+This project is based on the excellent [Parse Stack framework](https://github.com/modernistik/parse-stack) originally created by [Modernistik](https://www.modernistik.com). We are grateful for their foundational work and continue to build upon it.
 
 ### Code Status
-[![Gem Version](https://img.shields.io/gem/v/parse-stack.svg)](https://github.com/modernistik/parse-stack)
+[![Gem Version](https://img.shields.io/gem/v/parse-stack.svg)](https://github.com/commandpostsoft/parse-stack)
 [![Downloads](https://img.shields.io/gem/dt/parse-stack.svg)](https://rubygems.org/gems/parse-stack)
-[![Build Status](https://travis-ci.org/modernistik/parse-stack.svg?branch=master)](https://travis-ci.org/modernistik/parse-stack)
-[![API Reference](http://img.shields.io/badge/api-docs-blue.svg)](https://www.modernistik.com/gems/parse-stack/index.html)
+[![Releases](https://img.shields.io/github/v/release/commandpostsoft/parse-stack)](https://github.com/commandpostsoft/parse-stack/releases)
 
 #### Tutorial Videos
 1. Getting Started: https://youtu.be/zoYSGmciDlQ
@@ -36,22 +57,21 @@ Or install it yourself as:
 $ gem install parse-stack
 ```
 ### Rack / Sinatra
-Parse-Stack API, models and webhooks easily integrate in your existing Rack/Sinatra based applications. For more details see [Parse-Stack Rack Example](https://github.com/modernistik/parse-stack-example).
+Parse-Stack API, models and webhooks easily integrate in your existing Rack/Sinatra based applications.
 
 ### Rails
 Parse-Stack comes with support for Rails by adding additional rake tasks and generators. After adding `parse-stack` as a gem dependency in your Gemfile and running `bundle`, you should run the install script:
 ```bash
 $ rails g parse_stack:install
 ```
-For a more details on the rails integration see [Parse-Stack Rails Example](https://github.com/modernistik/parse-stack-rails-example).
 
 ### Interactive Command Line Playground
 You can also used the bundled `parse-console` command line to connect and interact with your Parse Server and its data in an IRB-like console. This is useful for trying concepts and debugging as it will automatically connect to your Parse Server, and if provided the master key, automatically generate all the models entities.
 
 ```bash
 $ parse-console -h # see all options
-$ parse-console -v -a myAppId -m myMasterKey http://localhost:1337/parse
-Server : http://localhost:1337/parse
+$ parse-console -v -a myAppId -m myMasterKey http://localhost:2337/parse
+Server : http://localhost:2337/parse
 App Id : myAppId
 Master : true
 2.4.0 > Parse::User.first
@@ -63,7 +83,7 @@ Parse-Stack is a full stack framework that utilizes several ideas behind [DataMa
 ```ruby
 require 'parse/stack'
 
-Parse.setup server_url: 'http://localhost:1337/parse',
+Parse.setup server_url: 'http://localhost:2337/parse',
             app_id: APP_ID,
             api_key: REST_API_KEY,
             master_key: YOUR_MASTER_KEY # optional
@@ -131,6 +151,300 @@ songs.save
 result = Parse.call_function :myFunctionName, {param: value}
 
 ```
+
+## What's New in 2.0
+
+Version 2.0 represents a major upgrade with extensive new functionality and breaking changes. **Minimum Ruby version is now 3.2+**.
+
+### Transaction Support
+
+Full atomic transaction support with automatic retry on conflicts:
+
+```ruby
+# Explicit batch operations
+Parse::Object.transaction do |batch|
+  song.name = "New Name"
+  batch.save(song)
+
+  artist.popularity += 1
+  batch.save(artist)
+end
+
+# Automatic batching via return values
+Parse::Object.transaction do
+  song.update(name: "New Name")
+  artist.update(popularity: artist.popularity + 1)
+end
+```
+
+### MongoDB Aggregation Framework
+
+Powerful aggregation capabilities including group_by, count_distinct, and custom pipelines:
+
+```ruby
+# Group by with aggregation
+Song.query.group_by(:artist,
+  count: true,
+  sum: :plays,
+  avg: :duration
+)
+
+# Group by date with timezone support
+Song.query.group_by_date(:released, :month,
+  timezone: "America/New_York",
+  count: true
+)
+
+# Count distinct values
+Song.query.count_distinct(:artist)
+
+# Custom aggregation pipeline
+Song.query.aggregate([
+  { "$match" => { "plays" => { "$gt" => 1000 } } },
+  { "$group" => { "_id" => "$artist", "total" => { "$sum" => "$plays" } } }
+])
+```
+
+### ACL Query Constraints
+
+Filter queries based on ACL permissions. These constraints use MongoDB aggregation pipelines because Parse Server restricts direct queries on internal ACL fields (`_rperm`, `_wperm`).
+
+#### Convenience Methods
+
+Quick methods for common ACL queries:
+
+```ruby
+# Find publicly accessible documents
+songs = Song.query.publicly_readable.results
+songs = Song.query.publicly_writable.results  # Security audit!
+
+# Find master-key-only documents (empty permissions)
+songs = Song.query.privately_readable.results
+songs = Song.query.master_key_read_only.results  # Alias
+songs = Song.query.privately_writable.results
+songs = Song.query.master_key_write_only.results  # Alias
+
+# Find completely private documents (no read AND no write)
+songs = Song.query.private_acl.results
+songs = Song.query.master_key_only.results  # Alias
+
+# Find non-public documents
+songs = Song.query.not_publicly_readable.results
+songs = Song.query.not_publicly_writable.results
+
+# Chain with other constraints
+songs = Song.query.publicly_readable.where(genre: "Rock").order(:plays.desc).results
+```
+
+#### Hash Key Support
+
+ACL constraints can be passed as hash keys in `where`, `first`, `all`:
+
+```ruby
+# Use readable_by:/writable_by: as hash keys
+songs = Song.where(readable_by: current_user, genre: "Rock").results
+songs = Song.first(writable_by: admin_role)
+songs = Song.all(publicly_readable: true)
+songs = Song.query(readable_by_role: "Admin", limit: 10).results
+
+# Boolean flags for convenience methods
+songs = Song.all(privately_readable: true)
+songs = Song.all(not_publicly_writable: true)
+songs = Song.all(private_acl: true)  # Finds master-key-only documents
+```
+
+#### User and Role Queries
+
+```ruby
+# Find songs readable by a specific user (auto-fetches user's roles + child roles)
+songs = Song.all(:ACL.readable_by => current_user)
+
+# Find songs readable by exact permission strings
+songs = Song.query.readable_by("user123").results           # User ID
+songs = Song.query.readable_by("role:Admin").results        # Role with prefix
+
+# Find songs readable by role name (auto-adds "role:" prefix)
+songs = Song.query.readable_by_role("Admin").results        # → "role:Admin"
+songs = Song.query.readable_by_role(admin_role).results     # Role object
+
+# Works with User objects, role names, and Parse::Pointers
+songs = Song.all(:ACL.readable_by => Parse::Pointer.new("_User", user_id))
+
+# Special aliases
+songs = Song.query.readable_by("public").results            # Public access (*)
+songs = Song.query.readable_by("none").results              # Empty _rperm
+```
+
+#### Role Hierarchy Expansion
+
+ACL queries automatically expand role hierarchies. When you query with a `Parse::Role` object, the query includes all child roles (permissions flow DOWN the hierarchy):
+
+```ruby
+# Role hierarchy: Admin -> Moderator -> Editor
+admin_role = Parse::Role.find_by_name("Admin")
+
+# This query finds documents readable by Admin, Moderator, AND Editor
+# because Admin has those roles as children
+songs = Song.query.readable_by(admin_role).results
+
+# When querying with a user, we fetch all their roles and expand hierarchies
+user = Parse::User.current
+songs = Song.query.readable_by(user).results
+# Finds documents readable by:
+# - The user's ID directly
+# - All roles the user belongs to
+# - All child roles of those roles
+```
+
+#### Querying for Empty/Private ACLs
+
+Find objects with no permissions (master key only access):
+
+```ruby
+# Find objects with NO read permissions (master key only)
+songs = Song.query.privately_readable.results
+songs = Song.query.readable_by("none").results
+
+# Find objects with NO write permissions (read-only)
+songs = Song.query.privately_writable.results
+songs = Song.query.writable_by("none").results
+
+# Find objects with completely empty ACL (no read AND no write)
+songs = Song.query.private_acl.results
+songs = Song.query.where(:ACL.private_acl => true).results
+
+# Find objects that have SOME permissions (not private)
+songs = Song.query.where(:ACL.private_acl => false).results
+```
+
+> **Note**: If `_rperm` is missing/undefined in MongoDB, Parse Server treats the document as publicly readable. The `privately_readable` query specifically looks for documents with an empty `_rperm: []` array.
+
+#### Querying for Objects NOT Accessible
+
+Find objects hidden from specific users or roles:
+
+```ruby
+# Find objects NOT readable by a specific user
+songs = Song.query.where(:ACL.not_readable_by => current_user).results
+
+# Find objects NOT publicly readable
+songs = Song.query.not_publicly_readable.results
+songs = Song.query.where(:ACL.not_readable_by => "*").results
+songs = Song.query.where(:ACL.not_readable_by => :public).results
+
+# Find objects NOT writable by a role
+songs = Song.query.not_publicly_writable.results
+songs = Song.query.where(:ACL.not_writeable_by => "role:Editor").results
+```
+
+#### MongoDB Direct Option
+
+ACL queries automatically use MongoDB direct access when needed. You can also explicitly control this:
+
+```ruby
+# Force MongoDB direct query (bypasses Parse Server)
+songs = Song.query.readable_by([], mongo_direct: true).results
+songs = Song.query.publicly_readable(mongo_direct: true).results
+
+# Force Parse Server aggregation (disable auto-detection)
+songs = Song.query.readable_by("user123", mongo_direct: false).results
+```
+
+See [ACL Filtering with mongo_direct](#acl-filtering) for more details on high-performance ACL queries.
+
+### Enhanced Change Tracking
+
+Improved change tracking that works correctly in `after_save` hooks:
+
+```ruby
+class Song < Parse::Object
+  after_save :notify_if_published
+
+  def notify_if_published
+    # Now works correctly in after_save
+    if published_was == false && published == true
+      send_notification("Song published!")
+    end
+  end
+end
+```
+
+### Request Idempotency (Enabled by Default)
+
+Automatic request idempotency prevents duplicate operations:
+
+```ruby
+# Idempotency is enabled by default
+song.save  # Uses unique request ID
+
+# Control per-request
+Parse.client.idempotency = false
+song.save  # No request ID
+Parse.client.idempotency = true
+```
+
+### Advanced Query Operations
+
+New query methods for common patterns:
+
+```ruby
+# Get latest records
+recent_songs = Song.query.latest.limit(10)
+
+# Get last updated records
+updated_songs = Song.query.last_updated.limit(10)
+
+# Combine queries with OR
+query1 = Song.query(genre: "rock")
+query2 = Song.query(genre: "pop")
+combined = Parse::Query.or(query1, query2)
+
+# Range queries
+songs = Song.all(:plays.between => [100, 1000])
+```
+
+### LiveQuery (Real-Time Subscriptions) - Experimental
+
+Subscribe to real-time changes on Parse objects using WebSocket connections:
+
+```ruby
+# Configure LiveQuery
+Parse::LiveQuery.configure do |config|
+  config.url = "wss://your-parse-server.com"
+end
+
+# Create a client and subscribe
+client = Parse::LiveQuery::Client.new(
+  url: "wss://your-parse-server.com",
+  application_id: "your_app_id",
+  client_key: "your_client_key"
+)
+
+subscription = client.subscribe("Song", where: { "plays" => { "$gt" => 1000 } })
+
+subscription.on(:create) { |song| puts "New song: #{song['title']}" }
+subscription.on(:update) { |song, original| puts "Song updated!" }
+subscription.on(:delete) { |song| puts "Song deleted" }
+
+# Or use with Parse::Query
+query = Song.query(:plays.gt => 1000)
+subscription = client.subscribe(query)
+
+# Close when done
+client.close
+```
+
+Features include health monitoring with ping/pong, circuit breaker pattern for fault tolerance, and bounded event queues with backpressure handling.
+
+### Breaking Changes
+
+- **Minimum Ruby 3.2+** (dropped support for Ruby < 3.2)
+- **`distinct` method** now returns object IDs by default. Use `distinct(field, return_pointers: true)` for Parse::Pointer objects
+- **Faraday 2.x** (removed faraday_middleware dependency)
+- **Fixed typo** "constaint" → "constraint" throughout codebase
+
+For complete details, see [CHANGELOG.md](./CHANGELOG.md) and [Releases](https://github.com/commandpostsoft/parse-stack/releases).
+
 ## Table of Contents
 
 <!-- START doctoc generated TOC please keep comment here to allow auto update -->
@@ -156,6 +470,13 @@ result = Parse.call_function :myFunctionName, {param: value}
   - [Parse::Bytes](#parsebytes)
   - [Parse::TimeZone](#parsetimezone)
   - [Parse::ACL](#parseacl)
+  - [Parse::CLP (Class-Level Permissions)](#parseclp-class-level-permissions)
+    - [Defining CLPs in Models](#defining-clps-in-models)
+    - [Filtering Data for Webhook Responses](#filtering-data-for-webhook-responses)
+    - [Protected Fields Intersection Logic](#protected-fields-intersection-logic)
+    - [Push CLPs to Parse Server](#push-clps-to-parse-server)
+    - [Fetch and Inspect CLPs](#fetch-and-inspect-clps)
+    - [Owner-Based Access with userField](#owner-based-access-with-userfield)
   - [Parse::Session](#parsesession)
   - [Parse::Installation](#parseinstallation)
   - [Parse::Product](#parseproduct)
@@ -193,11 +514,17 @@ result = Parse.call_function :myFunctionName, {param: value}
         - [`:scope_only`](#scope_only)
 - [Creating, Saving and Deleting Records](#creating-saving-and-deleting-records)
   - [Create](#create)
+  - [Upsert Operations](#upsert-operations)
+    - [first_or_create](#first_or_create)
+    - [first_or_create!](#first_or_create_bang)
+    - [create_or_update!](#create_or_update_bang)
   - [Saving](#saving)
   - [Saving applying User ACLs](#saving-applying-user-acls)
     - [Raising an exception when save fails](#raising-an-exception-when-save-fails)
+  - [Enhanced Object Fetching](#enhanced-object-fetching)
   - [Modifying Associations](#modifying-associations)
   - [Batch Requests](#batch-requests)
+  - [Atomic Transactions](#atomic-transactions)
   - [Magic `save_all`](#magic-save_all)
   - [Deleting](#deleting)
 - [Fetching, Finding and Counting Records](#fetching-finding-and-counting-records)
@@ -205,6 +532,9 @@ result = Parse.call_function :myFunctionName, {param: value}
 - [Advanced Querying](#advanced-querying)
   - [Results Caching](#results-caching)
   - [Counting](#counting)
+  - [Count Distinct](#count-distinct)
+  - [Aggregation Functions](#aggregation-functions)
+  - [Group By Operations](#group-by-operations)
   - [Distinct Aggregation](#distinct-aggregation)
   - [Query Expressions](#query-expressions)
     - [:order](#order)
@@ -212,6 +542,7 @@ result = Parse.call_function :myFunctionName, {param: value}
     - [:includes](#includes)
     - [:limit](#limit)
     - [:skip](#skip)
+  - [Cursor-Based Pagination](#cursor-based-pagination)
     - [:cache](#cache)
     - [:use_master_key](#use_master_key)
     - [:session](#session)
@@ -247,6 +578,14 @@ result = Parse.call_function :myFunctionName, {param: value}
 - [Active Model Callbacks](#active-model-callbacks)
 - [Schema Upgrades and Migrations](#schema-upgrades-and-migrations)
 - [Push Notifications](#push-notifications)
+  - [Builder Pattern API](#builder-pattern-api)
+  - [Silent Push](#silent-push-ios-background-notifications)
+  - [Rich Push](#rich-push-ios-notification-extensions)
+  - [Localization](#localization)
+  - [Badge Management](#badge-management)
+  - [Saved Audiences](#saved-audiences)
+  - [Push Status Tracking](#push-status-tracking)
+  - [Installation Channel Management](#installation-channel-management)
 - [Cloud Code Webhooks](#cloud-code-webhooks)
   - [Cloud Code Functions](#cloud-code-functions)
   - [Cloud Code Triggers](#cloud-code-triggers)
@@ -254,7 +593,20 @@ result = Parse.call_function :myFunctionName, {param: value}
   - [Register Webhooks](#register-webhooks)
 - [Parse REST API Client](#parse-rest-api-client)
   - [Request Caching](#request-caching)
+- [Atlas Search](#atlas-search)
+  - [Setup](#setup)
+  - [Full-Text Search](#full-text-search)
+  - [Autocomplete](#autocomplete-search-as-you-type)
+  - [Faceted Search](#faceted-search)
+  - [Search Builder](#search-builder-advanced)
+  - [Query Integration](#query-integration)
+  - [Index Management](#index-management)
+  - [Creating Search Indexes](#creating-search-indexes)
 - [Contributing](#contributing)
+- [Testing](#testing)
+  - [Docker Integration Tests](#docker-integration-tests)
+  - [Unit Tests](#unit-tests)
+  - [Contributing Tests](#contributing-tests)
 - [License](#license)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
@@ -302,7 +654,7 @@ To connect to a Parse server, you will need a minimum of an `application_id`, an
   Parse.setup app_id: "YOUR_APP_ID",
               api_key: "YOUR_API_KEY",
               master_key: "YOUR_MASTER_KEY", # optional
-              server_url: 'https://localhost:1337/parse' #default
+              server_url: 'https://localhost:2337/parse' #default
 ```
 
 If you wish to add additional connection middleware to the stack, you may do so by utilizing passing a block to the setup method.
@@ -327,7 +679,7 @@ Calling `setup` will create the default `Parse::Client` session object that will
 There are additional connection options that you may pass the setup method when creating a `Parse::Client`.
 
 #### `:server_url`
-The server url of your Parse Server if you are not using the hosted Parse service. By default it will use `PARSE_SERVER_URL` environment variable available or fall back to `https://localhost:1337/parse` if not specified.
+The server url of your Parse Server if you are not using the hosted Parse service. By default it will use `PARSE_SERVER_URL` environment variable available or fall back to `https://localhost:2337/parse` if not specified.
 
 #### `:app_id`
 The Parse application id. By default it will use `PARSE_SERVER_APPLICATION_ID` environment variable if not specified.
@@ -339,10 +691,84 @@ The Parse REST API Key. By default it will use `PARSE_SERVER_REST_API_KEY` envir
 The Parse application master key. If this key is set, it will be sent on every request sent by the client and your models. By default it will use `PARSE_SERVER_MASTER_KEY` environment variable if not specified.
 
 #### `:logging`
-A true or false value. It provides you additional logging information of requests and responses. If set to the special symbol of `:debug`, it will provide additional payload data in the log messages.
+Controls request/response logging. Accepts:
+- `true` - Enable logging at `:info` level (logs method, URL, status, timing)
+- `:debug` - Enable verbose logging with headers and body content
+- `:warn` - Only log errors and warnings
+- `false` or `nil` - Disable logging (default)
+
+```ruby
+Parse.setup(logging: true, ...)      # info level
+Parse.setup(logging: :debug, ...)    # verbose with body content
+```
+
+#### `:logger`
+A custom Logger instance for request/response logging. Defaults to `Logger.new(STDOUT)`.
+
+```ruby
+Parse.setup(logging: true, logger: Rails.logger, ...)
+```
+
+You can also configure logging programmatically after setup:
+
+```ruby
+Parse.logging_enabled = true     # Enable/disable
+Parse.log_level = :debug         # :info, :debug, or :warn
+Parse.logger = Rails.logger      # Custom logger
+Parse.log_max_body_length = 1000 # Truncate body after N chars (default: 500)
+```
 
 #### `:adapter`
-The connection adapter. By default it uses the `Faraday.default_adapter` which is Net/HTTP.
+The HTTP connection adapter. By default, Parse Stack uses `:net_http_persistent` for connection pooling, which significantly improves performance by reusing HTTP connections. Set `connection_pooling: false` to use the standard `Net::HTTP` adapter instead.
+
+```ruby
+# Use a custom adapter (overrides connection_pooling setting)
+Parse.setup(adapter: :excon, ...)
+```
+
+#### `:connection_pooling`
+Controls HTTP connection pooling for improved performance. Enabled by default using the `net_http_persistent` adapter.
+
+**Benefits:**
+- 30-70% latency reduction by eliminating TCP/SSL handshakes per request
+- Reduced server load through connection reuse
+- Better performance for high-throughput applications
+
+```ruby
+# Default: connection pooling enabled
+Parse.setup(server_url: "...", app_id: "...", api_key: "...")
+
+# Disable connection pooling
+Parse.setup(connection_pooling: false, ...)
+
+# Custom pool configuration
+Parse.setup(
+  connection_pooling: {
+    pool_size: 5,      # Connections per thread (default: 1)
+    idle_timeout: 60,  # Seconds before closing idle connections (default: 5)
+    keep_alive: 60     # HTTP Keep-Alive timeout in seconds
+  },
+  ...
+)
+```
+
+**Configuration Options:**
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `pool_size` | 1 | Number of connections per thread. Increase if making parallel requests within a thread. |
+| `idle_timeout` | 5 | Seconds before closing idle connections. Set higher (30-60s) for frequently-used servers. |
+| `keep_alive` | - | HTTP Keep-Alive timeout. Should be less than your Parse Server's `keepAliveTimeout`. |
+
+**Recommended settings for Heroku:**
+```ruby
+Parse.setup(
+  connection_pooling: { pool_size: 2, idle_timeout: 60, keep_alive: 60 },
+  ...
+)
+```
+
+If `faraday-net_http_persistent` is not available, Parse Stack automatically falls back to the standard adapter with a warning.
 
 #### `:cache`
 A caching adapter of type `Moneta::Transformer`. Caching queries and object fetches can help improve the performance of your application, even if it is for a few seconds. Only successful `GET` object fetches and queries (non-empty) will be cached. You may set the default expiration time with the `expires` option. See related: [Moneta](https://github.com/minad/moneta). At any point in time you may clear the cache by calling the `clear_cache!` method on the client connection.
@@ -364,6 +790,92 @@ Sets the default cache expiration time (in seconds) for successful non-empty `GE
 
 #### `:faraday`
 You may pass a hash of options that will be passed to the `Faraday` constructor.
+
+### Global Settings
+
+#### `Parse.warn_on_query_issues`
+Controls whether query validation warnings are displayed. When enabled (default: `true`), Parse-Stack will print helpful warnings about common query mistakes:
+
+- Warning when including non-pointer fields (e.g., including a string field that doesn't need `include`)
+- Warning when including a pointer AND specifying subfield keys (redundant - the full object makes the subfield keys unnecessary)
+
+```ruby
+# Disable query validation warnings globally
+Parse.warn_on_query_issues = false
+
+# Example warnings that may be shown when enabled:
+# [Parse::Query] Warning: 'filename' is a string field, not a pointer/relation - it does not need to be included
+# [Parse::Query] Warning: including 'project' returns the full object - keys ["project.name"] are unnecessary
+```
+
+#### N+1 Query Detection
+
+Parse Stack can detect N+1 query patterns - a common performance issue where accessing associations in a loop triggers separate queries for each item.
+
+**Enable Detection:**
+```ruby
+# Warning mode (logs warnings)
+Parse.n_plus_one_mode = :warn
+
+# Or use the legacy API
+Parse.warn_on_n_plus_one = true
+```
+
+**Example:**
+```ruby
+Parse.n_plus_one_mode = :warn
+
+songs = Song.all(limit: 100)
+songs.each do |song|
+  song.artist.name  # Warning: N+1 query detected!
+end
+
+# Output:
+# [Parse::N+1] Warning: N+1 query detected on Song.artist (3 separate fetches for Artist)
+#   Location: app/controllers/songs_controller.rb:42 in `index`
+#   Suggestion: Use `.includes(:artist)` to eager-load this association
+```
+
+**Fix with Includes:**
+```ruby
+# Eager-load associations to avoid N+1
+songs = Song.all(limit: 100, includes: [:artist])
+songs.each do |song|
+  song.artist.name  # No warning - already loaded
+end
+```
+
+**Available Modes:**
+
+| Mode | Behavior |
+|------|----------|
+| `:ignore` | Detection disabled (default) |
+| `:warn` | Log warnings when N+1 detected |
+| `:raise` | Raise `Parse::NPlusOneQueryError` - ideal for CI/tests |
+
+**Strict Mode for CI/Tests:**
+```ruby
+# In test_helper.rb or rails_helper.rb
+Parse.n_plus_one_mode = :raise
+
+# Now N+1 queries will fail your tests!
+```
+
+**Custom Callbacks:**
+```ruby
+# Track N+1 patterns in your metrics
+Parse.on_n_plus_one do |source_class, association, target_class, count, location|
+  StatsD.increment("n_plus_one.#{source_class}.#{association}")
+end
+```
+
+**Configuration:**
+```ruby
+Parse.configure_n_plus_one do |config|
+  config.detection_window = 5.0   # Seconds to track related fetches (default: 2.0)
+  config.fetch_threshold = 5      # Fetches to trigger warning (default: 3)
+end
+```
 
 ## Working With Existing Schemas
 If you already have a Parse application with defined schemas and collections, you can have Parse-Stack automatically generate the ruby Parse::Object subclasses instead of writing them on your own. Through this process, the framework will download all the defined schemas of all your collections, and infer the properties and associations defined. While this method is useful for getting started with the framework with an existing app, we highly recommend defining your own models. This would allow you to customize and utilize all the features available in Parse Stack.
@@ -452,6 +964,34 @@ comment.author # <Parse::Pointer @parse_class="Author", @id="hZLbW6ofKC">
 
 comment.post.fetch # fetch the relation
 comment.post.pointer? # false, it is now a full object.
+```
+
+#### Auto-fetch on Property Access
+
+When you have a `Parse::Pointer` for a registered model class, you can access properties directly and the object will be automatically fetched:
+
+```ruby
+# Create a pointer (not yet fetched)
+pointer = Post.pointer("abc123")
+pointer.pointer? # true - no data yet
+
+# Accessing a property auto-fetches and returns the value
+pointer.title # Fetches the object, returns "My Post Title"
+
+# Subsequent accesses use the cached fetched object (no additional network request)
+pointer.content # Returns content without another fetch
+pointer.author  # Returns author without another fetch
+
+# The pointer remembers the fetched object
+pointer.pointer? # false - now has data
+```
+
+This auto-fetch behavior respects the `Parse.autofetch_raise_on_missing_keys` setting:
+
+```ruby
+Parse.autofetch_raise_on_missing_keys = true
+pointer = Post.pointer("abc123")
+pointer.title # Raises Parse::AutofetchTriggeredError instead of fetching
 ```
 
 The effect is that for any unknown classes that the framework encounters, it will generate Parse::Pointer instances until you define those classes with valid properties and associations. While this might be ok for some classes you do not use, we still recommend defining all your Parse classes locally in the framework.
@@ -647,6 +1187,157 @@ data.acl # => ACL({"role:Admin"=>{"read"=>true, "write"=>true}})
 
 For more information about Parse record ACLs, see the documentation at  [Security](http://docs.parseplatform.org/rest/guide/#security)
 
+### Parse::CLP (Class-Level Permissions)
+
+Class-Level Permissions (CLPs) control access at the schema level, determining who can perform operations on a class and which fields are visible to different users/roles. Unlike ACLs (which are per-object), CLPs apply to the entire class.
+
+#### Defining CLPs in Models
+
+Use the `set_clp` and `protect_fields` DSL methods to define CLPs:
+
+```ruby
+class Song < Parse::Object
+  property :title, :string
+  property :artist, :string
+  property :internal_notes, :string
+  property :royalty_data, :string
+  belongs_to :owner
+
+  # Set operation-level permissions
+  set_clp :find, public: true
+  set_clp :get, public: true
+  set_clp :create, public: false, roles: ["Admin", "Editor"]
+  set_clp :update, public: false, roles: ["Admin", "Editor"]
+  set_clp :delete, public: false, roles: ["Admin"]
+
+  # Protect fields from certain users (use camelCase for JSON field names)
+  protect_fields "*", [:internalNotes, :royaltyData]  # Hidden from everyone
+  protect_fields "role:Admin", []                      # Admins see everything
+  protect_fields "userField:owner", []                 # Owners see their own data
+end
+```
+
+**Supported Operations:** `:find`, `:get`, `:count`, `:create`, `:update`, `:delete`, `:addField`
+
+**Supported Patterns:**
+- `"*"` - Public (everyone)
+- `"role:RoleName"` - Users with specific role
+- `"userField:fieldName"` - Users referenced in a pointer field
+- `"authenticated"` - Any authenticated user
+- User objectId string - Specific user
+
+#### Filtering Data for Webhook Responses
+
+When returning data from webhooks, use `filter_for_user` to apply CLP field protection:
+
+```ruby
+# In a webhook handler
+def after_find(request)
+  user = request.user
+  roles = Song.roles_for_user(user)
+
+  # Filter each object for the requesting user
+  filtered_results = request.objects.map do |song|
+    song.filter_for_user(user, roles: roles)
+  end
+
+  # Or use the class method for arrays
+  filtered_results = Song.filter_results_for_user(request.objects, user, roles: roles)
+
+  { objects: filtered_results }
+end
+```
+
+#### Protected Fields Intersection Logic
+
+When a user matches multiple patterns, the protected fields are the **intersection** of all matching patterns. A field is only hidden if it's protected by ALL patterns that apply to the user:
+
+```ruby
+protect_fields "*", [:owner, :secret, :internal]  # Hide from everyone
+protect_fields "role:Admin", [:owner]             # Admins: only owner hidden
+protect_fields "userField:owner", []              # Owners see everything
+
+# User with Admin role matches "*" and "role:Admin":
+# - "*" protects: [owner, secret, internal]
+# - "role:Admin" protects: [owner]
+# - Intersection: [owner] - only this field is hidden
+# - "secret" and "internal" become visible (cleared by role pattern)
+
+# An empty array [] means "no fields protected" (user sees everything)
+# If ANY matching pattern has [], the intersection is empty (nothing hidden)
+```
+
+#### Push CLPs to Parse Server
+
+CLPs are automatically included when upgrading schemas:
+
+```ruby
+# Include CLPs in schema upgrade (default)
+Song.auto_upgrade!
+
+# Skip CLPs during schema upgrade
+Song.auto_upgrade!(include_clp: false)
+
+# Update only CLPs (no schema changes)
+Song.update_clp!
+```
+
+#### Fetch and Inspect CLPs
+
+```ruby
+# Fetch current CLPs from server
+clp = Song.fetch_clp
+
+# Check operation permissions
+clp.find_allowed?("*")           # => true (public find allowed)
+clp.create_allowed?("*")         # => false (public create denied)
+clp.role_allowed?(:create, "Admin")  # => true
+clp.requires_authentication?(:update)  # => false
+
+# Get protected fields for a pattern
+clp.protected_fields_for("*")          # => ["internalNotes", "royaltyData"]
+clp.protected_fields_for("role:Admin") # => []
+
+# Use fetched CLP for filtering
+filtered = song.filter_for_user(user, roles: roles, clp: clp)
+```
+
+#### Owner-Based Access with userField
+
+The `userField:fieldName` pattern allows owners (users referenced in a pointer field) to have different visibility:
+
+```ruby
+class Document < Parse::Object
+  property :content, :string
+  property :secret, :string
+  belongs_to :owner
+
+  # Hide secret and owner from everyone
+  protect_fields "*", [:secret, :owner]
+  # But owners of the document can see everything
+  protect_fields "userField:owner", []
+end
+
+# When filtering:
+doc_data = {
+  "content" => "Public content",
+  "secret" => "Private data",
+  "owner" => { "objectId" => "user123", "__type" => "Pointer" }
+}
+
+clp = Document.class_permissions
+
+# Owner sees everything
+clp.filter_fields(doc_data, user: "user123")
+# => { "content" => "...", "secret" => "...", "owner" => {...} }
+
+# Non-owner has protected fields hidden
+clp.filter_fields(doc_data, user: "other_user")
+# => { "content" => "..." }
+```
+
+This also works with arrays of pointers (e.g., `owners: [user1, user2]`).
+
 ### [Parse::Session](https://www.modernistik.com/gems/parse-stack/Parse/Session.html)
 This class represents the data and columns contained in the standard Parse `_Session` collection. You may add additional properties and methods to this class. See [Session API Reference](https://www.modernistik.com/gems/parse-stack/Parse/Session.html). You may call `Parse.use_shortnames!` to use `Session` in addition to `Parse::Session`.
 
@@ -676,6 +1367,33 @@ This class represents the data and columns contained in the standard Parse `_Pro
 
 ### [Parse::Role](https://www.modernistik.com/gems/parse-stack/Parse/Role.html)
 This class represents the data and columns contained in the standard Parse `_Role` collection. You may add additional properties and methods to this class. See [Roles API Reference](https://www.modernistik.com/gems/parse-stack/Parse/Role.html). You may call `Parse.use_shortnames!` to use `Role` in addition to `Parse::Role`.
+
+#### Role Management Helpers
+
+Parse::Role provides convenient methods for managing users and role hierarchies:
+
+```ruby
+# Find or create roles
+admin = Parse::Role.find_by_name("Admin")
+moderator = Parse::Role.find_or_create("Moderator")
+
+# Manage users
+admin.add_user(user).save
+admin.add_users(user1, user2, user3).save
+admin.remove_user(user).save
+admin.has_user?(user)  # => true
+
+# Role hierarchy (Admins inherit Moderator permissions)
+admin.add_child_role(moderator).save
+admin.has_child_role?(moderator)  # => true
+admin.all_child_roles              # => All child roles recursively
+admin.all_users                    # => Users from this role AND child roles
+
+# Counts
+admin.users_count        # Direct users
+admin.child_roles_count  # Direct child roles
+admin.total_users_count  # All users including child roles
+```
 
 ### [Parse::User](https://www.modernistik.com/gems/parse-stack/Parse/User.html)
 This class represents the data and columns contained in the standard Parse `_User` collection. You may add additional properties and methods to this class. See [User API Reference](https://www.modernistik.com/gems/parse-stack/Parse/User.html). You may call `Parse.use_shortnames!` to use `User` in addition to `Parse::User`.
@@ -773,6 +1491,92 @@ user = Parse::User.first
 Parse::User.request_password_reset user
 # or email
 Parse::User.request_password_reset("user@example.com")
+```
+
+#### Multi-Factor Authentication (MFA)
+
+Parse-Stack provides comprehensive MFA support that integrates with Parse Server's built-in MFA adapter. This enables TOTP (Time-based One-Time Password) authentication with apps like Google Authenticator, Authy, or 1Password.
+
+**Prerequisites:**
+- Parse Server must have the MFA adapter enabled
+- Add optional gems to your Gemfile: `gem 'rotp'` and `gem 'rqrcode'`
+
+**Parse Server Configuration:**
+```javascript
+{
+  auth: {
+    mfa: {
+      enabled: true,
+      options: ["TOTP"],
+      digits: 6,
+      period: 30,
+      algorithm: "SHA1"
+    }
+  }
+}
+```
+
+**Setting Up MFA:**
+```ruby
+# Configure the issuer name shown in authenticator apps
+Parse::MFA.configure do |config|
+  config[:issuer] = "MyApp"
+end
+
+# Step 1: Generate a TOTP secret
+secret = Parse::MFA.generate_secret
+
+# Step 2: Display QR code to the user
+qr_svg = user.mfa_qr_code(secret, issuer: "MyApp")
+# Render in HTML: <%= raw qr_svg %>
+
+# Step 3: User scans QR and enters code from their authenticator
+recovery_codes = user.setup_mfa!(secret: secret, token: "123456")
+# IMPORTANT: Display recovery codes to user - they can only see them once!
+```
+
+**Logging In with MFA:**
+```ruby
+# Login with username, password, and MFA token
+user = Parse::User.login_with_mfa("username", "password", "123456")
+
+# Check if MFA is required before login
+if Parse::User.mfa_required?("username")
+  # Prompt for MFA token
+end
+```
+
+**Managing MFA:**
+```ruby
+# Check MFA status
+user.mfa_enabled?  # => true
+user.mfa_status    # => :enabled, :disabled, or :unknown
+
+# Disable MFA (requires current token)
+user.disable_mfa!(current_token: "123456")
+
+# Admin reset (requires master key)
+user.disable_mfa_admin!
+```
+
+**SMS MFA (requires Parse Server SMS callback):**
+```ruby
+# Initiate SMS setup
+user.setup_sms_mfa!(mobile: "+1234567890")
+
+# Confirm with received code
+user.confirm_sms_mfa!(mobile: "+1234567890", token: "123456")
+```
+
+**Error Handling:**
+```ruby
+begin
+  user = Parse::User.login_with_mfa(username, password, token)
+rescue Parse::MFA::RequiredError
+  # MFA token was not provided but is required
+rescue Parse::MFA::VerificationError
+  # Invalid MFA token
+end
 ```
 
 
@@ -1406,41 +2210,66 @@ song.changed # ['name']
 
 ```
 
-If you want to either find the first resource matching some given criteria or just create that resource if it can't be found, you can use `first_or_create`. Note that if a match is not found, the object will not be saved to Parse automatically, since the framework provides support for heterogeneous object batch saving. This means you can group different object classes together and save them all at once through the `Array#save` method to reduce API requests. If you want to truly want to find a first or create (save) the object, you may use `first_or_create!`.
+## Upsert Operations
+Parse-Stack provides Rails-style upsert methods that follow ActiveRecord conventions for finding or creating objects with optimized performance.
+
+### first_or_create
+Find the first object matching the query conditions, or create a new **unsaved** object with the attributes. This follows Rails conventions where existing objects are returned unchanged, and new objects are created but not automatically saved.
 
 ```ruby
- # Finds matching song or creates a new unsaved object
+# Find existing song or create new unsaved object
 song = Song.first_or_create(name: "Awesome Song", available: true)
-song.id # nil since it wasn't found, and autosave is off.
-song.released = 1.day.from_now
-song.save
-song.id # now has a valid objectId ex. 'xyz1122df'
+if song.new?
+  song.released = 1.day.from_now
+  song.save  # Manually save when ready
+end
 
+# If found, returns existing object unchanged
 song = Song.first_or_create(name: "Awesome Song", available: true)
-song.id # 'xyz1122df`
-song.save # noop since nothing changed
-
-# first_or_create! : Return an existing OR newly saved object
-song = Song.first_or_create!(name: "Awesome Song", available: true)
-
+song.id # 'xyz1122df' - found existing object
 ```
 
-If the constraints you use for the query differ from the attributes you want to set for the new object, you can pass the attributes for creating a new resource as the second parameter to `#first_or_create`, also in the form of a `#Hash`.
+You can separate query conditions from creation attributes by using two hash parameters:
 
 ```ruby
-  song = Song.first_or_create({ name: "Long Way Home" }, { released: DateTime.now })
+# Query by name, but set additional attributes only if creating
+song = Song.first_or_create(
+  { name: "Long Way Home" },           # Query conditions  
+  { released: DateTime.now, genre: "rock" }  # Additional attributes for new objects
+)
 ```
 
-The above will search for a Song with name 'Long Way Home'. If it does not find a match, it will create a new instance with `name` set to 'Long Way Home' and the `released` date field to the current time, at time of execution. In this scenario, both hash arguments are merged to create a new instance with the second set of arguments overriding the first set.
+### first_or_create!
+Similar to `first_or_create`, but automatically saves new objects. Existing objects are returned unchanged.
 
 ```ruby
-  song = Song.first_or_create({ name: "Long Way Home" }, {
-          name: "Other Way Home",
-          released: DateTime.now # Time.now ok too
-    })
+# Find existing OR create and save new object
+song = Song.first_or_create!(name: "New Song", available: true)
+song.id # Always has an objectId (either found or newly saved)
 ```
 
-In the above case, if a Song is not found with name 'Long Way Home', the new instance will be created with `name` set to 'Other Way Home' and `released` set to `DateTime.now`.
+### create_or_update!
+Find the first object matching query conditions and update it with new attributes, or create a new saved object. Includes performance optimizations to skip saves when no changes are detected.
+
+```ruby
+# Update existing song or create new one
+song = Song.create_or_update!(
+  { name: "My Song" },                    # Query conditions
+  { released: Time.now, plays: 100 }     # Attributes to update/set
+)
+
+# Performance optimization: no save occurs if attributes are identical
+song = Song.create_or_update!(
+  { name: "My Song" },
+  { released: song.released }  # Same value - no save performed
+)
+```
+
+**Key Benefits:**
+- **Performance optimized**: Only saves when actual changes are detected
+- **Rails conventions**: `first_or_create` doesn't modify existing objects
+- **Flexible**: Separate query and attribute parameters for complex scenarios
+- **Batch friendly**: Unsaved objects can be grouped for efficient batch operations
 
 ### Saving
 To commit a new record or changes to an existing record to Parse, use the `#save` method. The method will automatically detect whether it is a new object or an existing one and call the appropriate workflow. The use of ActiveModel dirty tracking allows us to send only the changes that were made to the object when saving. **Saving a record will take care of both saving all the changed properties, and associations. However, any modified linked objects (ex. belongs_to) need to be saved independently.**
@@ -1498,6 +2327,169 @@ By default, we return `true` or `false` for save and destroy operations. If you 
 ```
 
 When enabled, if an error is returned by Parse due to saving or destroying a record, due to your `before_save` or `before_delete` validation cloud code triggers, `Parse::Object` will return the a `Parse::RecordNotSaved` exception type. This exception has an instance method of `#object` which contains the object that failed to save.
+
+## Enhanced Object Fetching
+Parse-Stack provides enhanced methods for fetching object data from Parse Server with improved consistency and flexibility.
+
+### fetch and fetch_object
+Both `Parse::Pointer` and `Parse::Object` support enhanced fetching methods that provide consistent behavior across different object types.
+
+```ruby
+# Enhanced fetch method with returnObject parameter (defaults to true)
+pointer = Parse::Pointer.new("Song", "xyz123")
+song_object = pointer.fetch(true)  # Returns fetched Parse::Object
+song_data = pointer.fetch(false)   # Returns raw hash data
+
+# Convenience method - always returns object
+song_object = pointer.fetch_object  # Equivalent to fetch(true)
+
+# Same methods work on existing Parse::Object instances
+song = Song.first
+refreshed_song = song.fetch_object  # Re-fetches and returns object
+```
+
+**Key Features:**
+- **Consistent API**: Same methods work for both `Parse::Pointer` and `Parse::Object`
+- **Flexible return types**: Choose between object instances or raw data
+- **Change tracking preservation**: Fetched objects maintain proper dirty tracking state
+- **Backwards compatible**: Existing `fetch` behavior preserved
+
+### Partial Fetch on Existing Objects
+
+You can partially fetch specific fields on existing objects or pointers using the `keys:` and `includes:` parameters. This is useful when you only need specific fields without fetching the entire object.
+
+```ruby
+# Partial fetch on a pointer - returns a new partially fetched object
+pointer = Post.pointer("abc123")
+post = pointer.fetch(keys: [:title, :content])
+post.partially_fetched?           # true
+post.field_was_fetched?(:title)   # true
+post.field_was_fetched?(:author)  # false
+
+# Partial fetch on an existing object - updates self
+post = Post.find("abc123")
+post.fetch(keys: [:view_count])   # Fetches only view_count, updates self
+
+# Incremental partial fetch - keys are merged
+post = Post.first(keys: [:title])
+post.field_was_fetched?(:title)   # true
+post.field_was_fetched?(:content) # false
+post.fetch(keys: [:content])      # Add content to fetched keys
+post.field_was_fetched?(:title)   # true - still tracked
+post.field_was_fetched?(:content) # true - now tracked
+```
+
+#### Nested Fields with Dot Notation
+
+Use dot notation in `keys:` to fetch specific fields from related objects. Parse Server automatically resolves the pointer.
+
+```ruby
+# Partial fetch with nested fields (pointer auto-resolved)
+post = Post.pointer("abc123").fetch(keys: ["author.name", "author.email"])
+post.author.pointer?                    # false - expanded to object
+post.author.partially_fetched?          # true
+post.author.field_was_fetched?(:name)   # true
+post.author.field_was_fetched?(:age)    # false
+
+# Access unfetched nested field triggers autofetch
+post.author.age  # Automatically fetches the full author object
+```
+
+#### fetch_json for Raw Data
+
+Use `fetch_json` to get raw JSON data without updating the object:
+
+```ruby
+post = Post.find("abc123")
+json = post.fetch_json(keys: [:title, :view_count])
+# json is a Hash: {"objectId" => "abc123", "title" => "...", "viewCount" => 100}
+# post is unchanged
+```
+
+#### Dirty Tracking During Fetch
+
+By default, `fetch` discards local changes to fetched fields and applies server values. Use `preserve_changes: true` to keep local changes.
+
+```ruby
+# Default behavior: server values are applied, local changes discarded
+post = Post.find("abc123")
+post.title = "Modified Title"
+post.fetch                    # Warning logged, local change discarded
+post.title                    # => "Original Title" (server value)
+post.title_changed?           # false
+
+# Preserve local changes with preserve_changes: true
+post = Post.find("abc123")
+post.title = "Modified Title"
+post.fetch(preserve_changes: true)  # Local changes preserved
+post.title                          # => "Modified Title"
+post.title_changed?                 # true
+
+# Unfetched dirty fields are ALWAYS preserved (regardless of preserve_changes)
+post = Post.find("abc123")
+post.title = "Modified Title"
+post.category = "tech"
+post.fetch(keys: [:title])    # Only fetch title, not category
+post.title_changed?           # false - title was fetched, server value applied
+post.category_changed?        # true - category NOT fetched, dirty preserved
+post.category                 # => "tech" (local value preserved)
+```
+
+**Important:** Base fields (`id`, `created_at`, `updated_at`) always accept server values regardless of `preserve_changes` setting.
+
+#### Dirty Tracking on Embedded/Pointer Objects
+
+When you have an embedded object (e.g., from a `belongs_to` association) that's in pointer state (has `id` but not yet fully fetched), setting fields on it will correctly mark those fields as dirty. The object will be auto-fetched before the change is tracked.
+
+```ruby
+# report has an embedded scheduled_report that's in pointer state
+report = Report.first(id: "abc123")
+scheduled = report.scheduled_report  # Pointer state (only has id)
+
+# Setting a field auto-fetches and correctly tracks the change
+scheduled.status = :completed
+scheduled.dirty?          # => true
+scheduled.status_changed? # => true
+scheduled.save            # Saves the change to Parse
+```
+
+#### Array Dirty Tracking
+
+For `has_many` associations (arrays of pointers), only structural changes to the array mark the parent as dirty:
+
+```ruby
+artist = Artist.first
+artist.songs.clear_changes!
+
+# Modifying a nested object does NOT mark parent dirty
+artist.songs.first.plays = 100
+artist.dirty?        # => false (array structure unchanged)
+artist.songs.first.dirty?  # => true (the song itself is dirty)
+
+# Adding/removing items DOES mark parent dirty
+artist.songs.add(new_song)
+artist.dirty?        # => true (array structure changed)
+
+artist.songs.remove(old_song)
+artist.dirty?        # => true
+```
+
+#### Object Identity and Equality
+
+Parse objects are compared by identity (`parse_class` and `id`), not by their field values or dirty state:
+
+```ruby
+# Pointer, partial object, and full object with same id are equal
+pointer = Song.pointer("abc123")
+partial = Song.first(id: "abc123", keys: [:title])
+full = Song.find("abc123")
+
+pointer == partial  # => true (same id)
+partial == full     # => true (same id)
+
+# Works correctly with array operations
+[pointer, partial, full].uniq.size  # => 1 (all same identity)
+```
 
 ### Modifying Associations
 Similar to `:array` types of properties, a `has_many` association is backed by a collection proxy class and requires the use of `#add` and `#remove` to modify the contents of the association in order for it to correctly manage changes and updates with Parse. Using `has_many` for associations has the additional functionality that we will only add items to the association if they are of a `Parse::Pointer` or `Parse::Object` type. By default, these associations are fetched with only pointer data. To fetch all the objects in the association, you can call `#fetch` or `#fetch!` on the collection. Note that because the framework supports chaining, it is better to only request the objects you need by utilizing their accessors.
@@ -1592,6 +2584,89 @@ This methodology works by continually fetching and saving older records related 
 
 If you plan on using this feature in a lot of places, we recommend making sure you have set a MongoDB index of at least `{ "_updated_at" : 1 }`.
 
+## Atomic Transactions
+Parse-Stack provides full atomic transaction support to ensure data consistency across multiple operations. All operations within a transaction either succeed completely or fail completely with automatic rollback.
+
+### Basic Transaction Usage
+Use `Parse::Object.transaction` with a block to group operations atomically:
+
+```ruby
+# Explicit batch operations
+Parse::Object.transaction do |batch|
+  # Update existing objects
+  user = Parse::User.first
+  user.score = 100
+  batch.add(user)
+  
+  # Create new objects
+  achievement = Achievement.new(user: user, name: "High Score")
+  batch.add(achievement)
+  
+  # All operations execute atomically
+end
+```
+
+### Auto-Batching with Return Values
+You can also return objects from the transaction block for automatic batching:
+
+```ruby
+# Objects returned from block are automatically batched
+Parse::Object.transaction do
+  user1 = Parse::User.first
+  user1.score = 200
+  
+  user2 = Parse::User.first(username: "player2")
+  user2.score = 150
+  
+  [user1, user2]  # Auto-batched for atomic save
+end
+```
+
+### Transaction Features
+- **Atomic operations**: All operations succeed or all fail with rollback
+- **Automatic retries**: Conflicts (error 251) are automatically retried with configurable limits
+- **Mixed operations**: Support create, update, and delete operations in single transaction
+- **Error handling**: Comprehensive error handling with meaningful exception messages
+- **Object ID assignment**: New objects automatically receive their `objectId`, `createdAt`, and `updatedAt` from the server response after successful transaction
+
+```ruby
+# Transaction with custom retry limit and error handling
+begin
+  Parse::Object.transaction(retries: 10) do |batch|
+    # Complex business operations
+    order = Order.create!(items: cart_items, customer: customer)
+    inventory.update!(quantity: inventory.quantity - order.total_items)
+    customer.update!(last_order: order)
+
+    [order, inventory, customer]
+  end
+rescue Parse::Error => e
+  puts "Transaction failed: #{e.message}"
+  # Handle failure (all changes rolled back)
+end
+```
+
+### Transaction Object Updates
+
+When you create new objects within a transaction, their `objectId`, `createdAt`, and `updatedAt` fields are automatically populated after the transaction succeeds:
+
+```ruby
+products = []
+
+Parse::Object.transaction do |batch|
+  3.times do |i|
+    product = Product.new(name: "Product #{i}", price: i * 10)
+    products << product
+    batch.add(product)
+  end
+end
+
+# After successful transaction, all objects have their IDs
+products.each do |p|
+  puts "#{p.name}: #{p.id}"  # IDs are now populated
+end
+```
+
 ### Deleting
 You can destroy a Parse record, just call the `#destroy` method. It will return a boolean value whether it was successful.
 
@@ -1617,6 +2692,12 @@ You can destroy a Parse record, just call the `#destroy` method. It will return 
  query = Song.where( constraints ) # returns a Parse::Query with where clauses
  song = Song.first( ... constraints ... ) # first Song matching constraints
  s1, s2, s3 = Song.first(3) # get first 3 records from Parse.
+
+ song = Song.latest( ... constraints ... ) # most recently created Song matching constraints
+ recent_songs = Song.latest(5) # get 5 most recently created Songs
+ 
+ song = Song.last_updated( ... constraints ... ) # most recently updated Song matching constraints  
+ updated_songs = Song.last_updated(3) # get 3 most recently updated Songs
 
  songs = Song.all( ... expressions ...) # get matching Song records. See Advanced Querying
 
@@ -1662,6 +2743,160 @@ This also works for all associations types.
 
   # Fetches Parse Relation objects
   song.fans.first.username # the fan's username
+```
+
+### Partial Fetch and Autofetch Behavior
+
+Parse-Stack supports partial fetches, where you can query for objects with only specific fields included using the `:keys` parameter. This is useful for optimizing queries when you don't need all fields.
+
+```ruby
+# Fetch only specific fields
+post = Post.first(keys: [:id, :title, :author])
+post.partially_fetched? # true
+post.field_was_fetched?(:title) # true
+post.field_was_fetched?(:content) # false
+
+# Accessing an unfetched field triggers autofetch
+content = post.content # Automatically fetches the full object from Parse
+```
+
+#### Fetch Status Methods
+
+Parse objects can be in one of three states, and you can check the status using these methods:
+
+| Method | Pointer | Partially Fetched | Fully Fetched |
+|--------|---------|-------------------|---------------|
+| `pointer?` | `true` | `false` | `false` |
+| `partially_fetched?` | `false` | `true` | `false` |
+| `fully_fetched?` | `false` | `false` | `true` |
+| `fetched?` | `false` | `true` | `true` |
+
+```ruby
+# Pointer state (only id, no data fetched)
+pointer = Post.pointer("abc123")
+pointer.pointer?           # => true
+pointer.partially_fetched? # => false
+pointer.fully_fetched?     # => false
+pointer.fetched?           # => false
+
+# Partially/selectively fetched (specific keys only)
+partial = Post.first(keys: [:title, :author])
+partial.pointer?           # => false
+partial.partially_fetched? # => true
+partial.fully_fetched?     # => false
+partial.fetched?           # => true
+
+# Fully fetched (all fields available)
+full = Post.first
+full.pointer?           # => false
+full.partially_fetched? # => false
+full.fully_fetched?     # => true
+full.fetched?           # => true
+```
+
+The `fetched?` method returns `true` for any object with data (either partially or fully fetched). Use `fully_fetched?` if you need to check that all fields are available, or `partially_fetched?` to check if only specific keys were fetched.
+
+#### Serialization of Partially Fetched Objects
+
+By default, calling `as_json` or `to_json` on a partially fetched object will only serialize the fields that were fetched. This prevents autofetch from being triggered during serialization and is particularly useful for webhook responses.
+
+```ruby
+# Default behavior (Parse.serialize_only_fetched_fields = true)
+user = User.first(keys: [:id, :first_name, :email])
+user.to_json  # Only includes id, first_name, email (plus metadata)
+
+# Useful for webhook responses - returns only requested fields
+Parse::Webhooks.route :function, :getTeamMembers do
+  users = User.all(:id.in => user_ids, keys: [:id, :first_name, :icon_image])
+  users  # Returns only the requested fields, no autofetch triggered
+end
+
+# Disable globally if needed
+Parse.serialize_only_fetched_fields = false
+
+# Or override per-call
+user.as_json(only_fetched: false)  # Serialize all fields (may trigger autofetch)
+```
+
+#### Autofetch Behavior with `disable_autofetch!`
+
+You can disable automatic fetching on an object using `disable_autofetch!`. This is useful when you want strict control over network requests:
+
+```ruby
+post = Post.first(keys: [:id, :title])
+post.disable_autofetch!
+
+# Now accessing unfetched fields raises an error
+post.content # Raises Parse::UnfetchedFieldAccessError
+```
+
+**Autofetch behavior by object type:**
+
+1. **`Parse::Pointer` objects** (created via `Model.pointer("id")`):
+   - Accessing any property automatically fetches the full object and returns the value
+   - The fetched object is cached, so subsequent property accesses don't trigger additional fetches
+   - With `autofetch_raise_on_missing_keys` enabled, raises `Parse::AutofetchTriggeredError` instead
+
+2. **`Parse::Object` in pointer state** (objects with only `id`, no fetched data):
+   - Accessing an unfetched field triggers autofetch by default
+   - With `disable_autofetch!`, accessing any field returns `nil` (backward compatible behavior)
+
+3. **Partially fetched objects** (objects fetched with `:keys` parameter):
+   - Accessing an unfetched field triggers autofetch by default
+   - With `disable_autofetch!`, raises `Parse::UnfetchedFieldAccessError` (strict behavior)
+   - Autofetch preserves any nested embedded data on pointer fields (e.g., `author.name` won't be lost)
+
+```ruby
+# Parse::Pointer auto-fetch (new in 2.1.6)
+pointer = Song.pointer("abc123")
+pointer.title # Auto-fetches and returns title
+
+# Parse::Object in pointer state
+song = Song.new(id: "abc123") # Just a pointer, no data fetched
+song.disable_autofetch!
+song.title # Returns nil (backward compatible behavior)
+
+# Partially fetched object behavior
+song = Song.first(id: "abc123", keys: [:id, :artist])
+song.disable_autofetch!
+song.artist # Works - this field was fetched
+song.title # Raises Parse::UnfetchedFieldAccessError (strict behavior)
+```
+
+**Rationale:** Pointer objects have historically always returned `nil` for unfetched fields - this is well-understood behavior that existing applications depend on. Partially fetched objects are a newer feature where it's less obvious which fields are available, so raising explicit errors helps catch bugs early. `Parse::Pointer` objects now support auto-fetch on property access for convenience.
+
+#### Debugging Autofetch with `autofetch_raise_on_missing_keys`
+
+During development, you can enable `Parse.autofetch_raise_on_missing_keys` to identify all places in your code where autofetch is being triggered. This helps you add the necessary keys to your queries to avoid unnecessary network requests:
+
+```ruby
+# Enable globally for debugging
+Parse.autofetch_raise_on_missing_keys = true
+
+# Now accessing unfetched fields raises an error with helpful info
+post = Post.first(keys: [:title])
+post.content # Raises Parse::AutofetchTriggeredError
+# => "Autofetch triggered on Post#abc123 - field :content was not included in partial fetch. Add :content to your query keys."
+
+# For pointers, the message suggests using includes
+song = Song.pointer("xyz789")
+song.title # Raises Parse::AutofetchTriggeredError
+# => "Autofetch triggered on Song#xyz789 - pointer accessed field :title. Add this field to your includes or fetch the object first."
+```
+
+This is particularly useful when optimizing your application's network usage. Enable it in development/test environments to catch all autofetch triggers, then add the appropriate keys or includes to your queries.
+
+```ruby
+# Example workflow:
+# 1. Enable in development
+Parse.autofetch_raise_on_missing_keys = true
+
+# 2. Run your code - errors will tell you exactly which fields are missing
+# 3. Add the fields to your queries:
+Post.first(keys: [:title, :content, :author])  # Add missing fields
+
+# 4. Disable when done debugging
+Parse.autofetch_raise_on_missing_keys = false
 ```
 
 ## Advanced Querying
@@ -1748,9 +2983,96 @@ non-zero value. However, if you need to perform a count query, use `count()` met
 
 ```
 
+### Count Distinct
+Counts the number of distinct values for a specified field using MongoDB aggregation pipeline. This is more efficient than getting distinct values and counting them, especially for large datasets.
+
+```ruby
+ # get count of unique genres for songs with play_count > 100
+ distinct_genres_count = Song.count_distinct(:genre, :play_count.gt => 100)
+
+ # get total number of unique artists
+ unique_artists = Song.count_distinct(:artist)
+
+ # same using query instance
+ query = Parse::Query.new("Song") 
+ query.where(:play_count.gt => 1000)
+ query.count_distinct(:artist)
+ # => 15
+```
+
+**Note:** This feature requires MongoDB aggregation pipeline support in Parse Server.
+
+### Aggregation Functions
+
+Parse-Stack supports MongoDB aggregation functions for performing calculations across collections. These functions are efficient server-side operations.
+
+```ruby
+# Calculate sum of all scores
+total_score = User.sum(:score)
+# => 1547
+
+# Find minimum and maximum values
+min_age = User.min(:age)      # => 18
+max_age = User.max(:age)      # => 65
+
+# Calculate average rating
+avg_rating = Product.average(:rating)  # => 4.2
+# Or use the alias
+avg_rating = Product.avg(:rating)      # => 4.2
+
+# With query constraints
+high_scores = User.where(:level.gt => 5).sum(:score)
+recent_avg = Post.where(:created_at.after => 1.week.ago).avg(:views)
+```
+
+**Note:** These features require MongoDB aggregation pipeline support in Parse Server.
+
+### Group By Operations
+
+Group records by field values and perform aggregations on each group. Supports both server-side aggregation and client-side object grouping.
+
+```ruby
+# Basic grouping with count
+User.group_by(:department).count
+# => {"Engineering" => 45, "Marketing" => 23, "Sales" => 67}
+
+# Group with other aggregations
+User.group_by(:department).sum(:salary)
+# => {"Engineering" => 450000, "Marketing" => 230000, "Sales" => 670000}
+
+User.group_by(:department).avg(:salary)
+# => {"Engineering" => 10000, "Marketing" => 10000, "Sales" => 10000}
+
+# Group by date intervals
+Post.group_by_date(:created_at, :month).count
+# => {"2024-01" => 45, "2024-02" => 32, "2024-03" => 28}
+
+Post.group_by_date(:created_at, :day).sum(:views)
+# => {"2024-03-01" => 1200, "2024-03-02" => 950, ...}
+
+# Sortable grouping (returns GroupedResult with sorting methods)
+result = User.group_by(:city, sortable: true).count
+result.sort_by_key_asc     # Sort by city name
+result.sort_by_value_desc  # Sort by count (highest first)
+result.to_table           # Display as formatted table
+
+# Group actual objects (not aggregated - returns full Parse objects)
+users_by_city = User.group_objects_by(:city)
+# => {"New York" => [user1, user2, ...], "Austin" => [user3, user4, ...]}
+
+# Advanced options
+User.group_by(:tags, flatten_arrays: true).count  # Flatten array fields
+User.group_by(:team, return_pointers: true).count # Use pointers for efficiency
+```
+
+**Available aggregation methods:** `count`, `sum(field)`, `min(field)`, `max(field)`, `avg(field)`
+**Date intervals:** `:year`, `:month`, `:week`, `:day`, `:hour`
+
 ### Distinct Aggregation
 Finds the distinct values for a specified field across a single collection or
 view and returns the results in an array. You may mix this with additional query constraints.
+
+**⚠️ Breaking Change in v1.12.0**: For pointer fields, `distinct` now returns object IDs directly by default instead of full pointer hash objects like `{"__type"=>"Pointer", "className"=>"Team", "objectId"=>"abc123"}`. Use `return_pointers: true` to get Parse::Pointer objects.
 
 ```ruby
  # Return a list of unique city names
@@ -1758,7 +3080,18 @@ view and returns the results in an array. You may mix this with additional query
  User.distinct :city, :created_at.after => 10.days.ago
  # ex. ["San Diego", "Los Angeles", "San Juan"]
 
- # same
+ # For pointer fields, now returns object IDs by default (v1.12.0+)
+ Asset.distinct(:author_team)
+ # => ["team1", "team2", "team3"]  # Just the object IDs
+
+ # Pre-v1.12.0 behavior returned full pointer hashes:
+ # [{"__type"=>"Pointer", "className"=>"Team", "objectId"=>"team1"}, ...]
+ 
+ # To get Parse::Pointer objects in v1.12.0+
+ Asset.distinct(:author_team, return_pointers: true)
+ # => [#<Parse::Pointer @parse_class="Team" @id="team1">, ...]
+
+ # same using query instance
  query = Parse::Query.new("_User")
  query.where :created_at.after => 10.days.ago
  query.distinct(:city) #=> ["San Diego", "Los Angeles", "San Juan"]
@@ -1823,15 +3156,95 @@ Use with limit to paginate through results. Default is 0.
  Song.all :limit => 3, :skip => 10
 ```
 
-#### :cache
-A `true`, `false` or integer value. If you are using the built-in caching middleware, `Parse::Middleware::Caching`, setting this to `false` will prevent it from using a previously cached result if available. You may pass an integer value, which will allow this request to be cached for the specified number of seconds. The default value is `true`, which uses the [`:expires`](#expires) value that was passed when [configuring the client](#connection-setup).
+> **Note:** For large datasets, skip-based pagination becomes increasingly slow. Consider using [Cursor-Based Pagination](#cursor-based-pagination) instead.
+
+### Cursor-Based Pagination
+
+For efficiently traversing large datasets, Parse Stack provides cursor-based pagination which maintains consistent performance regardless of how deep you paginate.
+
+**Why use cursors instead of skip/offset?**
+- **Consistent performance**: Skip-based pagination slows down as offset increases; cursors don't
+- **No skipped/duplicate records**: Handles records added/deleted during pagination
+- **Memory efficient**: Fetches one page at a time
 
 ```ruby
-# don't use a cached result if available
-Song.all limit: 500, cache: false
+# Basic usage - iterate over pages
+cursor = Song.cursor(limit: 100)
+cursor.each_page do |page|
+  process(page)
+end
+
+# Iterate over individual items
+Song.cursor(limit: 50).each do |song|
+  puts song.title
+end
+
+# With query constraints
+cursor = Song.query(:artist => "Artist Name").cursor(limit: 100)
+cursor.each_page { |page| process(page) }
+
+# With custom ordering
+cursor = Song.cursor(limit: 100, order: :created_at.desc)
+
+# Manual pagination control
+cursor = User.cursor(limit: 100)
+first_page = cursor.next_page
+second_page = cursor.next_page
+cursor.reset!  # Start over
+```
+
+**Cursor Statistics:**
+```ruby
+cursor.stats
+# => { pages_fetched: 5, items_fetched: 500, page_size: 100, exhausted: true, ... }
+
+cursor.more_pages?  # true/false
+cursor.exhausted?   # true/false
+```
+
+**Resumable Cursors (for background jobs):**
+
+Cursors can be serialized and resumed later - perfect for jobs that may be interrupted:
+
+```ruby
+# Save cursor state
+cursor = Song.cursor(limit: 100)
+cursor.next_page  # Process first page
+state = cursor.serialize
+Redis.set("job:#{job_id}:cursor", state)
+
+# Resume later (even in a different process)
+state = Redis.get("job:#{job_id}:cursor")
+cursor = Parse::Cursor.deserialize(state)
+cursor.each_page { |page| process(page) }  # Continues where it left off
+```
+
+#### :cache
+A `true`, `false` or integer value. If you are using the built-in caching middleware, `Parse::Middleware::Caching`, setting this to `true` will use a previously cached result if available. Setting to `false` will prevent caching. You may pass an integer value, which will allow this request to be cached for the specified number of seconds. **The default value is `false`** (queries do not use cache unless explicitly enabled).
+
+```ruby
+# explicitly use cache for this request
+Song.all limit: 500, cache: true
 
 # cache this particular request for 60 seconds
 Song.all limit: 500, cache: 1.minute
+
+# don't use cache (default behavior)
+Song.all limit: 500, cache: false
+```
+
+To change the default caching behavior globally, use the `Parse.default_query_cache` configuration:
+
+```ruby
+# Enable cache by default (opt-out behavior)
+Parse.default_query_cache = true
+Song.first                           # Uses cache
+Song.query(cache: false).first       # Explicitly bypasses cache
+
+# Disable cache by default (opt-in behavior, this is the default)
+Parse.default_query_cache = false
+Song.first                           # Does NOT use cache
+Song.query(cache: true).first        # Explicitly uses cache
 ```
 
 You may access the shared cache for the default client connection through `Parse.cache`. This is useful if you
@@ -1991,6 +3404,119 @@ Equivalent to the `$all` Parse query operation. Checks whether the value in the 
  q.where :field.contains_all => [item1,item2,...]
 ```
 
+#### Advanced Array Constraints
+Parse Server doesn't natively support `$size` or exact array equality queries. Parse-Stack provides these via MongoDB aggregation pipelines.
+
+##### Array Size
+Match arrays by their length:
+
+```ruby
+# Exact size
+q.where :tags.size => 2          # arrays with exactly 2 elements
+
+# Size comparisons
+q.where :tags.size => { gt: 3 }      # size > 3
+q.where :tags.size => { gte: 2 }     # size >= 2
+q.where :tags.size => { lt: 5 }      # size < 5
+q.where :tags.size => { lte: 4 }     # size <= 4
+q.where :tags.size => { ne: 0 }      # size != 0
+q.where :tags.size => { gte: 2, lt: 10 }  # range: 2 <= size < 10
+
+# Empty/non-empty shortcuts (index-friendly)
+q.where :tags.arr_empty => true     # empty arrays (uses { field: [] })
+q.where :tags.arr_empty => false    # non-empty arrays
+q.where :tags.arr_nempty => true    # non-empty arrays (alias)
+
+# Empty OR nil/missing - combines both checks
+q.where :tags.empty_or_nil => true  # matches [] OR nil/missing
+q.where :tags.empty_or_nil => false # matches non-empty arrays only
+
+# Not empty - opposite of empty_or_nil
+q.where :tags.not_empty => true     # must exist AND have elements
+q.where :tags.not_empty => false    # matches [] OR nil/missing
+```
+
+**Performance Note:** `arr_empty` and `empty_or_nil` use index-friendly equality checks (`{ field: [] }`) instead of `$size: 0` for better MongoDB index utilization.
+
+##### Array Equality (Order-Dependent)
+Match arrays with exact elements in exact order:
+
+```ruby
+# Matches ["rock", "pop"] but NOT ["pop", "rock"]
+q.where :tags.eq => ["rock", "pop"]
+q.where :tags.eq_array => ["rock", "pop"]  # alias
+
+# NOT equal (order-dependent)
+q.where :tags.neq => ["rock", "pop"]  # excludes exact match only
+```
+
+##### Array Set Equality (Order-Independent)
+Match arrays with same elements regardless of order:
+
+```ruby
+# Matches both ["rock", "pop"] AND ["pop", "rock"]
+q.where :tags.set_equals => ["rock", "pop"]
+
+# NOT set equal - excludes both orderings
+q.where :tags.not_set_equals => ["rock", "pop"]
+```
+
+##### Pointer Arrays
+All array constraints work with `has_many :through => :array` relations:
+
+```ruby
+# Find products with exactly these categories (any order)
+Product.query(:categories.set_equals => [cat1, cat2])
+
+# Find products with more than 3 categories
+Product.query(:categories.size => { gt: 3 })
+```
+
+**Note:** Array constraints using aggregation pipelines require MongoDB 3.6+.
+
+##### Readable Array Aliases
+More readable aliases for common array operations:
+
+```ruby
+# Any/None - readable aliases for $in/$nin
+q.where :tags.any => ["rock", "pop"]    # matches if contains any (same as :tags.in)
+q.where :tags.none => ["jazz", "blues"] # matches if contains none (same as :tags.nin)
+
+# Superset - readable alias for $all
+q.where :tags.superset_of => ["rock", "pop"]  # must have all (same as :tags.all)
+```
+
+##### Element Match (Arrays of Objects)
+Match array elements using multiple criteria with `$elemMatch`:
+
+```ruby
+# Find posts where comments has an element matching multiple conditions
+q.where :comments.elem_match => { author: user, approved: true }
+
+# Works with nested objects
+q.where :items.elem_match => { product: "SKU123", quantity: { "$gt" => 5 } }
+```
+
+##### Subset Of
+Match arrays that only contain elements from a given set:
+
+```ruby
+# Find items where tags only include elements from the allowed list
+q.where :tags.subset_of => ["rock", "pop", "jazz", "classical"]
+# ["rock", "pop"] matches, ["rock", "metal"] does NOT match
+```
+
+##### First/Last Element
+Match based on the first or last element of an array:
+
+```ruby
+# First element equals value
+q.where :tags.first => "featured"   # first tag is "featured"
+
+# Last element equals value
+q.where :tags.last => "archived"    # last tag is "archived"
+```
+
 #### Regex Matching
 Equivalent to the `$regex` Parse query operation. Requires that a field value match a regular expression.
 
@@ -2047,6 +3573,79 @@ Equivalent to the `$notInQuery` Parse query operation. Useful if you want to ret
 q.where :field.excludes => query
 # ex. :post.excludes => Post.where(:image.exists => true
 q.where :field.not_in_query => query # alias
+```
+
+#### Matches Key in Query
+Equivalent to using the `$select` Parse query operation for joining queries where fields from different classes match. This is useful for performing join-like operations where you want to find objects where a field's value equals another field's value from a different query.
+
+```ruby
+# Find users where user.company equals customer.company
+customer_query = Customer.where(:active => true)
+user_query = User.where(:company.matches_key => { key: "company", query: customer_query })
+
+# If the local field has the same name as the remote field, you can omit the key
+# assumes key: 'company'  
+user_query = User.where(:company.matches_key => customer_query)
+
+# Alias methods
+q.where :field.matches_key_in_query => query
+```
+
+#### Does Not Match Key in Query  
+Equivalent to using the `$dontSelect` Parse query operation for joining queries where fields from different classes do NOT match. This is the inverse of the "Matches Key in Query" constraint.
+
+```ruby
+# Find users where user.company does NOT equal customer.company
+customer_query = Customer.where(:active => true)
+user_query = User.where(:company.does_not_match_key => { key: "company", query: customer_query })
+
+# If the local field has the same name as the remote field, you can omit the key
+# assumes key: 'company'
+user_query = User.where(:company.does_not_match_key => customer_query)
+
+# Alias methods
+q.where :field.does_not_match_key_in_query => query
+```
+
+#### Starts With
+Equivalent to using the `$regex` Parse query operation with a prefix pattern. This is useful for autocomplete functionality and prefix matching.
+
+```ruby
+# Find users whose name starts with "John"
+User.where(:name.starts_with => "John")
+# Generates: "name": { "$regex": "^John", "$options": "i" }
+
+# Case-insensitive prefix matching with special characters
+User.where(:email.starts_with => "john.doe+")
+# Automatically escapes special regex characters
+```
+
+#### Contains
+Equivalent to using the `$regex` Parse query operation with a contains pattern. This is useful for case-insensitive text search within fields.
+
+```ruby
+# Find posts whose title contains "parse"
+Post.where(:title.contains => "parse")
+# Generates: "title": { "$regex": ".*parse.*", "$options": "i" }
+
+# Search in descriptions
+Post.where(:description.contains => "server setup")
+# Automatically escapes special regex characters
+```
+
+
+#### Date Range
+A convenience constraint that combines greater-than-or-equal and less-than-or-equal constraints for date/time range queries.
+
+```ruby
+# Find events between two dates
+start_date = DateTime.new(2023, 1, 1)
+end_date = DateTime.new(2023, 12, 31)
+Event.where(:created_at.between_dates => [start_date, end_date])
+# Generates: "created_at": { "$gte": start_date, "$lte": end_date }
+
+# Works with Time objects too
+Event.where(:updated_at.between_dates => [1.week.ago, Time.now])
 ```
 
 #### Matches Object Id
@@ -2249,6 +3848,49 @@ query.or_where(:wins.lt => 5)
 results = query.results
 ```
 
+### Query Composition and Cloning
+
+Parse-Stack provides additional methods for composing and cloning queries, making it easier to build complex queries programmatically.
+
+#### Query Cloning
+Create independent copies of query objects for separate modifications:
+
+```ruby
+base_query = Song.where(:genre => "rock")
+query1 = base_query.clone.where(:year.gt => 2000)  # Rock songs after 2000
+query2 = base_query.clone.where(:duration.lt => 180) # Short rock songs
+
+# Original query remains unchanged
+base_results = base_query.results
+newer_rock = query1.results
+short_rock = query2.results
+```
+
+#### Combining Multiple Queries
+Combine multiple independent queries using class methods for cleaner composition:
+
+```ruby
+# OR logic - combine multiple queries with OR
+popular_songs = Song.where(:play_count.gt => 1000)
+recent_songs = Song.where(:created_at.gt => 1.month.ago)
+trending_songs = Song.where(:trending => true)
+
+# Any song that is popular OR recent OR trending
+combined_or = Parse::Query.or(popular_songs, recent_songs, trending_songs)
+results = combined_or.results
+
+# AND logic - combine multiple queries with AND  
+rock_songs = Song.where(:genre => "rock")
+long_songs = Song.where(:duration.gt => 300)
+popular_songs = Song.where(:play_count.gt => 500)
+
+# Songs that are rock AND long AND popular
+combined_and = Parse::Query.and(rock_songs, long_songs, popular_songs)
+results = combined_and.results
+```
+
+These composition methods work seamlessly with aggregation pipelines and all other query operations.
+
 ## Query Scopes
 This feature is a small subset of the [ActiveRecord named scopes](http://guides.rubyonrails.org/active_record_querying.html#scopes) feature. Scoping allows you to specify commonly-used queries which can be referenced as class method calls and are chainable with other scopes. You can use every `Parse::Query` method previously covered such as `where`, `includes` and `limit`.
 
@@ -2305,27 +3947,77 @@ If you would like to turn off automatic scope generation for property types, set
 ## Calling Cloud Code Functions
 You can call on your defined Cloud Code functions using the `call_function()` method. The result will be `nil` in case of errors or the value of the `result` field in the Parse response.
 
-```ruby
- params = {}
- # use the explicit name of the function
- result = Parse.call_function 'functionName', params
+### Basic Usage
 
- # to get the raw Response object
- response = Parse.call_function 'functionName', params, raw: true
- response.result unless response.error?
+```ruby
+params = {}
+# use the explicit name of the function
+result = Parse.call_function 'functionName', params
+
+# to get the raw Response object
+response = Parse.call_function 'functionName', params, raw: true
+response.result unless response.error?
+```
+
+### Authenticated Cloud Function Calls
+
+You can call cloud functions with user session tokens for authenticated requests:
+
+```ruby
+# Using session token option
+user = Parse::User.login("username", "password")
+result = Parse.call_function('functionName', params, session_token: user.session_token)
+
+# Using convenience method
+result = Parse.call_function_with_session('functionName', params, user.session_token)
+
+# Using master key for administrative operations
+result = Parse.call_function('functionName', params, master_key: true)
+```
+
+### Advanced Options
+
+```ruby
+# Using a specific client connection
+result = Parse.call_function('functionName', params, client: :my_client)
+
+# Combining options
+result = Parse.call_function('functionName', params, 
+  session_token: user.session_token,
+  raw: true,
+  client: :default
+)
 ```
 
 ## Calling Background Jobs
 You can trigger background jobs that you have configured in your Parse application as follows.
 
-```ruby
- params = {}
- # use explicit name of the job
- result = Parse.trigger_job :myJobName, params
+### Basic Usage
 
- # to get the raw Response object
- response = Parse.trigger_job :myJobName, params, raw: true
- response.result unless response.error?
+```ruby
+params = {}
+# use explicit name of the job
+result = Parse.trigger_job :myJobName, params
+
+# to get the raw Response object
+response = Parse.trigger_job :myJobName, params, raw: true
+response.result unless response.error?
+```
+
+### Authenticated Job Triggers
+
+Background jobs can also be triggered with authentication:
+
+```ruby
+# Using session token option
+user = Parse::User.login("username", "password")
+result = Parse.trigger_job('myJobName', params, session_token: user.session_token)
+
+# Using convenience method
+result = Parse.trigger_job_with_session('myJobName', params, user.session_token)
+
+# Using master key for administrative operations
+result = Parse.trigger_job('myJobName', params, master_key: true)
 ```
 
 ## Active Model Callbacks
@@ -2356,6 +4048,99 @@ puts song.name # 'My Title'
 
 There are also a special `:create` callback. A `before_create` will be called whenever a unsaved object will be saved, and `after_create` will be called when a previously unsaved object successfully saved for the first time.
 
+### Callback Halting
+ActiveModel callbacks can now halt operations by returning `false`. When a `before_save` or `before_create` callback returns `false`, the save operation will be prevented:
+
+```ruby
+class Song < Parse::Object
+  before_save :validate_song
+
+  private
+
+  def validate_song
+    if name.blank?
+      puts "Song name cannot be blank"
+      return false  # This will halt the save operation
+    end
+    true
+  end
+end
+```
+
+### Validation Context (on: :create / on: :update)
+
+Parse Stack supports ActiveRecord-style validation context for `before_validation`, `after_validation`, and `around_validation` callbacks. This allows you to run callbacks only when creating or updating objects:
+
+```ruby
+class Project < Parse::Object
+  property :name, :string, required: true
+  property :status, :string, required: true
+  property :owner, :pointer
+  property :completed_at, :date
+
+  # Set defaults only when creating new objects
+  before_validation :set_defaults, on: :create
+
+  # Validate completion date only on updates
+  validates :completed_at, presence: true, on: :update, if: -> { status == "completed" }
+
+  def set_defaults
+    self.status ||= "pending"
+    self.owner ||= current_team_owner
+  end
+end
+```
+
+**Why use `before_validation` instead of `before_create`?**
+
+The callback order is: `before_validation` → validations → `before_save` → `before_create` → save
+
+If you need to set default values for required fields, `before_create` runs *after* validations, so the validation will fail before your defaults are applied. Use `before_validation on: :create` instead:
+
+```ruby
+class Task < Parse::Object
+  property :name, :string, required: true
+  property :priority, :integer, required: true
+
+  # This WON'T work - before_create runs AFTER validation
+  before_create do
+    self.priority ||= 1  # Too late! Validation already failed
+  end
+
+  # This WILL work - before_validation runs BEFORE validation
+  before_validation :set_priority_default, on: :create
+
+  def set_priority_default
+    self.priority ||= 1  # Sets default before validation runs
+  end
+end
+
+# Now this works:
+task = Task.new(name: "My Task")
+task.save  # priority is set to 1 before validation
+```
+
+### Enhanced Change Tracking
+Parse objects now support both standard ActiveModel dirty tracking and enhanced change tracking for after_save hooks:
+
+```ruby
+class Product < Parse::Object
+  property :name, :string
+  property :price, :float
+  
+  after_save :send_price_alert
+  
+  def send_price_alert
+    # Use *_was_changed? methods in after_save hooks
+    if price_was_changed? && price_was < price
+      AlertService.send("Price increased from $#{price_was} to $#{price}")
+    end
+  end
+end
+```
+
+The `*_was_changed?` methods work correctly in after_save contexts by using `previous_changes`, while standard `*_changed?` methods maintain their normal ActiveModel behavior.
+
 ## Schema Upgrades and Migrations
 You may change your local Parse ruby classes by adding new properties. To easily propagate the changes to your Parse Server application (MongoDB), you can call `auto_upgrade!` on the class to perform an non-destructive additive schema change. This will create the new columns in Parse for the properties you have defined in your models. Parse Stack will calculate the changes and only modify the tables which need new columns to be added.  This feature does require the use of the master key when configuring the client. *It will NOT destroy columns or data.*
 
@@ -2370,31 +4155,384 @@ You may change your local Parse ruby classes by adding new properties. To easily
 ```
 
 ## Push Notifications
-Push notifications are implemented through the `Parse::Push` class. To send push notifications through the REST API, you must enable `REST push enabled?` option in the `Push Notification Settings` section of the `Settings` page in your Parse application. Push notifications targeting uses the Installation Parse class to determine which devices receive the notification. You can provide any query constraint, similar to using `Parse::Query`, in order to target the specific set of devices you want given the columns you have configured in your `Installation` class. The `Parse::Push` class supports many other options not listed here.
+Push notifications are implemented through the `Parse::Push` class. To send push notifications through the REST API, you must enable `REST push enabled?` option in the `Push Notification Settings` section of the `Settings` page in your Parse application. Push notifications targeting uses the Installation Parse class to determine which devices receive the notification. You can provide any query constraint, similar to using `Parse::Query`, in order to target the specific set of devices you want given the columns you have configured in your `Installation` class.
+
+### Builder Pattern API
+
+The recommended way to send push notifications is using the fluent builder pattern:
 
 ```ruby
+# Simple channel push
+Parse::Push.new
+  .to_channel("news")
+  .with_alert("Breaking news!")
+  .send!
 
- push = Parse::Push.new
- push.send( "Hello World!") # to everyone
+# Rich push with all options
+Parse::Push.new
+  .to_channels("sports", "alerts")
+  .with_title("Game Alert")
+  .with_body("Your team is playing now!")
+  .with_badge(1)
+  .with_sound("alert.caf")
+  .with_data(game_id: "12345", action: "open_game")
+  .schedule(1.hour.from_now)
+  .expires_in(3600)
+  .send!
 
- # simple channel push
- push = Parse::Push.new
- push.channels = ["addicted2salsa"]
- push.send "You are subscribed to Addicted2Salsa!"
+# Query-based targeting
+Parse::Push.new
+  .to_query { |q| q.where(device_type: "ios", :app_version.gte => "2.0") }
+  .with_alert("iOS 2.0+ users only")
+  .send!
 
- # advanced targeting
- push = Parse::Push.new( {..where query constraints..} )
- # or use `where()`
- push.where :device_type.in => ['ios','android'], :location.near => some_geopoint
- push.alert = "Hello World!"
- push.sound = "soundfile.caf"
+# Class method shortcuts
+Parse::Push.to_channel("alerts").with_alert("Important!").send!
+```
 
-  # additional payload data
- push.data = { uri: "app://deep_link_path" }
+### Silent Push (iOS Background Notifications)
 
- # Send the push
- push.send
+Send background notifications that wake the app without displaying an alert:
 
+```ruby
+Parse::Push.new
+  .to_channel("sync")
+  .silent!
+  .with_data(action: "refresh", resource: "users")
+  .send!
+```
+
+### Rich Push (iOS Notification Extensions)
+
+Send rich notifications with images, categories, and mutable content:
+
+```ruby
+Parse::Push.new
+  .to_channel("media")
+  .with_title("New Photo")
+  .with_body("Check out this photo!")
+  .with_image("https://example.com/photo.jpg")  # Auto-enables mutable-content
+  .with_category("PHOTO_ACTIONS")
+  .send!
+```
+
+### Localization
+
+Send language-specific messages based on device locale:
+
+```ruby
+Parse::Push.new
+  .to_channel("international")
+  .with_alert("Default message")
+  .with_localized_alerts(
+    en: "Hello!",
+    fr: "Bonjour!",
+    es: "Hola!",
+    de: "Hallo!"
+  )
+  .with_localized_titles(
+    en: "Welcome",
+    fr: "Bienvenue"
+  )
+  .send!
+```
+
+### Badge Management
+
+```ruby
+# Increment badge by 1
+Parse::Push.new.to_channel("messages").increment_badge.with_alert("New!").send!
+
+# Increment by custom amount
+Parse::Push.new.to_channel("bulk").increment_badge(5).with_alert("5 new!").send!
+
+# Clear badge
+Parse::Push.new.to_channel("read").clear_badge.silent!.send!
+```
+
+### Saved Audiences
+
+Target pre-defined audiences stored in the `_Audience` collection:
+
+```ruby
+# Target by audience name
+Parse::Push.new
+  .to_audience("VIP Users")
+  .with_alert("Exclusive offer!")
+  .send!
+
+# Manage audiences
+audience = Parse::Audience.new(name: "Premium iOS", query: { "deviceType" => "ios", "premium" => true })
+audience.save
+
+Parse::Audience.find_by_name("VIP Users")
+Parse::Audience.installation_count("VIP Users")
+```
+
+### Push Status Tracking
+
+Track push delivery status via the `_PushStatus` collection:
+
+```ruby
+status = Parse::PushStatus.find(push_id)
+
+status.succeeded?      # => true
+status.num_sent        # => 1250
+status.num_failed      # => 12
+status.success_rate    # => 99.05
+status.sent_per_type   # => {"ios" => 800, "android" => 450}
+
+# Query scopes
+Parse::PushStatus.succeeded.all
+Parse::PushStatus.failed.all
+Parse::PushStatus.recent.limit(10)
+```
+
+### Installation Channel Management
+
+Manage channel subscriptions on installations:
+
+```ruby
+installation = Parse::Installation.first
+
+# Subscribe/unsubscribe
+installation.subscribe("news", "weather")
+installation.unsubscribe("sports")
+installation.subscribed_to?("news")  # => true
+
+# Query channels
+Parse::Installation.all_channels              # All unique channels
+Parse::Installation.subscribers("news").all   # Installations in channel
+Parse::Installation.subscribers_count("news") # Count subscribers
+```
+
+### Traditional API
+
+The traditional API is still supported:
+
+```ruby
+push = Parse::Push.new
+push.send("Hello World!")  # to everyone
+
+# Channel push
+push = Parse::Push.new
+push.channels = ["mychannel"]
+push.send "You are subscribed!"
+
+# Advanced targeting
+push = Parse::Push.new
+push.where :device_type.in => ['ios','android'], :location.near => some_geopoint
+push.alert = "Hello World!"
+push.sound = "soundfile.caf"
+push.data = { uri: "app://deep_link_path" }
+push.send
+```
+
+## AI Agent Integration (Experimental)
+
+Parse Stack includes experimental support for AI/LLM agents to interact with your Parse data through a standardized tool interface. This enables natural language querying and intelligent data exploration.
+
+### Basic Usage
+
+```ruby
+require 'parse/stack'
+
+# Create an agent
+agent = Parse::Agent.new
+
+# Execute tools directly
+result = agent.execute(:get_all_schemas)
+result = agent.execute(:query_class, class_name: "Song", limit: 10)
+result = agent.execute(:count_objects, class_name: "Song", where: { plays: { "$gte" => 1000 } })
+
+# Ask natural language questions (requires LLM endpoint)
+response = agent.ask("How many songs have more than 1000 plays?")
+puts response[:answer]
+```
+
+### Permission Levels
+
+Agents support three permission levels:
+
+```ruby
+# Readonly (default) - queries only
+agent = Parse::Agent.new(permissions: :readonly)
+
+# Write - adds create/update
+agent = Parse::Agent.new(permissions: :write)
+
+# Admin - full access including delete
+agent = Parse::Agent.new(permissions: :admin)
+```
+
+### Agent Metadata DSL
+
+Annotate your models with agent-friendly metadata:
+
+```ruby
+class Song < Parse::Object
+  agent_visible  # Include in agent schema listings
+  agent_description "A music track in the catalog"
+
+  property :title, :string, _description: "The song title"
+  property :plays, :integer, _description: "Total play count"
+
+  # Expose methods with permission levels
+  agent_readonly :find_popular, "Find songs with high play counts"
+  agent_write :increment_plays, "Increment the play counter"
+
+  def self.find_popular(min_plays: 1000)
+    query(:plays.gte => min_plays).limit(100)
+  end
+end
+```
+
+### MCP Server
+
+Run an HTTP server for external AI agents. Requires dual-gating for safety:
+
+```bash
+# Step 1: Set environment variable
+export PARSE_MCP_ENABLED=true
+```
+
+```ruby
+# Step 2: Enable in code and start server
+Parse.mcp_server_enabled = true
+Parse::Agent.enable_mcp!(port: 3001)
+```
+
+Both the environment variable AND the code flag must be set. This prevents accidental enablement in production.
+
+### Security
+
+Built-in protections:
+- **Rate limiting**: 60 requests/minute default
+- **Pipeline validation**: Blocks dangerous aggregation stages (`$out`, `$merge`, `$function`)
+- **Permission levels**: Restrict agent capabilities (readonly/write/admin)
+
+Configure LLM endpoint via environment:
+```bash
+export LLM_ENDPOINT="http://127.0.0.1:1234/v1"
+export LLM_MODEL="qwen2.5-7b-instruct"
+```
+
+### Multi-turn Conversations
+
+Agents support multi-turn conversations with context maintained across questions:
+
+```ruby
+agent = Parse::Agent.new
+
+# Initial question
+agent.ask("How many users are there?")
+
+# Follow-up questions maintain context
+agent.ask_followup("What about admins?")
+agent.ask_followup("Show me the most recent 5")
+
+# Clear history to start fresh
+agent.clear_conversation!
+```
+
+### Token Usage & Cost Estimation
+
+Track LLM token usage and estimate costs:
+
+```ruby
+agent = Parse::Agent.new(pricing: { prompt: 0.01, completion: 0.03 })
+
+agent.ask("How many users?")
+agent.ask_followup("What about admins?")
+
+# Check token usage
+puts agent.token_usage
+# => { prompt_tokens: 450, completion_tokens: 120, total_tokens: 570 }
+
+# Get estimated cost
+puts agent.estimated_cost  # => 0.0234
+
+# Reset counters
+agent.reset_token_counts!
+```
+
+### Callbacks/Hooks
+
+Register callbacks for debugging, logging, and custom behavior:
+
+```ruby
+agent = Parse::Agent.new
+
+# Before tool execution
+agent.on_tool_call { |tool, args| puts "Calling: #{tool}" }
+
+# After tool execution
+agent.on_tool_result { |tool, args, result| log_result(tool, result) }
+
+# On any error
+agent.on_error { |error, context| notify_slack(error) }
+
+# After LLM response
+agent.on_llm_response { |response| log_llm_usage(response) }
+```
+
+### Streaming Support
+
+Stream responses as they arrive from the LLM:
+
+```ruby
+agent.ask_streaming("Analyze user growth trends") do |chunk|
+  print chunk
+end
+```
+
+**Important Limitation:** Streaming mode does **not** support tool calls. The agent cannot query the database or perform Parse operations while streaming. Use `ask` for database queries:
+
+```ruby
+# DON'T: This won't query the database
+agent.ask_streaming("How many users?") { |c| print c }
+
+# DO: Use ask for database queries
+result = agent.ask("How many users?")
+```
+
+### Conversation Export/Import
+
+Serialize and restore conversation state:
+
+```ruby
+agent = Parse::Agent.new
+agent.ask("How many users?")
+agent.ask_followup("What about admins?")
+
+# Export state
+state = agent.export_conversation
+File.write("conversation.json", state)
+
+# Later, restore in a new session
+new_agent = Parse::Agent.new
+new_agent.import_conversation(File.read("conversation.json"))
+new_agent.ask_followup("Show me the most recent ones")
+```
+
+### Configuration Options
+
+Additional agent configuration:
+
+```ruby
+# Custom system prompt
+agent = Parse::Agent.new(system_prompt: "You are a music database expert...")
+
+# Or append to the default prompt
+agent = Parse::Agent.new(system_prompt_suffix: "Focus on performance data.")
+
+# Configure operation log size (circular buffer, default: 1000)
+agent = Parse::Agent.new(max_log_size: 5000)
+
+# Access debugging info
+agent.last_request   # Last LLM request sent
+agent.last_response  # Last LLM response received
+agent.operation_log  # Recent operations
 ```
 
 ## Cloud Code Webhooks
@@ -2427,7 +4565,7 @@ curl -X POST \
   -H "X-Parse-REST-API-Key: ${REST_API_KEY}" \
   -H "Content-Type: application/json" \
   -d '{}' \
-  https://localhost:1337/parse/functions/helloWorld
+  https://localhost:2337/parse/functions/helloWorld
 ```
 
 If you are creating `Parse::Object` subclasses, you may also register them there to keep common code and functionality centralized.
@@ -2489,7 +4627,15 @@ You can register webhooks to handle the different object triggers: `:before_save
 
 For any `after_*` hook, return values are not needed since Parse does not utilize them. You may also register as many `after_save` or `after_delete` handlers as you prefer, all of them will be called.
 
-`before_save` and `before_delete` hooks have special functionality. When the `error!` method is called by the provided block, the framework will return the correct error response to Parse with value provided. Returning an error will prevent Parse from saving the object in the case of `before_save` and will prevent Parse from deleting the object when in a `before_delete`. In addition, for a `before_save`, the last value returned by the block will be the value returned in the success response. If the block returns nil or an `empty?` value, it will return `true` as the default response. You can also return a JSON object in a hash format to override the values that will be saved. However, we recommend modifying the `parse_object` provided since it has dirty tracking, and then returning that same object. This will automatically call your model specific `before_save` callbacks and send the proper payload back to Parse. For more details, see [Cloud Code BeforeSave Webhooks](http://docs.parseplatform.org/cloudcode/guide/#beforesave-triggers)
+`before_save` and `before_delete` hooks have special functionality and multiple ways to halt operations:
+
+1. **Using `error!` method**: Calling `error!` will return an error response to Parse Server
+2. **Returning `false`**: Webhook blocks can return `false` to halt the operation
+3. **ActiveModel callbacks**: When the webhook returns a Parse object, its `before_save` callbacks are executed and can halt by returning `false`
+
+Any of these approaches will prevent Parse from saving the object in `before_save` or deleting the object in `before_delete`.
+
+For `before_save` webhooks, the object returned by the block becomes the response. We recommend modifying the `parse_object` provided (which has dirty tracking) and returning it. This automatically calls your model-specific `before_save` callbacks and sends the proper payload back to Parse. For more details, see [Cloud Code BeforeSave Webhooks](http://docs.parseplatform.org/cloudcode/guide/#beforesave-triggers)
 
 ```ruby
 # recommended way
@@ -2508,8 +4654,13 @@ class Artist < Parse::Object
     # default San Diego
     artist.location ||= Parse::GeoPoint.new(32.82, -117.23)
 
-    # raise to fail the save
+    # Multiple ways to halt the save:
+    
+    # Method 1: Using error! (returns error response)
     error!("Name cannot be empty") if artist.name.blank?
+    
+    # Method 2: Return false to halt (returns error response)
+    return false if artist.location.nil?
 
     if artist.name_changed?
       wlog "The artist name changed!"
@@ -2518,6 +4669,17 @@ class Artist < Parse::Object
 
     # *important* returns a special hash of changed values
     artist
+  end
+  
+  # ActiveModel callback halting example
+  before_save :validate_artist
+  
+  def validate_artist
+    if some_complex_validation_fails?
+      # Method 3: ActiveModel callback returns false (halts via webhook integration)
+      return false
+    end
+    true
   end
 
   webhook :before_delete do
@@ -2656,9 +4818,624 @@ end
 
 ```
 
+## Direct MongoDB Access
+
+Parse-Stack provides direct MongoDB access for performance-critical operations that bypass Parse Server. This is useful for read-heavy operations and advanced features like Atlas Search.
+
+### Configuration
+
+```ruby
+# Configure direct MongoDB access
+Parse::MongoDB.configure(
+  uri: "mongodb://localhost:27017/parse",
+  enabled: true
+)
+
+# Check if available
+Parse::MongoDB.available?  # => true
+```
+
+### Query Methods
+
+Execute queries directly against MongoDB using familiar Parse-Stack query syntax:
+
+```ruby
+# Execute query directly - returns Parse objects
+songs = Song.query(:plays.gt => 1000).results_direct
+
+# Get first result directly
+song = Song.query(:plays.gt => 1000).order(:plays.desc).first_direct
+
+# Get count directly
+count = Song.query(:plays.gt => 1000).count_direct
+
+# Get first N results
+top_songs = Song.query(:plays.gt => 1000).order(:plays.desc).first_direct(5)
+
+# Get raw Parse-formatted hashes instead of objects
+hashes = Song.query(:plays.gt => 1000).results_direct(raw: true)
+```
+
+**Supported Operators:**
+
+All standard query operators work with MongoDB direct:
+
+```ruby
+# Comparison operators
+Song.query(:plays.gt => 1000, :rating.gte => 4).results_direct
+
+# Date range queries
+Event.query(:event_date.gt => Time.now).results_direct
+Event.query(:event_date.gte => start_date, :event_date.lte => end_date).results_direct
+
+# Array operators
+Song.query(:tags.size => 3).results_direct
+Song.query(:tags.contains_all => ["rock", "classic"]).results_direct
+Song.query(:tags.empty_or_nil => true).results_direct
+
+# String/Regex operators
+Product.query(:name.like => /iphone/i).results_direct
+Product.query(:name.starts_with => "iPhone").results_direct
+
+# Relational queries (in_query/not_in_query)
+Song.query(:artist.in_query => Artist.query(:verified => true)).results_direct
+
+# Complex combinations
+Song.query(
+  :artist.in_query => Artist.query(:verified => true),
+  :tags.empty_or_nil => false,
+  :plays.gt => 1000
+).results_direct
+```
+
+**Include/Eager Loading:**
+
+Eager load related objects via MongoDB `$lookup`:
+
+```ruby
+# Include related artist data (resolved via $lookup)
+songs = Song.query(:plays.gt => 1000).includes(:artist).results_direct
+songs.each do |song|
+  puts "#{song.title} by #{song.artist.name}"  # No additional queries!
+end
+
+# Multiple includes
+songs = Song.query.includes(:artist, :album).results_direct
+```
+
+### Low-Level Direct Access
+
+For advanced use cases, access MongoDB directly:
+
+```ruby
+# Direct find with options
+docs = Parse::MongoDB.find("Song", { plays: { "$gt" => 1000 } },
+  limit: 10,
+  sort: { plays: -1 }
+)
+
+# Aggregation pipelines
+results = Parse::MongoDB.aggregate("Song", [
+  { "$match" => { "genre" => "Rock" } },
+  { "$group" => { "_id" => "$artist", "total" => { "$sum" => "$plays" } } }
+])
+
+# List Atlas Search indexes
+indexes = Parse::MongoDB.list_search_indexes("Song")
+```
+
+### Document Conversion
+
+MongoDB documents are automatically converted to Parse format:
+- `_id` → `objectId`
+- `_created_at` → `createdAt`
+- `_updated_at` → `updatedAt`
+- `_p_fieldName` → `fieldName` (pointers)
+- `_acl` → `ACL` (with r/w → read/write)
+- BSON dates → Parse Date format
+
+### Performance Benefits
+
+- Bypasses Parse Server REST API overhead
+- Direct MongoDB aggregation pipeline execution
+- Automatic pointer resolution with `$lookup`
+- Native BSON date handling
+- Ideal for read-heavy operations and analytics
+
+### Keys Projection
+
+Use `keys` with `mongo_direct` to fetch only specific fields, returning partially fetched objects:
+
+```ruby
+songs = Song.query(:genre => "Rock")
+            .keys(:title, :plays)
+            .results(mongo_direct: true)
+
+song = songs.first
+song.title              # => "My Song"
+song.partially_fetched? # => true
+song.fetched_keys       # => [:title, :plays, :id, :objectId]
+```
+
+Required fields (`objectId`, `createdAt`, `updatedAt`, `ACL`) are always included.
+
+### Aggregation Results
+
+Custom aggregation results support both hash and method access with automatic camelCase to snake_case conversion:
+
+```ruby
+pipeline = [
+  { "$group" => { "_id" => "$genre", "totalPlays" => { "$sum" => "$playCount" } } }
+]
+results = Song.query.aggregate(pipeline, mongo_direct: true).results
+
+results.first.total_plays   # => 5000 (method access)
+results.first["totalPlays"] # => 5000 (hash access)
+```
+
+### Field Name Conventions
+
+When writing aggregation pipelines, use MongoDB's native field names:
+
+| Field Type | Ruby Property | MongoDB Field |
+|------------|---------------|---------------|
+| Regular fields | `release_date` | `releaseDate` |
+| Pointer fields | `artist` | `_p_artist` |
+| Built-in dates | `created_at` | `_created_at` |
+
+```ruby
+pipeline = [
+  { "$match" => { "releaseDate" => { "$lt" => Time.utc(2024, 1, 1) } } },
+  { "$group" => { "_id" => "$_p_artist", "total" => { "$sum" => "$playCount" } } }
+]
+```
+
+### ACL Filtering
+
+Filter objects by ACL permissions using MongoDB's `_rperm` and `_wperm` fields:
+
+**`readable_by` / `writable_by`** - Exact permission strings:
+```ruby
+Song.query.readable_by("user123").results(mongo_direct: true)       # User ID
+Song.query.readable_by("role:Admin").results(mongo_direct: true)    # Role (explicit prefix)
+Song.query.readable_by(current_user).results(mongo_direct: true)    # User object
+Song.query.readable_by("public").results(mongo_direct: true)        # Public access (alias for "*")
+Song.query.readable_by("none").results(mongo_direct: true)          # Empty _rperm (master key only)
+```
+
+**`readable_by_role` / `writable_by_role`** - Adds "role:" prefix automatically:
+```ruby
+Song.query.readable_by_role("Admin").results(mongo_direct: true)              # → "role:Admin"
+Song.query.readable_by_role(admin_role).results(mongo_direct: true)           # Role object
+Song.query.writable_by_role(["Admin", "Editor"]).results(mongo_direct: true)  # Multiple roles
+```
+
+**Note:** Requires the `mongo` gem. Add `gem 'mongo'` to your Gemfile.
+
+### ACL Dirty Tracking
+
+Parse-Stack provides intelligent dirty tracking for ACL objects, correctly handling in-place modifications and content comparison.
+
+**`acl_was` Captures Original State:**
+
+When modifying an ACL in place (via `apply`, `apply_role`, etc.), `acl_was` correctly returns the state *before* any modifications:
+
+```ruby
+obj = MyObject.find(id)
+obj.clear_changes!
+
+# Original ACL is empty
+obj.acl.as_json  # => {}
+
+# Modify ACL in place
+obj.acl.apply(:public, true, false)
+obj.acl.apply_role("Admin", true, true)
+
+# acl_was correctly shows original state
+obj.acl_was.as_json  # => {} (not the mutated state)
+obj.acl.as_json      # => {"*"=>{"read"=>true}, "role:Admin"=>{"read"=>true, "write"=>true}}
+obj.acl_changed?     # => true
+```
+
+**Content-Based Comparison:**
+
+Setting an ACL to identical values does not mark the object as dirty:
+
+```ruby
+membership = Membership.find(id)
+membership.clear_changes!
+
+# Rebuild ACL to the same values (common in before_save hooks)
+membership.acl = Parse::ACL.new
+membership.acl.apply(:public, true, false)
+membership.acl.apply_role("Admin", true, true)
+# ... same permissions as before ...
+
+# If content is identical, object is NOT dirty
+membership.acl_changed?  # => false
+membership.dirty?        # => false
+membership.save          # No unnecessary server request
+```
+
+**New Objects:**
+
+New objects always include ACL in changes to ensure it's sent on first save:
+
+```ruby
+obj = MyObject.new(title: "Test")
+obj.acl = Parse::ACL.new
+obj.acl.apply(:public, true, false)
+
+obj.new?                      # => true
+obj.changed.include?("acl")   # => true (always included for new objects)
+```
+
+**Implementation Notes:**
+
+The ACL dirty tracking system uses several techniques to ensure correctness:
+- A snapshot of the ACL is captured before any in-place modifications via `acl_will_change!`
+- Content comparison uses JSON serialization to detect actual changes vs reference changes
+- The `changed` method safely duplicates arrays before modification to avoid interfering with ActiveModel internals
+- Nil-safe checks prevent errors when ACL is unset
+
+## Atlas Search
+
+MongoDB Atlas Search integration provides full-text search, autocomplete, and faceted search capabilities directly through MongoDB.
+
+### Setup
+
+```ruby
+# Configure MongoDB and Atlas Search
+Parse::MongoDB.configure(uri: "mongodb+srv://...", enabled: true)
+Parse::AtlasSearch.configure(enabled: true, default_index: "default")
+```
+
+### Full-Text Search
+
+```ruby
+# Basic search
+result = Parse::AtlasSearch.search("Song", "love ballad")
+result.each { |song| puts "#{song.title} (score: #{song.search_score})" }
+
+# Search with options
+result = Parse::AtlasSearch.search("Song", "love",
+  fields: [:title, :lyrics],    # Limit to specific fields
+  fuzzy: true,                   # Enable fuzzy matching
+  limit: 20,                     # Max results
+  highlight_field: :title        # Get highlighted matches
+)
+
+# Access highlights
+result.each do |song|
+  puts song.search_highlights if song.respond_to?(:search_highlights)
+end
+```
+
+### Autocomplete (Search-as-you-type)
+
+```ruby
+# Basic autocomplete
+result = Parse::AtlasSearch.autocomplete("Song", "Lov", field: :title)
+result.suggestions  # => ["Love Story", "Lovely Day", "Love Me Do"]
+
+# With fuzzy matching
+result = Parse::AtlasSearch.autocomplete("Song", "lvoe",
+  field: :title,
+  fuzzy: true,
+  limit: 5
+)
+```
+
+### Faceted Search
+
+```ruby
+# Define facets
+facets = {
+  genre: { type: :string, path: :genre, num_buckets: 10 },
+  decade: { type: :number, path: :year, boundaries: [1970, 1980, 1990, 2000, 2010, 2020] }
+}
+
+# Execute faceted search
+result = Parse::AtlasSearch.faceted_search("Song", "rock", facets, limit: 20)
+
+# Access facet counts
+result.facets[:genre]
+# => [{ value: "Rock", count: 150 }, { value: "Alternative", count: 45 }, ...]
+
+result.total_count  # => 195
+result.results      # => matching Song objects
+```
+
+### Search Builder (Advanced)
+
+For complex searches, use the fluent SearchBuilder:
+
+```ruby
+builder = Parse::AtlasSearch::SearchBuilder.new(index_name: "song_search")
+
+# Chain multiple operators
+builder
+  .text(query: "love", path: :title, fuzzy: true)
+  .phrase(query: "broken heart", path: :lyrics, slop: 2)
+  .range(path: :plays, gte: 1000)
+  .with_highlight(path: :title)
+  .with_count
+
+# Build the $search stage
+search_stage = builder.build
+
+# Use in aggregation pipeline
+pipeline = [search_stage, { "$limit" => 10 }]
+results = Parse::MongoDB.aggregate("Song", pipeline)
+```
+
+### Query Integration
+
+Atlas Search is also available directly on queries:
+
+```ruby
+# Search through Query
+songs = Song.query.atlas_search("love ballad", fields: [:title, :lyrics], limit: 10)
+
+# Autocomplete through Query
+suggestions = Song.query.atlas_autocomplete("Lov", field: :title)
+
+# Faceted search through Query
+result = Song.query.atlas_facets("rock", { genre: { type: :string, path: :genre } })
+```
+
+### Index Management
+
+```ruby
+# List indexes for a collection
+indexes = Parse::AtlasSearch.indexes("Song")
+# => [{ "name" => "default", "queryable" => true, ... }]
+
+# Check if index is ready
+Parse::AtlasSearch.index_ready?("Song", "default")  # => true
+
+# Refresh index cache
+Parse::AtlasSearch.refresh_indexes("Song")
+```
+
+### Creating Search Indexes
+
+Atlas Search requires indexes to be created on your MongoDB Atlas cluster. Indexes define which fields are searchable and how they should be analyzed.
+
+**Via MongoDB Atlas UI:**
+1. Navigate to your cluster → **Atlas Search** tab
+2. Click **Create Search Index**
+3. Select your database and collection
+4. Define your index mappings
+
+**Via MongoDB Shell:**
+
+```javascript
+// Basic dynamic index (indexes all fields)
+db.Song.createSearchIndex("default", {
+  mappings: { dynamic: true }
+});
+
+// Index with autocomplete support
+db.Song.createSearchIndex("default", {
+  mappings: {
+    fields: {
+      title: [
+        { type: "string" },
+        { type: "autocomplete", tokenization: "edgeGram", minGrams: 2, maxGrams: 15 }
+      ],
+      genre: [
+        { type: "string" },
+        { type: "stringFacet" }
+      ]
+    }
+  }
+});
+
+// Check index status
+db.Song.getSearchIndexes();
+```
+
+**Parse Collection Names:**
+- Custom classes use their class name directly: `Song`, `Artist`, `Album`
+- Built-in classes have underscore prefixes: `_User`, `_Role`, `_Session`
+
+**Local Development:**
+
+For local development, use MongoDB Atlas Local:
+
+```bash
+docker run -d -p 27017:27017 mongodb/mongodb-atlas-local:latest
+```
+
+Or use the provided Docker Compose setup - see [CHANGELOG.md](./CHANGELOG.md) for detailed index examples and [Testing](#testing) for Docker-based setup.
+
+**Note:** Atlas Search requires MongoDB Atlas or a local Atlas deployment. See [Testing](#testing) for Docker-based local setup.
+
 ## Contributing
 
-Bug reports and pull requests are welcome on GitHub at [https://github.com/modernistik/parse-stack](https://github.com/modernistik/parse-stack).
+Bug reports and pull requests are welcome on GitHub at [https://github.com/commandpostsoft/parse-stack](https://github.com/commandpostsoft/parse-stack).
+
+This project is a fork of the original [Parse Stack](https://github.com/modernistik/parse-stack) by [Modernistik](https://www.modernistik.com).
+
+## Testing
+
+Parse Stack includes comprehensive integration tests that require a Parse Server instance for full functionality testing. The tests are designed to work with Docker for easy setup and consistency across environments.
+
+### Docker Integration Tests
+
+The integration tests use Docker Compose to spin up a Parse Server instance with MongoDB and Redis. This ensures tests run in a clean, isolated environment.
+
+#### Prerequisites
+
+- Docker and Docker Compose installed
+- Ruby environment with bundler
+
+#### Setup and Running Tests
+
+1. **Enable Docker Tests**: Set the environment variable to enable Docker-based tests:
+   ```bash
+   export PARSE_TEST_USE_DOCKER=true
+   ```
+
+2. **Run All Integration Tests**: Execute the full test suite:
+   ```bash
+   bundle exec rake test
+   ```
+
+3. **Run Specific Test Suites**: Run individual test files for focused testing:
+   ```bash
+   # Cache integration tests
+   bundle exec ruby test/lib/parse/cache_integration_test.rb
+   
+   # Model associations tests
+   bundle exec ruby test/lib/parse/model_associations_test.rb
+   
+   # Query and aggregation tests
+   bundle exec ruby test/lib/parse/query_aggregate_test.rb
+   
+   # Request idempotency tests
+   bundle exec ruby test/lib/parse/request_idempotency_test.rb
+   
+   # Webhook callback tests
+   bundle exec ruby test/lib/parse/webhook_callbacks_test.rb
+   
+   # Cloud config tests
+   bundle exec ruby test/lib/parse/cloud_config_test.rb
+   ```
+
+#### Test Categories
+
+**Core Feature Tests:**
+- **Cache Integration**: Redis caching, invalidation, TTL, authentication contexts
+- **Date and Timezone**: UTC handling, timezone conversions, DST transitions  
+- **Batch Operations**: Atomic transactions, rollback scenarios, error handling
+- **Model Associations**: `has_many`, `has_one`, `belongs_to` with all approaches
+
+**Advanced Feature Tests:**
+- **Query Operations**: Pointer handling, contains/nin operators, complex queries
+- **Aggregation Pipelines**: MongoDB aggregations, field conversions, date operations
+- **Cloud Config**: Reading/writing config variables, data validation, edge cases
+- **Request Idempotency**: Duplicate prevention, thread safety, configuration
+- **Webhook Callbacks**: Ruby vs client detection, callback coordination
+
+#### Docker Configuration
+
+The tests use the following Docker setup:
+
+```yaml
+# docker-compose.test.yml
+version: '3.8'
+services:
+  mongo:
+    image: mongo:4.4
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: password
+  
+  redis:
+    image: redis:6-alpine
+  
+  parse-server:
+    image: parseplatform/parse-server:latest
+    environment:
+      PARSE_SERVER_APPLICATION_ID: testAppId
+      PARSE_SERVER_MASTER_KEY: testMasterKey
+      PARSE_SERVER_DATABASE_URI: mongodb://root:password@mongo:27017/parse?authSource=admin
+      PARSE_SERVER_REDIS_URL: redis://redis:6379
+```
+
+#### Environment Variables
+
+Configure the following environment variables for testing:
+
+```bash
+# Required for Docker tests
+export PARSE_TEST_USE_DOCKER=true
+
+# Optional: Custom Parse Server configuration
+export PARSE_SERVER_URL=http://localhost:2337/parse
+export PARSE_APP_ID=testAppId
+export PARSE_MASTER_KEY=testMasterKey
+export PARSE_API_KEY=testRestKey
+
+# Optional: Redis configuration for cache tests
+export REDIS_URL=redis://localhost:6379
+```
+
+#### Troubleshooting
+
+**Common Issues:**
+
+1. **Docker not running**: Ensure Docker daemon is running
+   ```bash
+   docker --version
+   docker-compose --version
+   ```
+
+2. **Port conflicts**: Stop other services using ports 1337, 27017, or 6379
+   ```bash
+   docker-compose -f docker-compose.test.yml down
+   ```
+
+3. **Permission errors**: Ensure Docker has proper permissions
+   ```bash
+   sudo usermod -aG docker $USER  # Linux
+   ```
+
+**Test Debugging:**
+
+Enable verbose logging for detailed test output:
+```bash
+PARSE_STACK_LOGGING=debug bundle exec ruby test/lib/parse/cache_integration_test.rb
+```
+
+**Docker Logs:**
+
+View Parse Server logs during test runs:
+```bash
+docker-compose -f docker-compose.test.yml logs -f parse-server
+```
+
+### Unit Tests
+
+For faster development cycles, unit tests can be run without Docker:
+
+```bash
+# Run only unit tests (no Docker required)
+bundle exec ruby test/lib/parse/models/property_test.rb
+bundle exec ruby test/lib/parse/query/basic_test.rb
+```
+
+Unit tests focus on:
+- Object property definitions
+- Query constraint building  
+- Data type conversions
+- Model validations
+- Basic functionality
+
+### Contributing Tests
+
+When contributing to Parse Stack:
+
+1. **Add Integration Tests**: For new features that interact with Parse Server
+2. **Add Unit Tests**: For utility functions and data transformations
+3. **Test Edge Cases**: Include error conditions and boundary values
+4. **Document Test Scenarios**: Add clear descriptions of what each test validates
+
+Example test structure:
+```ruby
+def test_new_feature
+  puts "\n=== Testing New Feature ==="
+  
+  # Setup
+  # Test execution  
+  # Assertions
+  # Cleanup (if needed)
+  
+  puts "✅ New feature test passed"
+end
+```
 
 ## License
 

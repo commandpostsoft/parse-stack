@@ -23,7 +23,8 @@ build/
 /rdoc/
 
 ## Environment normalization:
-/.bundle/
+/.bundle/*
+!/.bundle/config
 /vendor/bundle
 /lib/bundler/man/
 
@@ -42,3 +43,4 @@ bin/config.json
 /node_modules
 /bin/parse-dashboard-config.json
 logs
+*.md

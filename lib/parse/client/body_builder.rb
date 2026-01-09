@@ -2,12 +2,11 @@
 # frozen_string_literal: true
 
 require "faraday"
-require "faraday_middleware"
 require_relative "response"
 require_relative "protocol"
 require "active_support"
 require "active_support/core_ext"
-require "active_model_serializers"
+require "active_model/serializers/json"
 
 module Parse
 
@@ -94,6 +93,7 @@ module Parse
             r.error = "Invalid response for #{env[:method]} #{env[:url]}: #{e}"
           end
           r.http_status = response_env[:status]
+          r.headers = response_env[:response_headers]
           r.code ||= response_env[:status] if r.error.present?
           response_env[:body] = r
         end

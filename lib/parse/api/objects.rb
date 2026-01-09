@@ -14,9 +14,9 @@ module Parse
 
       # @!visibility private
       PREFIX_MAP = { installation: "installations", _installation: "installations",
-                    user: "users", _user: "users",
-                    role: "roles", _role: "roles",
-                    session: "sessions", _session: "sessions" }.freeze
+                     user: "users", _user: "users",
+                     role: "roles", _role: "roles",
+                     session: "sessions", _session: "sessions" }.freeze
 
       # @!visibility private
       def self.included(base)
@@ -78,11 +78,12 @@ module Parse
       # Fetch a specific object from a collection.
       # @param className [String] the name of the Parse collection.
       # @param id [String] The objectId of the record in the collection.
+      # @param query [Hash] optional query parameters like keys and include.
       # @param opts [Hash] additional options to pass to the {Parse::Client} request.
       # @param headers [Hash] additional HTTP headers to send with the request.
       # @return [Parse::Response]
-      def fetch_object(className, id, headers: {}, **opts)
-        response = request :get, uri_path(className, id), headers: headers, opts: opts
+      def fetch_object(className, id, query: nil, headers: {}, **opts)
+        response = request :get, uri_path(className, id), query: query, headers: headers, opts: opts
         response.parse_class = className if response.present?
         response
       end

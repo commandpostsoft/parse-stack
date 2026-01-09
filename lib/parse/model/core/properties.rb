@@ -7,9 +7,9 @@ require "active_support/inflector"
 require "active_support/core_ext"
 require "active_support/core_ext/object"
 require "active_support/inflector"
-require "active_model_serializers"
+require "active_model/serializers/json"
 require "active_support/inflector"
-require "active_model_serializers"
+require "active_model/serializers/json"
 require "active_support/hash_with_indifferent_access"
 require "time"
 
@@ -19,7 +19,7 @@ module Parse
   # supported in Parse and mapping them between their remote names with their local ruby named attributes.
   module Properties
     # These are the base types supported by Parse.
-    TYPES = [:string, :relation, :integer, :float, :boolean, :date, :array, :file, :geopoint, :bytes, :object, :acl, :timezone].freeze
+    TYPES = [:string, :relation, :integer, :float, :boolean, :date, :array, :file, :geopoint, :bytes, :object, :acl, :timezone, :phone, :email].freeze
     # These are the base mappings of the remote field name types.
     BASE = { objectId: :string, createdAt: :date, updatedAt: :date, ACL: :acl }.freeze
     # The list of properties that are part of all objects
@@ -61,6 +61,12 @@ module Parse
       # @return [Hash] the fields that are marked as enums.
       def enums
         @enums ||= {}
+      end
+
+      # @return [Hash] semantic descriptions for properties (used by Parse::Agent).
+      # Maps property names (symbols) to their description strings.
+      def property_descriptions
+        @property_descriptions ||= {}
       end
 
       # Set the property fields for this class.
@@ -120,16 +126,19 @@ module Parse
         data_type = :timezone if data_type == :time_zone
         data_type = :geopoint if data_type == :geo_point
         data_type = :integer if data_type == :int || data_type == :number
+        data_type = :phone if data_type == :phone_number || data_type == :mobile || data_type == :e164
+        data_type = :email if data_type == :email_address
 
         # set defaults
         opts = { required: false,
-                alias: true,
-                symbolize: false,
-                enum: nil,
-                scopes: true,
-                _prefix: nil,
-                _suffix: false,
-                field: key.to_s.camelize(:lower) }.merge(opts)
+                 alias: true,
+                 symbolize: false,
+                 enum: nil,
+                 scopes: true,
+                 _prefix: nil,
+                 _suffix: false,
+                 _description: nil,  # Agent metadata: semantic description for LLMs
+                 field: key.to_s.camelize(:lower) }.merge(opts)
         #By default, the remote field name is a lower-first-camelcase version of the key
         # it can be overriden by the :field parameter
         parse_field = opts[:field].to_sym
@@ -157,6 +166,11 @@ module Parse
         # This creates a mapping between the local field and the remote field name.
         self.field_map.merge!(key => parse_field)
 
+        # Store the property description for agent metadata if provided
+        if opts[:_description].present?
+          self.property_descriptions[key] = opts[:_description].to_s.freeze
+        end
+
         # if the field is marked as required, then add validations
         if opts[:required]
           # if integer or float, validate that it's a number
@@ -176,6 +190,26 @@ module Parse
             end
           end # validates_each
         end # data_type == :timezone
+
+        # phone datatypes validate E.164 format.
+        if data_type == :phone
+          validates_each key do |record, attribute, value|
+            # Parse::Phone objects have a `valid?` method to determine if the phone is valid E.164.
+            unless value.nil? || value.valid?
+              record.errors.add(attribute, "field :#{attribute} must be a valid E.164 phone number (e.g., +14155551234).")
+            end
+          end # validates_each
+        end # data_type == :phone
+
+        # email datatypes validate email format.
+        if data_type == :email
+          validates_each key do |record, attribute, value|
+            # Parse::Email objects have a `valid?` method to determine if the email is valid.
+            unless value.nil? || value.valid?
+              record.errors.add(attribute, "field :#{attribute} must be a valid email address.")
+            end
+          end # validates_each
+        end # data_type == :email
 
         is_enum_type = opts[:enum].nil? == false
 
@@ -227,7 +261,6 @@ module Parse
 
             enum_values.each do |enum|
               method_name = enum # default
-              scope_name = enum
               if add_suffix
                 method_name = :"#{enum}_#{prefix_or_key}"
               elsif prefix.present?
@@ -273,8 +306,15 @@ module Parse
 
           # If the value is nil and this current Parse::Object instance is a pointer?
           # then someone is calling the getter for this, which means they probably want
-          # its value - so let's go turn this pointer into a full object record
-          if value.nil? && pointer?
+          # its value - so let's go turn this pointer into a full object record.
+          # Also autofetch if object was selectively fetched and this field wasn't included.
+          should_autofetch = value.nil? && (pointer? || (has_selective_keys? && !field_was_fetched?(key)))
+          if should_autofetch
+            # If autofetch is disabled and we're accessing an unfetched field on a
+            # selectively fetched object, raise an error to make the issue explicit
+            if autofetch_disabled? && has_selective_keys? && !field_was_fetched?(key)
+              raise Parse::UnfetchedFieldAccessError.new(key, self.class.name)
+            end
             # call autofetch to fetch the entire record
             # and then get the ivar again cause it might have been updated.
             autofetch!(key)
@@ -380,6 +420,7 @@ module Parse
           # this will grab the current value and keep a copy of it - but we only do this if
           # the new value being set is different from the current value stored.
           if track == true
+            prepare_for_dirty_tracking!(key)
             send will_change_method unless val == instance_variable_get(ivar)
           end
 
@@ -484,6 +525,10 @@ module Parse
         # in the case that the field is a Parse object, generate a pointer
         # if it is a Parse::PointerCollectionProxy, then make sure we get a list of pointers.
         h[remote_field] = h[remote_field].parse_pointers if h[remote_field].is_a?(Parse::PointerCollectionProxy)
+        # For regular CollectionProxy arrays containing Parse objects, convert to pointers for storage
+        if h[remote_field].is_a?(Parse::CollectionProxy) && !h[remote_field].is_a?(Parse::PointerCollectionProxy)
+          h[remote_field] = h[remote_field].as_json(pointers_only: true)
+        end
         h[remote_field] = h[remote_field].pointer if h[remote_field].respond_to?(:pointer)
       end
       h
@@ -551,9 +596,17 @@ module Parse
       when :geopoint
         val = Parse::GeoPoint.new(val) unless val.blank?
       when :file
-        val = Parse::File.new(val) unless val.blank?
+        if val.is_a?(Hash) && val["__type"] == "File"
+          val = Parse::File.new(val)
+        elsif !val.blank?
+          val = Parse::File.new(val)
+        end
       when :bytes
-        val = Parse::Bytes.new(val) unless val.blank?
+        if val.is_a?(Hash) && val["__type"] == "Bytes"
+          val = Parse::Bytes.new(val["base64"] || val[:base64])
+        elsif !val.blank?
+          val = Parse::Bytes.new(val)
+        end
       when :integer
         if val.nil? || val.respond_to?(:to_i) == false
           val = nil
@@ -579,16 +632,21 @@ module Parse
           val = val.parse_date
           # if the value is a hash, then it may be the Parse hash format for an iso date.
         elsif val.is_a?(Hash) # val.respond_to?(:iso8601)
-          val = Parse::Date.parse(val["iso"] || val[:iso])
+          iso_val = (val["iso"] || val[:iso]).to_s.strip.presence
+          val = iso_val ? Parse::Date.parse(iso_val) : nil
         elsif val.is_a?(String)
           # if it's a string, try parsing the date
-          val = Parse::Date.parse val
+          val = (stripped = val.strip).present? ? Parse::Date.parse(stripped) : nil
           #elsif val.present?
           #  pus "[Parse::Stack] Invalid date value '#{val}' assigned to #{self.class}##{key}, it should be a Parse::Date or DateTime."
           #   raise ValueError, "Invalid date value '#{val}' assigned to #{self.class}##{key}, it should be a Parse::Date or DateTime."
         end
       when :timezone
         val = Parse::TimeZone.new(val) if val.present?
+      when :phone
+        val = Parse::Phone.new(val) if val.present?
+      when :email
+        val = Parse::Email.new(val) if val.present?
       else
         # You can provide a specific class instead of a symbol format
         if data_type.respond_to?(:typecast)
