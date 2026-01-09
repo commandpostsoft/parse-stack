@@ -18,7 +18,7 @@ class QueryTestBook < Parse::Object
   property :isbn, :string
   property :price, :float
   property :publication_year, :integer
-  property :author, :object  # pointer to QueryTestAuthor
+  belongs_to :author, as: :query_test_author
   property :genres, :array
   property :awards, :array
   property :related_books, :array  # array of pointers to other QueryTestBook

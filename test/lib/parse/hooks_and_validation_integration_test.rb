@@ -4,6 +4,7 @@ require "minitest/autorun"
 
 # Test model with hooks, validations, and change tracking
 class TestProduct < Parse::Object
+  parse_class "HooksTestProduct"
   property :name, :string
   property :price, :float
   property :sku, :string

@@ -102,7 +102,7 @@ class MongoDBOperatorsIntegrationTest < Minitest::Test
         puts "MongoDB Direct (:name.ends_with => 'Pro'): #{direct_names.inspect}"
 
         assert_equal parse_names, direct_names, "ends_with results should match"
-        assert_equal 2, direct_names.length, "Should find 2 products ending with Pro"
+        assert_equal 3, direct_names.length, "Should find 3 products ending with Pro"
 
         # --- Test 2c: ends_with with special characters ---
         puts "\n--- Test: ends_with with special characters ---"

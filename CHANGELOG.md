@@ -10,9 +10,21 @@
 
 - **IMPROVED**: CI now tests against Ruby 3.1, 3.2, 3.3, and 3.4.
 
-### 3.2.3
+### 3.2.2
 
 #### Improvements
+
+- **IMPROVED**: `latest` and `last_updated` methods now support a `limit:` option when passing constraints. This allows fetching multiple recent records while also filtering by query conditions.
+
+```ruby
+# Class methods
+Song.latest(:user.eq => user, limit: 5)       # 5 most recent for user
+Song.last_updated(status: "active", limit: 10) # 10 most recently updated active
+
+# Query instance methods
+query.latest(:user.eq => x, limit: 5)
+query.where(genre: "rock").last_updated(limit: 3)
+```
 
 - **IMPROVED**: `PointerCollectionProxy#as_json` now supports the `pointers_only` option. By default it returns pointers (preserving backward compatibility), but you can set `pointers_only: false` to serialize objects with their fetched fields. This is useful when returning `has_many :through => :array` relationships in webhook responses.
 
@@ -57,22 +69,6 @@ song.as_json(only: [:title, :artist], strict: true)
 song.as_json(except: [:acl, :created_at])
 song.as_json(exclude_keys: [:acl, :created_at])
 song.as_json(exclude: [:acl, :created_at])
-```
-
-### 3.2.2
-
-#### Improvements
-
-- **IMPROVED**: `latest` and `last_updated` methods now support a `limit:` option when passing constraints. This allows fetching multiple recent records while also filtering by query conditions.
-
-```ruby
-# Class methods
-Song.latest(:user.eq => user, limit: 5)       # 5 most recent for user
-Song.last_updated(status: "active", limit: 10) # 10 most recently updated active
-
-# Query instance methods
-query.latest(:user.eq => x, limit: 5)
-query.where(genre: "rock").last_updated(limit: 3)
 ```
 
 ### 3.2.1
@@ -3682,26 +3678,26 @@ Parse.warn_on_query_issues = false
 - **FIXED**: Corrected `or_where` behavior in query operations
 - **CHANGED**: Request idempotency is now enabled by default for improved reliability
 
-### 2.0.0 - Major Release 🚀
+### 2.0.0 - Major Release
 
 **BREAKING CHANGES:**
 - This major version represents a complete transformation of Parse Stack with extensive new functionality
 - Moved from primarily mock-based testing to comprehensive integration testing with real Parse Server
 - Enhanced change tracking may affect existing webhook implementations
 - Transaction support changes object persistence patterns
-- **Minimum Ruby version is now 3.2+** (dropped support for Ruby < 3.2)
+- **Minimum Ruby version is now 3.0+** (dropped support for Ruby < 3.0)
 - **`distinct` method now returns object IDs directly by default** for pointer fields instead of full pointer hash objects like `{"__type"=>"Pointer", "className"=>"Team", "objectId"=>"abc123"}`. Use `distinct(field, return_pointers: true)` to get Parse::Pointer objects.
 - **Updated to Faraday 2.x** and removed `faraday_middleware` dependency
 - **Fixed typo "constaint" to "constraint"** throughout codebase (method names may have changed)
 
-#### 🐳 Docker-Based Integration Testing Infrastructure
+#### Docker-Based Integration Testing Infrastructure
 - **NEW**: Complete Docker-based Parse Server testing environment with Redis caching support
 - **NEW**: `scripts/docker/Dockerfile.parse`, `docker-compose.test.yml` for isolated testing
 - **NEW**: `scripts/start-parse.sh` for automated Parse Server setup
 - **NEW**: `test/support/docker_helper.rb` for test environment management
 - **NEW**: Reliable, reproducible testing environment for all integration tests
 
-#### 💾 Transaction Support System
+#### Transaction Support System
 - **NEW**: Full atomic transaction support with `Parse::Object.transaction` method
 - **NEW**: Two transaction styles: explicit batch operations and automatic batching via return values
 - **NEW**: Automatic retry mechanism for transaction conflicts (Parse error 251) with configurable retry limits
@@ -3709,7 +3705,7 @@ Parse.warn_on_query_issues = false
 - **NEW**: Support for mixed operations (create, update, delete) within single transactions
 - **NEW**: Comprehensive transaction testing with complex business scenarios
 
-#### 🔄 Enhanced Change Tracking & Webhooks
+#### Enhanced Change Tracking & Webhooks
 - **NEW**: Advanced change tracking that preserves `_was` values in `after_save` hooks
 - **NEW**: `*_was_changed?` methods work correctly in after_save contexts using previous_changes
 - **NEW**: Proper webhook-based hook halting mechanism for Parse Server integration
@@ -3720,13 +3716,13 @@ Parse.warn_on_query_issues = false
 - **NEW**: `dirty?` and `dirty?(field)` methods for compatibility with expected API
 - **IMPROVED**: Enhanced change tracking preserves standard ActiveModel behavior while adding Parse Server-specific functionality
 
-#### ⚡ Request Idempotency System
+#### Request Idempotency System
 - **NEW**: Request idempotency system with `_RB_` prefix for Ruby-initiated requests
 - **NEW**: Prevents duplicate operations with request ID tracking
 - **NEW**: Thread-safe request ID generation and configuration management
 - **NEW**: Per-request idempotency control for production reliability
 
-#### 🔐 ACL Query Constraints
+#### ACL Query Constraints
 - **NEW**: `readable_by` constraint for filtering objects by ACL read permissions
 - **NEW**: `writable_by` constraint for filtering objects by ACL write permissions
 - **NEW**: Smart input handling for User objects, Role objects, Pointers, and role name strings
@@ -3734,7 +3730,7 @@ Parse.warn_on_query_issues = false
 - **NEW**: Support for both ACL object field and Parse's internal `_rperm`/`_wperm` fields
 - **NEW**: Public access ("*") automatically included when querying internal permission fields
 
-#### 🔍 Advanced Query Operations
+#### Advanced Query Operations
 - **NEW**: Query cloning functionality with `clone` method for independent query copies
 - **NEW**: `latest` method for retrieving most recently created objects (ordered by created_at desc)
 - **NEW**: `last_updated` method for retrieving most recently updated objects (ordered by updated_at desc)
@@ -3743,7 +3739,7 @@ Parse.warn_on_query_issues = false
 - **NEW**: `between` constraint for range queries on numbers, dates, strings, and comparable values
 - **NEW**: Enhanced query composition methods work seamlessly with aggregation pipelines
 
-#### 📊 Aggregation & Cache System
+#### Aggregation & Cache System
 - **NEW**: MongoDB-style aggregation pipeline support with `query.aggregate`
 - **NEW**: Count distinct operations with comprehensive testing
 - **NEW**: Group by aggregation with proper pointer conversion
@@ -3751,7 +3747,7 @@ Parse.warn_on_query_issues = false
 - **NEW**: Cache invalidation and authentication context handling
 - **NEW**: Timezone-aware date/time handling with DST transition support
 
-#### 🎯 Enhanced Object Management
+#### Enhanced Object Management
 - **NEW**: `fetch_object` method for Parse::Pointer and Parse::Object to return fetched instances
 - **NEW**: Enhanced `fetch` method with optional `returnObject` parameter (defaults to true)
 - **NEW**: Schema-based pointer conversion and detection when available
@@ -3759,28 +3755,26 @@ Parse.warn_on_query_issues = false
 - **NEW**: Performance optimizations for upsert methods with change detection
 - **NEW**: Enhanced Rails-style attribute merging with proper query_attrs + resource_attrs combination
 
-#### 🧪 Comprehensive Integration Testing
-- **NEW**: Massive integration test coverage (1,577+ lines in `query_integration_test.rb` alone)
+#### Comprehensive Integration Testing
 - **NEW**: Real Parse Server testing across all major features
 - **NEW**: Comprehensive object lifecycle and relationship testing
-- **NEW**: **Mock dependency reduced by ~80%** - most core features now integration tested
 - **NEW**: Performance comparison testing with timing validation
 - **NEW**: Complex business scenario testing with real Parse Server validation
 
-#### 🔧 Enhanced Array Pointer Query Support
+#### Enhanced Array Pointer Query Support
 - **NEW**: Automatic conversion of Parse objects to pointers in array `.in`/`.nin` queries
 - **NEW**: Support for mixed Parse objects and pointer objects in query arrays
 - **NEW**: Enhanced `ContainedInConstraint` and `NotContainedInConstraint` for array pointer fields
 - **FIXED**: Array pointer field compatibility issues with proper constraint handling
 
-#### 📈 New Aggregation Functions
+#### New Aggregation Functions
 - **NEW**: `sum(field)` - Calculate sum of numeric values across matching records
-- **NEW**: `min(field)` - Find minimum value for a field  
+- **NEW**: `min(field)` - Find minimum value for a field
 - **NEW**: `max(field)` - Find maximum value for a field
 - **NEW**: `average(field)` / `avg(field)` - Calculate average value for numeric fields
 - **NEW**: `count_distinct(field)` - Count unique values using MongoDB aggregation pipeline
 
-#### 📊 Enhanced Group By Operations  
+#### Enhanced Group By Operations
 - **NEW**: `group_by(field, options)` - Group records by field value with aggregation support
 - **NEW**: `group_by_date(field, interval, options)` - Group by date intervals (:year, :month, :week, :day, :hour)
 - **NEW**: `group_objects_by(field, options)` - Group actual object instances (not aggregated)
@@ -3788,16 +3782,16 @@ Parse.warn_on_query_issues = false
 - **NEW**: Array flattening with `flatten_arrays: true` for multi-value fields
 - **NEW**: Pointer optimization with `return_pointers: true` for memory efficiency
 
-#### 🔗 Advanced Query Constraints
+#### Advanced Query Constraints
 - **NEW**: `equals_linked_pointer` - Compare pointer fields across linked objects using aggregation
-- **NEW**: `does_not_equal_linked_pointer` - Negative comparison of linked pointers  
+- **NEW**: `does_not_equal_linked_pointer` - Negative comparison of linked pointers
 - **NEW**: `between_dates` - Query records within date/time ranges
 - **NEW**: `matches_key_in_query` - Matches key in subquery
 - **NEW**: `does_not_match_key_in_query` - Does not match key in subquery
 - **NEW**: `starts_with` - String prefix matching constraint
 - **NEW**: `contains` - String substring matching constraint
 
-#### 🛠️ New Utility Methods
+#### New Utility Methods
 - **NEW**: `pluck(field)` - Extract values for single field from all matching records
 - **NEW**: `to_table(columns, options)` - Format results as ASCII/CSV/JSON tables with sorting
 - **NEW**: `verbose_aggregate` - Debug flag for MongoDB aggregation pipeline details
@@ -3805,37 +3799,40 @@ Parse.warn_on_query_issues = false
 - **NEW**: `result_pointers` - Get Parse::Pointer objects instead of full objects
 - **NEW**: `distinct_objects(field)` - Get distinct values with populated objects
 
-#### ☁️ Enhanced Cloud Functions
+#### Enhanced Cloud Functions
 - **NEW**: `call_function_with_session(name, body, session_token)` - Call cloud functions with session context
 - **NEW**: `trigger_job_with_session(name, body, session_token)` - Trigger background jobs with session token
 - **NEW**: Enhanced authentication options and master key support for cloud functions
 
-#### 📋 Result Processing & Display
+#### Result Processing & Display
 - **NEW**: `GroupedResult` class with built-in sorting capabilities (`sort_by_key_asc/desc`, `sort_by_value_asc/desc`)
 - **NEW**: Table formatting with custom headers, sorting, and multiple output formats (ASCII, CSV, JSON)
 - **NEW**: Enhanced result processing with pointer optimization across all aggregation methods
 
-#### 🎯 Enhanced Pointer & Object Handling
+#### Enhanced Pointer & Object Handling
 - **IMPROVED**: Enhanced `distinct` with automatic detection and conversion of MongoDB pointer strings
 - **IMPROVED**: `return_pointers` option available across multiple methods for memory optimization
 - **IMPROVED**: Server-side object population in aggregation pipelines
 - **IMPROVED**: Automatic handling of `ClassName$objectId` format conversion
 - **IMPROVED**: Schema-based approach for pointer conversion when available - provides more reliable pointer field detection
-- **IMPROVED**: Enhanced `in` and `not_in` query constraints to properly handle Parse pointers 
+- **IMPROVED**: Enhanced `in` and `not_in` query constraints to properly handle Parse pointers
 - **IMPROVED**: Automatic conversion of pointer strings to proper Parse::Pointer objects in queries
 - **NEW**: Support for detecting pointer fields from schema information when available
 - **NEW**: Fallback to pattern-based detection when schema is unavailable
 - **FIXED**: Pointer conversion in aggregation queries now correctly handles all pointer field types
 
-#### 📦 Dependency Updates
+#### Dependency Updates
 - **UPDATED**: ActiveModel and ActiveSupport to latest compatible versions
 - **UPDATED**: Rack dependency
-- **UPDATED**: Modernized for Ruby 3.2+ compatibility
-
+- **UPDATED**: Modernized for Ruby 3.0+ compatibility
 
 ### 1.11.3
 - Adds "empty" query constraint option
 - Adds "include" alias for "includes" query method
+- Ensures create_or_update only saves once (preventing duplicate saves)
+
+### 1.11.2
+- Adds afterCreate as valid Parse trigger
 
 ### 1.11.1
 - Always applies attribute changes in first_or_create resource_attrs argument
