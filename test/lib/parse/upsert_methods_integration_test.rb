@@ -1,8 +1,8 @@
 require_relative "../../test_helper_integration"
 
 # Test models for upsert method integration testing
-class TestUser < Parse::Object
-  parse_class "TestUser"
+class UpsertTestUser < Parse::Object
+  parse_class "UpsertTestUser"
 
   property :email, :string
   property :name, :string
@@ -11,8 +11,8 @@ class TestUser < Parse::Object
   property :last_login, :date
 end
 
-class TestProduct < Parse::Object
-  parse_class "TestProduct"
+class UpsertTestProduct < Parse::Object
+  parse_class "UpsertTestProduct"
 
   property :sku, :string
   property :name, :string
@@ -40,12 +40,12 @@ class UpsertMethodsIntegrationTest < Minitest::Test
         puts "\n=== Testing first_or_create Finds Existing Object Unchanged ==="
 
         # Create initial user
-        original_user = TestUser.new(email: "existing@example.com", name: "Original Name", age: 25)
+        original_user = UpsertTestUser.new(email: "existing@example.com", name: "Original Name", age: 25)
         assert original_user.save, "Original user should save"
         original_id = original_user.id
 
         # Use first_or_create with different resource_attrs
-        found_user = TestUser.first_or_create(
+        found_user = UpsertTestUser.first_or_create(
           { email: "existing@example.com" },
           { name: "Different Name", age: 30, status: "inactive" }
         )
@@ -70,7 +70,7 @@ class UpsertMethodsIntegrationTest < Minitest::Test
         puts "\n=== Testing first_or_create Creates New Object (Unsaved) ==="
 
         # Use first_or_create for non-existing user
-        new_user = TestUser.first_or_create(
+        new_user = UpsertTestUser.first_or_create(
           { email: "new@example.com" },
           { name: "New User", age: 35, status: "pending" }
         )
@@ -84,7 +84,7 @@ class UpsertMethodsIntegrationTest < Minitest::Test
         assert_nil new_user.id, "Unsaved object should not have ID"
 
         # Verify object is not yet in database
-        found_in_db = TestUser.first(email: "new@example.com")
+        found_in_db = UpsertTestUser.first(email: "new@example.com")
         assert_nil found_in_db, "Object should not be in database yet"
 
         puts "✅ first_or_create creates new unsaved object with combined attributes"
@@ -100,12 +100,12 @@ class UpsertMethodsIntegrationTest < Minitest::Test
         puts "\n=== Testing first_or_create! Finds Existing Object Unchanged ==="
 
         # Create initial product
-        original_product = TestProduct.new(sku: "PROD-001", name: "Original Product", price: 19.99)
+        original_product = UpsertTestProduct.new(sku: "PROD-001", name: "Original Product", price: 19.99)
         assert original_product.save, "Original product should save"
         original_id = original_product.id
 
         # Use first_or_create! with different resource_attrs
-        found_product = TestProduct.first_or_create!(
+        found_product = UpsertTestProduct.first_or_create!(
           { sku: "PROD-001" },
           { name: "Different Product", price: 29.99, category: "electronics" }
         )
@@ -130,7 +130,7 @@ class UpsertMethodsIntegrationTest < Minitest::Test
         puts "\n=== Testing first_or_create! Creates and Saves New Object ==="
 
         # Use first_or_create! for non-existing product
-        new_product = TestProduct.first_or_create!(
+        new_product = UpsertTestProduct.first_or_create!(
           { sku: "PROD-NEW" },
           { name: "New Product", price: 49.99, category: "gadgets" }
         )
@@ -144,7 +144,7 @@ class UpsertMethodsIntegrationTest < Minitest::Test
         assert_equal "gadgets", new_product.category, "Category should be set from resource_attrs"
 
         # Verify object is in database
-        found_in_db = TestProduct.first(sku: "PROD-NEW")
+        found_in_db = UpsertTestProduct.first(sku: "PROD-NEW")
         assert found_in_db, "Object should be in database"
         assert_equal new_product.id, found_in_db.id, "Should find the same object"
         assert_equal "New Product", found_in_db.name, "Database object should have correct name"
@@ -162,12 +162,12 @@ class UpsertMethodsIntegrationTest < Minitest::Test
         puts "\n=== Testing create_or_update! Finds and Updates Existing Object ==="
 
         # Create initial user
-        original_user = TestUser.new(email: "update@example.com", name: "Old Name", age: 25, status: "active")
+        original_user = UpsertTestUser.new(email: "update@example.com", name: "Old Name", age: 25, status: "active")
         assert original_user.save, "Original user should save"
         original_id = original_user.id
 
         # Use create_or_update! to update existing user
-        updated_user = TestUser.create_or_update!(
+        updated_user = UpsertTestUser.create_or_update!(
           { email: "update@example.com" },
           { name: "Updated Name", age: 30, last_login: Time.now }
         )
@@ -181,7 +181,7 @@ class UpsertMethodsIntegrationTest < Minitest::Test
         refute updated_user.new?, "Object should still be persisted"
 
         # Verify changes are persisted in database
-        found_in_db = TestUser.first(email: "update@example.com")
+        found_in_db = UpsertTestUser.first(email: "update@example.com")
         assert_equal "Updated Name", found_in_db.name, "Database should reflect name change"
         assert_equal 30, found_in_db.age, "Database should reflect age change"
 
@@ -198,7 +198,7 @@ class UpsertMethodsIntegrationTest < Minitest::Test
         puts "\n=== Testing create_or_update! Creates New Object ==="
 
         # Use create_or_update! for non-existing user
-        new_user = TestUser.create_or_update!(
+        new_user = UpsertTestUser.create_or_update!(
           { email: "create@example.com" },
           { name: "Created User", age: 28, status: "pending" }
         )
@@ -212,7 +212,7 @@ class UpsertMethodsIntegrationTest < Minitest::Test
         assert_equal "pending", new_user.status, "Status should be set from resource_attrs"
 
         # Verify object is in database
-        found_in_db = TestUser.first(email: "create@example.com")
+        found_in_db = UpsertTestUser.first(email: "create@example.com")
         assert found_in_db, "Object should be in database"
         assert_equal new_user.id, found_in_db.id, "Should find the same object"
 
@@ -229,7 +229,7 @@ class UpsertMethodsIntegrationTest < Minitest::Test
         puts "\n=== Testing create_or_update! No Save When No Changes ==="
 
         # Create initial product
-        original_product = TestProduct.new(sku: "NO-CHANGE", name: "Same Product", price: 15.50)
+        original_product = UpsertTestProduct.new(sku: "NO-CHANGE", name: "Same Product", price: 15.50)
         assert original_product.save, "Original product should save"
         original_updated_at = original_product.updated_at
 
@@ -237,7 +237,7 @@ class UpsertMethodsIntegrationTest < Minitest::Test
         sleep(0.1)
 
         # Use create_or_update! with identical values
-        result_product = TestProduct.create_or_update!(
+        result_product = UpsertTestProduct.create_or_update!(
           { sku: "NO-CHANGE" },
           { name: "Same Product", price: 15.50 } # Identical values
         )
@@ -261,7 +261,7 @@ class UpsertMethodsIntegrationTest < Minitest::Test
         puts "\n=== Testing create_or_update! with Empty resource_attrs ==="
 
         # Create initial user
-        original_user = TestUser.new(email: "empty@example.com", name: "Original", age: 40)
+        original_user = UpsertTestUser.new(email: "empty@example.com", name: "Original", age: 40)
         assert original_user.save, "Original user should save"
         original_updated_at = original_user.updated_at
 
@@ -269,7 +269,7 @@ class UpsertMethodsIntegrationTest < Minitest::Test
         sleep(0.1)
 
         # Use create_or_update! with empty resource_attrs
-        result_user = TestUser.create_or_update!(
+        result_user = UpsertTestUser.create_or_update!(
           { email: "empty@example.com" },
           {} # Empty resource_attrs
         )
@@ -293,13 +293,13 @@ class UpsertMethodsIntegrationTest < Minitest::Test
         puts "\n=== Testing Performance Comparison Across Methods ==="
 
         # Create initial test data
-        test_user = TestUser.new(email: "perf@example.com", name: "Performance Test", age: 35)
+        test_user = UpsertTestUser.new(email: "perf@example.com", name: "Performance Test", age: 35)
         assert test_user.save, "Test user should save"
 
         # Test first_or_create performance (existing object)
         start_time = Time.now
         5.times do
-          result = TestUser.first_or_create({ email: "perf@example.com" }, { name: "Different" })
+          result = UpsertTestUser.first_or_create({ email: "perf@example.com" }, { name: "Different" })
           assert_equal "Performance Test", result.name, "Should find unchanged object"
         end
         first_or_create_time = Time.now - start_time
@@ -307,7 +307,7 @@ class UpsertMethodsIntegrationTest < Minitest::Test
         # Test first_or_create! performance (existing object)
         start_time = Time.now
         5.times do
-          result = TestUser.first_or_create!({ email: "perf@example.com" }, { name: "Different" })
+          result = UpsertTestUser.first_or_create!({ email: "perf@example.com" }, { name: "Different" })
           assert_equal "Performance Test", result.name, "Should find unchanged object"
         end
         first_or_create_bang_time = Time.now - start_time
@@ -315,7 +315,7 @@ class UpsertMethodsIntegrationTest < Minitest::Test
         # Test create_or_update! performance (no changes)
         start_time = Time.now
         5.times do
-          result = TestUser.create_or_update!({ email: "perf@example.com" }, { name: "Performance Test", age: 35 })
+          result = UpsertTestUser.create_or_update!({ email: "perf@example.com" }, { name: "Performance Test", age: 35 })
           assert_equal "Performance Test", result.name, "Should find unchanged object"
         end
         create_or_update_no_change_time = Time.now - start_time
@@ -323,7 +323,7 @@ class UpsertMethodsIntegrationTest < Minitest::Test
         # Test create_or_update! performance (with changes)
         start_time = Time.now
         5.times do |i|
-          result = TestUser.create_or_update!({ email: "perf@example.com" }, { age: 35 + i })
+          result = UpsertTestUser.create_or_update!({ email: "perf@example.com" }, { age: 35 + i })
         end
         create_or_update_with_change_time = Time.now - start_time
 
@@ -355,7 +355,7 @@ class UpsertMethodsIntegrationTest < Minitest::Test
         # Workflow: User registration and profile updates
 
         # Step 1: Try to find existing user, create if not found (unsaved)
-        user = TestUser.first_or_create(
+        user = UpsertTestUser.first_or_create(
           { email: "workflow@example.com" },
           { name: "Workflow User", age: 25, status: "pending" }
         )
@@ -368,7 +368,7 @@ class UpsertMethodsIntegrationTest < Minitest::Test
         assert user.save, "Should save user after completing registration"
 
         # Step 3: Update profile information
-        updated_user = TestUser.create_or_update!(
+        updated_user = UpsertTestUser.create_or_update!(
           { email: "workflow@example.com" },
           { age: 26, last_login: Time.now }
         )
@@ -379,7 +379,7 @@ class UpsertMethodsIntegrationTest < Minitest::Test
         assert updated_user.last_login.present?, "Should have last_login set"
 
         # Step 4: Subsequent login (no changes needed)
-        login_user = TestUser.create_or_update!(
+        login_user = UpsertTestUser.create_or_update!(
           { email: "workflow@example.com" },
           { age: 26 } # Same age, should not save
         )
