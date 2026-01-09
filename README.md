@@ -24,7 +24,9 @@ A full featured Active Model ORM and Ruby REST API for Parse-Server. [Parse Stac
 - AI/LLM Agent integration with security hardening (rate limiting, injection protection)
 - And many more improvements (see [CHANGELOG.md](./CHANGELOG.md))
 
-Below is a [quick start guide](#overview), but you can also check out the full *[API Reference](https://www.modernistik.com/gems/parse-stack/index.html)* for more detailed information about our Parse Server SDK.
+Below is a [quick start guide](#overview). See also the [Usage Guide](./USAGE_GUIDE.md) for practical examples covering queries, aggregation, ACLs, and more.
+
+> **Note:** The [Modernistik API Reference](https://www.modernistik.com/gems/parse-stack/index.html) documents v1.9 only and does not cover features added in v2.x or v3.x.
 
 ### Credits
 
@@ -152,298 +154,59 @@ result = Parse.call_function :myFunctionName, {param: value}
 
 ```
 
-## What's New in 2.0
+## What's New in 3.x
 
-Version 2.0 represents a major upgrade with extensive new functionality and breaking changes. **Minimum Ruby version is now 3.2+**.
+**Current version: 3.3.0** | **Ruby 3.1+ required**
 
-### Transaction Support
+### 3.3 - Ruby Version Update
+- Minimum Ruby version bumped to 3.1 (Ruby 3.0 reached EOL March 2024)
+- CI tests against Ruby 3.1, 3.2, 3.3, and 3.4
 
-Full atomic transaction support with automatic retry on conflicts:
+### 3.2 - Class-Level Permissions (CLP)
+Define operation permissions and protected fields directly in models:
 
 ```ruby
-# Explicit batch operations
-Parse::Object.transaction do |batch|
-  song.name = "New Name"
-  batch.save(song)
-
-  artist.popularity += 1
-  batch.save(artist)
-end
-
-# Automatic batching via return values
-Parse::Object.transaction do
-  song.update(name: "New Name")
-  artist.update(popularity: artist.popularity + 1)
+class Document < Parse::Object
+  set_clp :find, public: true
+  set_clp :delete, public: false, roles: ["Admin"]
+  protect_fields "*", [:internal_notes, :secret_data]
 end
 ```
 
-### MongoDB Aggregation Framework
-
-Powerful aggregation capabilities including group_by, count_distinct, and custom pipelines:
-
-```ruby
-# Group by with aggregation
-Song.query.group_by(:artist,
-  count: true,
-  sum: :plays,
-  avg: :duration
-)
-
-# Group by date with timezone support
-Song.query.group_by_date(:released, :month,
-  timezone: "America/New_York",
-  count: true
-)
-
-# Count distinct values
-Song.query.count_distinct(:artist)
-
-# Custom aggregation pipeline
-Song.query.aggregate([
-  { "$match" => { "plays" => { "$gt" => 1000 } } },
-  { "$group" => { "_id" => "$artist", "total" => { "$sum" => "$plays" } } }
-])
-```
-
-### ACL Query Constraints
-
-Filter queries based on ACL permissions. These constraints use MongoDB aggregation pipelines because Parse Server restricts direct queries on internal ACL fields (`_rperm`, `_wperm`).
-
-#### Convenience Methods
-
-Quick methods for common ACL queries:
-
-```ruby
-# Find publicly accessible documents
-songs = Song.query.publicly_readable.results
-songs = Song.query.publicly_writable.results  # Security audit!
-
-# Find master-key-only documents (empty permissions)
-songs = Song.query.privately_readable.results
-songs = Song.query.master_key_read_only.results  # Alias
-songs = Song.query.privately_writable.results
-songs = Song.query.master_key_write_only.results  # Alias
-
-# Find completely private documents (no read AND no write)
-songs = Song.query.private_acl.results
-songs = Song.query.master_key_only.results  # Alias
-
-# Find non-public documents
-songs = Song.query.not_publicly_readable.results
-songs = Song.query.not_publicly_writable.results
-
-# Chain with other constraints
-songs = Song.query.publicly_readable.where(genre: "Rock").order(:plays.desc).results
-```
-
-#### Hash Key Support
-
-ACL constraints can be passed as hash keys in `where`, `first`, `all`:
-
-```ruby
-# Use readable_by:/writable_by: as hash keys
-songs = Song.where(readable_by: current_user, genre: "Rock").results
-songs = Song.first(writable_by: admin_role)
-songs = Song.all(publicly_readable: true)
-songs = Song.query(readable_by_role: "Admin", limit: 10).results
-
-# Boolean flags for convenience methods
-songs = Song.all(privately_readable: true)
-songs = Song.all(not_publicly_writable: true)
-songs = Song.all(private_acl: true)  # Finds master-key-only documents
-```
-
-#### User and Role Queries
-
-```ruby
-# Find songs readable by a specific user (auto-fetches user's roles + child roles)
-songs = Song.all(:ACL.readable_by => current_user)
-
-# Find songs readable by exact permission strings
-songs = Song.query.readable_by("user123").results           # User ID
-songs = Song.query.readable_by("role:Admin").results        # Role with prefix
-
-# Find songs readable by role name (auto-adds "role:" prefix)
-songs = Song.query.readable_by_role("Admin").results        # → "role:Admin"
-songs = Song.query.readable_by_role(admin_role).results     # Role object
-
-# Works with User objects, role names, and Parse::Pointers
-songs = Song.all(:ACL.readable_by => Parse::Pointer.new("_User", user_id))
-
-# Special aliases
-songs = Song.query.readable_by("public").results            # Public access (*)
-songs = Song.query.readable_by("none").results              # Empty _rperm
-```
-
-#### Role Hierarchy Expansion
-
-ACL queries automatically expand role hierarchies. When you query with a `Parse::Role` object, the query includes all child roles (permissions flow DOWN the hierarchy):
-
-```ruby
-# Role hierarchy: Admin -> Moderator -> Editor
-admin_role = Parse::Role.find_by_name("Admin")
-
-# This query finds documents readable by Admin, Moderator, AND Editor
-# because Admin has those roles as children
-songs = Song.query.readable_by(admin_role).results
-
-# When querying with a user, we fetch all their roles and expand hierarchies
-user = Parse::User.current
-songs = Song.query.readable_by(user).results
-# Finds documents readable by:
-# - The user's ID directly
-# - All roles the user belongs to
-# - All child roles of those roles
-```
-
-#### Querying for Empty/Private ACLs
-
-Find objects with no permissions (master key only access):
-
-```ruby
-# Find objects with NO read permissions (master key only)
-songs = Song.query.privately_readable.results
-songs = Song.query.readable_by("none").results
-
-# Find objects with NO write permissions (read-only)
-songs = Song.query.privately_writable.results
-songs = Song.query.writable_by("none").results
-
-# Find objects with completely empty ACL (no read AND no write)
-songs = Song.query.private_acl.results
-songs = Song.query.where(:ACL.private_acl => true).results
-
-# Find objects that have SOME permissions (not private)
-songs = Song.query.where(:ACL.private_acl => false).results
-```
-
-> **Note**: If `_rperm` is missing/undefined in MongoDB, Parse Server treats the document as publicly readable. The `privately_readable` query specifically looks for documents with an empty `_rperm: []` array.
-
-#### Querying for Objects NOT Accessible
-
-Find objects hidden from specific users or roles:
-
-```ruby
-# Find objects NOT readable by a specific user
-songs = Song.query.where(:ACL.not_readable_by => current_user).results
-
-# Find objects NOT publicly readable
-songs = Song.query.not_publicly_readable.results
-songs = Song.query.where(:ACL.not_readable_by => "*").results
-songs = Song.query.where(:ACL.not_readable_by => :public).results
-
-# Find objects NOT writable by a role
-songs = Song.query.not_publicly_writable.results
-songs = Song.query.where(:ACL.not_writeable_by => "role:Editor").results
-```
-
-#### MongoDB Direct Option
-
-ACL queries automatically use MongoDB direct access when needed. You can also explicitly control this:
-
-```ruby
-# Force MongoDB direct query (bypasses Parse Server)
-songs = Song.query.readable_by([], mongo_direct: true).results
-songs = Song.query.publicly_readable(mongo_direct: true).results
-
-# Force Parse Server aggregation (disable auto-detection)
-songs = Song.query.readable_by("user123", mongo_direct: false).results
-```
-
-See [ACL Filtering with mongo_direct](#acl-filtering) for more details on high-performance ACL queries.
-
-### Enhanced Change Tracking
-
-Improved change tracking that works correctly in `after_save` hooks:
-
-```ruby
-class Song < Parse::Object
-  after_save :notify_if_published
-
-  def notify_if_published
-    # Now works correctly in after_save
-    if published_was == false && published == true
-      send_notification("Song published!")
-    end
-  end
-end
-```
-
-### Request Idempotency (Enabled by Default)
-
-Automatic request idempotency prevents duplicate operations:
-
-```ruby
-# Idempotency is enabled by default
-song.save  # Uses unique request ID
-
-# Control per-request
-Parse.client.idempotency = false
-song.save  # No request ID
-Parse.client.idempotency = true
-```
-
-### Advanced Query Operations
-
-New query methods for common patterns:
-
-```ruby
-# Get latest records
-recent_songs = Song.query.latest.limit(10)
-
-# Get last updated records
-updated_songs = Song.query.last_updated.limit(10)
-
-# Combine queries with OR
-query1 = Song.query(genre: "rock")
-query2 = Song.query(genre: "pop")
-combined = Parse::Query.or(query1, query2)
-
-# Range queries
-songs = Song.all(:plays.between => [100, 1000])
-```
-
-### LiveQuery (Real-Time Subscriptions) - Experimental
-
-Subscribe to real-time changes on Parse objects using WebSocket connections:
-
-```ruby
-# Configure LiveQuery
-Parse::LiveQuery.configure do |config|
-  config.url = "wss://your-parse-server.com"
-end
-
-# Create a client and subscribe
-client = Parse::LiveQuery::Client.new(
-  url: "wss://your-parse-server.com",
-  application_id: "your_app_id",
-  client_key: "your_client_key"
-)
-
-subscription = client.subscribe("Song", where: { "plays" => { "$gt" => 1000 } })
-
-subscription.on(:create) { |song| puts "New song: #{song['title']}" }
-subscription.on(:update) { |song, original| puts "Song updated!" }
-subscription.on(:delete) { |song| puts "Song deleted" }
-
-# Or use with Parse::Query
-query = Song.query(:plays.gt => 1000)
-subscription = client.subscribe(query)
-
-# Close when done
-client.close
-```
-
-Features include health monitoring with ping/pong, circuit breaker pattern for fault tolerance, and bounded event queues with backpressure handling.
-
-### Breaking Changes
-
-- **Minimum Ruby 3.2+** (dropped support for Ruby < 3.2)
-- **`distinct` method** now returns object IDs by default. Use `distinct(field, return_pointers: true)` for Parse::Pointer objects
-- **Faraday 2.x** (removed faraday_middleware dependency)
-- **Fixed typo** "constaint" → "constraint" throughout codebase
-
-For complete details, see [CHANGELOG.md](./CHANGELOG.md) and [Releases](https://github.com/commandpostsoft/parse-stack/releases).
+### 3.1 - Atlas Search, MongoDB Direct, Schema Tools
+- **MongoDB Atlas Search** - Full-text search, autocomplete, faceted search
+- **Direct MongoDB Queries** - `results_direct`, `first_direct` bypassing Parse Server
+- **Schema Introspection** - `Parse::Schema.diff`, `Parse::Schema.migration`
+- **Read Preference** - `read_pref(:secondary)` for replica set reads
+- **Role Management** - `find_or_create`, `add_users`, `add_child_role`, `all_users`
+
+### 3.0 - Push, Sessions, AI Agent
+- **Push Builder API** - Fluent pattern with `to_channel`, `with_alert`, `silent!`, `send!`
+- **Session Management** - `expired?`, `time_remaining`, `logout_all!`
+- **Installation Channels** - `subscribe`, `unsubscribe`, `subscribed_to?`
+- **AI/LLM Agent** - `Parse::Agent` with natural language queries
+- **MFA Support** - TOTP and SMS-based two-factor authentication
+- **LiveQuery** (Experimental) - Real-time WebSocket subscriptions
+
+## What's New in 2.x
+
+**Ruby 3.0+ required** | See detailed docs in later sections
+
+### Key Features
+- **Transactions** - `Parse::Object.transaction` with automatic retry
+- **MongoDB Aggregation** - `group_by`, `count_distinct`, custom pipelines
+- **ACL Query Constraints** - `readable_by`, `writable_by`, `publicly_readable`
+- **Request Idempotency** - Automatic duplicate prevention (enabled by default)
+- **Enhanced Change Tracking** - Works correctly in `after_save` hooks
+- **LiveQuery** (Experimental) - Real-time subscriptions with circuit breaker
+
+### Breaking Changes from 1.x
+- Minimum Ruby 3.0+
+- `distinct` returns object IDs by default (use `return_pointers: true` for pointers)
+- Faraday 2.x (removed faraday_middleware)
+- Fixed typo "constaint" to "constraint"
+
+For complete details, see the [CHANGELOG](./CHANGELOG.md) and [Releases](https://github.com/commandpostsoft/parse-stack/releases).
 
 ## Table of Contents
 
