@@ -30,7 +30,8 @@ class TestProduct < Parse::Object
   validate :custom_sku_format
 
   def custom_sku_format
-    if sku.present? && !sku.match?(/^[A-Z]{3}-\d{4}$/)
+    # Allow both upper and lowercase since normalize_data will uppercase it
+    if sku.present? && !sku.match?(/^[A-Za-z]{3}-\d{4}$/)
       errors.add(:sku, "must be in format XXX-0000 (e.g., ABC-1234)")
     end
   end

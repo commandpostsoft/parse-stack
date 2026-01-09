@@ -1,8 +1,9 @@
 require_relative "../../test_helper_integration"
 
 # Test models for transaction integration testing
-class Product < Parse::Object
-  parse_class "Product"
+# Using unique class names to avoid conflicts with Parse::Product and other built-in classes
+class TransactionProduct < Parse::Object
+  parse_class "TransactionProduct"
 
   property :name, :string, required: true
   property :price, :float
@@ -12,8 +13,8 @@ class Product < Parse::Object
   property :is_active, :boolean, default: true
 end
 
-class Order < Parse::Object
-  parse_class "Order"
+class TransactionOrder < Parse::Object
+  parse_class "TransactionOrder"
 
   property :order_number, :string
   property :customer_name, :string
@@ -22,10 +23,10 @@ class Order < Parse::Object
   property :items, :array
 end
 
-class Inventory < Parse::Object
-  parse_class "Inventory"
+class TransactionInventory < Parse::Object
+  parse_class "TransactionInventory"
 
-  belongs_to :product
+  belongs_to :product, as: :pointer, class_name: "TransactionProduct"
   property :location, :string
   property :quantity, :integer
   property :reserved_quantity, :integer, default: 0
@@ -50,8 +51,8 @@ class TransactionIntegrationTest < Minitest::Test
         puts "\n=== Testing Basic Transaction Success ==="
 
         # Create initial products
-        product1 = Product.new(name: "Product 1", price: 10.00, sku: "PRD-001", stock_quantity: 100)
-        product2 = Product.new(name: "Product 2", price: 20.00, sku: "PRD-002", stock_quantity: 50)
+        product1 = TransactionProduct.new(name: "Product 1", price: 10.00, sku: "PRD-001", stock_quantity: 100)
+        product2 = TransactionProduct.new(name: "Product 2", price: 20.00, sku: "PRD-002", stock_quantity: 50)
 
         assert product1.save, "Product 1 should save initially"
         assert product2.save, "Product 2 should save initially"
@@ -94,8 +95,8 @@ class TransactionIntegrationTest < Minitest::Test
         puts "\n=== Testing Transaction with Return Value Auto-Batch ==="
 
         # Create initial products
-        product1 = Product.new(name: "Auto Product 1", price: 15.00, sku: "AUTO-001")
-        product2 = Product.new(name: "Auto Product 2", price: 25.00, sku: "AUTO-002")
+        product1 = TransactionProduct.new(name: "Auto Product 1", price: 15.00, sku: "AUTO-001")
+        product2 = TransactionProduct.new(name: "Auto Product 2", price: 25.00, sku: "AUTO-002")
 
         assert product1.save, "Auto Product 1 should save initially"
         assert product2.save, "Auto Product 2 should save initially"
@@ -133,7 +134,7 @@ class TransactionIntegrationTest < Minitest::Test
         puts "\n=== Testing Transaction Rollback on Failure ==="
 
         # Create a valid product
-        product = Product.new(name: "Rollback Test Product", price: 30.00, sku: "RBT-001")
+        product = TransactionProduct.new(name: "Rollback Test Product", price: 30.00, sku: "RBT-001")
         assert product.save, "Product should save initially"
 
         original_price = product.price
@@ -149,7 +150,7 @@ class TransactionIntegrationTest < Minitest::Test
             product.price = 35.00
 
             # Create an object that will cause a failure by trying to save with invalid objectId
-            invalid_product = Product.new(name: "Invalid Product", price: 40.00, sku: "INVALID")
+            invalid_product = TransactionProduct.new(name: "Invalid Product", price: 40.00, sku: "INVALID")
             # Set an invalid objectId to force a server error
             invalid_product.instance_variable_set(:@id, "INVALID_ID_THAT_WILL_FAIL")
             batch.add(invalid_product)
@@ -179,14 +180,14 @@ class TransactionIntegrationTest < Minitest::Test
         puts "\n=== Testing Complex Business Transaction ==="
 
         # Setup: Create products and inventory
-        product1 = Product.new(name: "Complex Product 1", price: 50.00, sku: "CPX-001", stock_quantity: 20)
-        product2 = Product.new(name: "Complex Product 2", price: 75.00, sku: "CPX-002", stock_quantity: 15)
+        product1 = TransactionProduct.new(name: "Complex Product 1", price: 50.00, sku: "CPX-001", stock_quantity: 20)
+        product2 = TransactionProduct.new(name: "Complex Product 2", price: 75.00, sku: "CPX-002", stock_quantity: 15)
 
         assert product1.save, "Product 1 should save"
         assert product2.save, "Product 2 should save"
 
-        inventory1 = Inventory.new(product: product1.pointer, location: "Warehouse A", quantity: 20)
-        inventory2 = Inventory.new(product: product2.pointer, location: "Warehouse A", quantity: 15)
+        inventory1 = TransactionInventory.new(product: product1.pointer, location: "Warehouse A", quantity: 20)
+        inventory2 = TransactionInventory.new(product: product2.pointer, location: "Warehouse A", quantity: 15)
 
         assert inventory1.save, "Inventory 1 should save"
         assert inventory2.save, "Inventory 2 should save"
@@ -200,7 +201,7 @@ class TransactionIntegrationTest < Minitest::Test
 
         responses = Parse::Object.transaction do |batch|
           # Create order
-          order = Order.new(
+          order = TransactionOrder.new(
             order_number: "ORD-#{rand(10000)}",
             customer_name: "John Doe",
             total_amount: total_amount,
@@ -245,7 +246,7 @@ class TransactionIntegrationTest < Minitest::Test
         assert_equal 12, product2.stock_quantity, "Product 2 stock should be reduced"
 
         # Verify order was created
-        created_order = Order.first
+        created_order = TransactionOrder.first
         assert created_order, "Order should be created"
         assert_equal "confirmed", created_order.status, "Order should be confirmed"
         assert_equal total_amount, created_order.total_amount, "Order total should match"
@@ -264,7 +265,7 @@ class TransactionIntegrationTest < Minitest::Test
         puts "\n=== Testing Transaction Retry on Conflict ==="
 
         # Create a product that will be updated concurrently
-        product = Product.new(name: "Retry Test Product", price: 100.00, sku: "RTY-001", stock_quantity: 100)
+        product = TransactionProduct.new(name: "Retry Test Product", price: 100.00, sku: "RTY-001", stock_quantity: 100)
         assert product.save, "Product should save initially"
 
         # Test transaction with custom retry count
@@ -300,7 +301,11 @@ class TransactionIntegrationTest < Minitest::Test
         puts "\n=== Testing Transaction with Mixed Operations ==="
 
         # Create existing product for update
-        existing_product = Product.new(name: "Existing Product", price: 60.00, sku: "EXT-001")
+        existing_product = TransactionProduct.new(name: "Existing Product", price: 60.00, sku: "EXT-001")
+        unless existing_product.save
+          puts "Product save failed! Errors: #{existing_product.errors.full_messages.inspect}"
+          puts "Product valid?: #{existing_product.valid?}"
+        end
         assert existing_product.save, "Existing product should save"
 
         responses = Parse::Object.transaction do |batch|
@@ -310,7 +315,7 @@ class TransactionIntegrationTest < Minitest::Test
           batch.add(existing_product)
 
           # Create new product
-          new_product = Product.new(
+          new_product = TransactionProduct.new(
             name: "New Product in Transaction",
             price: 45.00,
             sku: "NEW-001",
@@ -319,7 +324,7 @@ class TransactionIntegrationTest < Minitest::Test
           batch.add(new_product)
 
           # Create inventory for new product
-          new_inventory = Inventory.new(
+          new_inventory = TransactionInventory.new(
             product: new_product.pointer,
             location: "Warehouse B",
             quantity: 30,
@@ -327,7 +332,7 @@ class TransactionIntegrationTest < Minitest::Test
           batch.add(new_inventory)
 
           # Create order referencing both products
-          order = Order.new(
+          order = TransactionOrder.new(
             order_number: "MXD-#{rand(10000)}",
             customer_name: "Jane Smith",
             total_amount: 110.00,  # 65 + 45
@@ -346,11 +351,11 @@ class TransactionIntegrationTest < Minitest::Test
         assert_equal false, existing_product.is_active, "Existing product should be inactive"
 
         # Verify new objects were created
-        new_product = Product.first(sku: "NEW-001")
+        new_product = TransactionProduct.first(sku: "NEW-001")
         assert new_product, "New product should be created"
         assert_equal "New Product in Transaction", new_product.name
 
-        new_inventory = Inventory.first(location: "Warehouse B")
+        new_inventory = TransactionInventory.first(location: "Warehouse B")
         assert new_inventory, "New inventory should be created"
 
         puts "✅ Mixed operations transaction completed successfully"
@@ -407,7 +412,7 @@ class TransactionIntegrationTest < Minitest::Test
         # Create products in a transaction (test batch size handling)
         responses = Parse::Object.transaction do |batch|
           10.times do |i|
-            product = Product.new(
+            product = TransactionProduct.new(
               name: "Batch Product #{i + 1}",
               price: (i + 1) * 10.0,
               sku: "BCH-#{sprintf("%03d", i + 1)}",
@@ -423,7 +428,7 @@ class TransactionIntegrationTest < Minitest::Test
         assert_equal 10, responses.size, "Should have 10 responses"
 
         # Verify all products were created
-        created_products = Product.all(:sku.starts_with => "BCH-")
+        created_products = TransactionProduct.all(:sku.starts_with => "BCH-")
         assert_equal 10, created_products.count, "All 10 products should be created"
 
         # Test updating all in another transaction
@@ -451,12 +456,12 @@ class TransactionIntegrationTest < Minitest::Test
         puts "\n=== Testing Transaction with Pointers and Relations ==="
 
         # Create main product
-        main_product = Product.new(name: "Main Product", price: 200.00, sku: "MAIN-001")
+        main_product = TransactionProduct.new(name: "Main Product", price: 200.00, sku: "MAIN-001")
         assert main_product.save, "Main product should save"
 
         responses = Parse::Object.transaction do |batch|
           # Create inventory with pointer to main product
-          inventory = Inventory.new(
+          inventory = TransactionInventory.new(
             product: main_product.pointer,  # Test pointer relationship
             location: "Main Warehouse",
             quantity: 100,
@@ -464,7 +469,7 @@ class TransactionIntegrationTest < Minitest::Test
           batch.add(inventory)
 
           # Create order with reference to product
-          order = Order.new(
+          order = TransactionOrder.new(
             order_number: "PTR-#{rand(10000)}",
             customer_name: "Pointer Test Customer",
             total_amount: 200.00,
@@ -487,14 +492,14 @@ class TransactionIntegrationTest < Minitest::Test
         assert_equal 3, responses.size, "Should have 3 operations"
 
         # Verify relationships are correct
-        created_inventory = Inventory.first(location: "Main Warehouse")
+        created_inventory = TransactionInventory.first(location: "Main Warehouse")
         assert created_inventory, "Inventory should be created"
 
         # Test pointer relationship
         assert_equal main_product.id, created_inventory.product.id, "Inventory should point to main product"
 
         # Verify order references are correct
-        created_order = Order.all(:order_number.starts_with => "PTR-").first
+        created_order = TransactionOrder.all(:order_number.starts_with => "PTR-").first
         assert created_order, "Order should be created"
         assert_equal main_product.id, created_order.items.first["product_id"], "Order should reference main product"
 
@@ -515,7 +520,7 @@ class TransactionIntegrationTest < Minitest::Test
 
         responses = Parse::Object.transaction do |batch|
           3.times do |i|
-            product = Product.new(name: "New Product #{i}", price: (i + 1) * 10.0, sku: "NEW-#{i}")
+            product = TransactionProduct.new(name: "New Product #{i}", price: (i + 1) * 10.0, sku: "NEW-#{i}")
             products << product
             batch.add(product)
           end
@@ -540,7 +545,7 @@ class TransactionIntegrationTest < Minitest::Test
 
         # Verify objects can be fetched from server using assigned IDs
         products.each_with_index do |product, i|
-          fetched = Product.find(product.id)
+          fetched = TransactionProduct.find(product.id)
           refute_nil fetched, "Should be able to fetch Product #{i} by ID"
           assert_equal "New Product #{i}", fetched.name, "Fetched product should have correct name"
         end

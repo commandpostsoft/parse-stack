@@ -30,7 +30,7 @@ class AssociationTestBook < Parse::Object
 
   # Belongs to association
   belongs_to :author, as: :association_test_author
-  belongs_to :publisher, required: true
+  belongs_to :publisher, as: :association_test_publisher, required: true
 end
 
 class AssociationTestPublisher < Parse::Object
@@ -468,6 +468,10 @@ class ModelAssociationsTest < Minitest::Test
         # Test 1: Set up data for array pointer collections
         puts "\n--- Test 1: Setting up data for array pointer collections ---"
 
+        # Create publisher for books (publisher is required)
+        publisher = AssociationTestPublisher.new(name: "Array Test Publisher", country: "USA")
+        assert publisher.save, "Publisher should save successfully"
+
         # Create authors
         author1 = AssociationTestAuthor.new(name: "Array Author 1", email: "array1@example.com")
         author2 = AssociationTestAuthor.new(name: "Array Author 2", email: "array2@example.com")
@@ -478,9 +482,9 @@ class ModelAssociationsTest < Minitest::Test
         assert author3.save, "Author 3 should save successfully"
 
         # Create books
-        book1 = AssociationTestBook.new(title: "Array Book 1", author: author1)
-        book2 = AssociationTestBook.new(title: "Array Book 2", author: author2)
-        book3 = AssociationTestBook.new(title: "Array Book 3", author: author3)
+        book1 = AssociationTestBook.new(title: "Array Book 1", author: author1, publisher: publisher)
+        book2 = AssociationTestBook.new(title: "Array Book 2", author: author2, publisher: publisher)
+        book3 = AssociationTestBook.new(title: "Array Book 3", author: author3, publisher: publisher)
 
         assert book1.save, "Book 1 should save successfully"
         assert book2.save, "Book 2 should save successfully"
@@ -862,6 +866,10 @@ class ModelAssociationsTest < Minitest::Test
         # Test 5: Test association queries with edge case data
         puts "\n--- Test 5: Testing association queries with edge case data ---"
 
+        # Create publisher for edge case tests
+        edge_publisher = AssociationTestPublisher.new(name: "Edge Publisher", country: "USA")
+        assert edge_publisher.save, "Edge publisher should save"
+
         # Create author with special characters
         special_author = AssociationTestAuthor.new(
           name: "Special Author àáâãäå",
@@ -873,6 +881,7 @@ class ModelAssociationsTest < Minitest::Test
         special_book = AssociationTestBook.new(
           title: "Special Title: Ñoël & Company",
           author: special_author,
+          publisher: edge_publisher,
           price: 99.99,
         )
         assert special_book.save, "Special character book should save"
@@ -899,11 +908,12 @@ class ModelAssociationsTest < Minitest::Test
         perf_author = AssociationTestAuthor.new(name: "Performance Author")
         assert perf_author.save, "Performance author should save"
 
-        # Create multiple books quickly
+        # Create multiple books quickly (reusing edge_publisher from above)
         (1..10).each do |i|
           book = AssociationTestBook.new(
             title: "Performance Book #{i}",
             author: perf_author,
+            publisher: edge_publisher,
             price: i * 10.0,
           )
           assert book.save, "Performance book #{i} should save"

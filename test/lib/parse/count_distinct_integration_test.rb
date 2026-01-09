@@ -1,8 +1,9 @@
 require_relative "../../test_helper_integration"
 
 # Test classes for count_distinct integration tests
-class Product < Parse::Object
-  parse_class "Product"
+# Use unique class names to avoid conflicts with Parse::Product and other test classes
+class CountDistinctProduct < Parse::Object
+  parse_class "CountDistinctProduct"
   property :name, :string
   property :category, :string
   property :price, :float
@@ -13,8 +14,8 @@ class Product < Parse::Object
   # Note: created_at and updated_at are already defined as BASE_KEYS in Parse::Object
 end
 
-class Order < Parse::Object
-  parse_class "Order"
+class CountDistinctOrder < Parse::Object
+  parse_class "CountDistinctOrder"
   property :order_number, :string
   property :customer_name, :string
   property :total_amount, :float
@@ -24,8 +25,8 @@ class Order < Parse::Object
   property :shipped_date, :date
 end
 
-class Review < Parse::Object
-  parse_class "Review"
+class CountDistinctReview < Parse::Object
+  parse_class "CountDistinctReview"
   property :product_name, :string
   property :reviewer_name, :string
   property :rating, :integer
@@ -47,20 +48,20 @@ class CountDistinctIntegrationTest < Minitest::Test
 
       # Create products with different categories
       products = []
-      products << Product.new(name: "Laptop", category: "Electronics", price: 999.99, manufacturer: "TechCo").tap { |p| p.save }
-      products << Product.new(name: "Mouse", category: "Electronics", price: 29.99, manufacturer: "TechCo").tap { |p| p.save }
-      products << Product.new(name: "Desk", category: "Furniture", price: 299.99, manufacturer: "WoodWorks").tap { |p| p.save }
-      products << Product.new(name: "Chair", category: "Furniture", price: 199.99, manufacturer: "WoodWorks").tap { |p| p.save }
-      products << Product.new(name: "Notebook", category: "Stationery", price: 4.99, manufacturer: "PaperCo").tap { |p| p.save }
-      products << Product.new(name: "Pen", category: "Stationery", price: 1.99, manufacturer: "PaperCo").tap { |p| p.save }
-      products << Product.new(name: "Monitor", category: "Electronics", price: 399.99, manufacturer: "DisplayTech").tap { |p| p.save }
+      products << CountDistinctProduct.new(name: "Laptop", category: "Electronics", price: 999.99, manufacturer: "TechCo").tap { |p| p.save }
+      products << CountDistinctProduct.new(name: "Mouse", category: "Electronics", price: 29.99, manufacturer: "TechCo").tap { |p| p.save }
+      products << CountDistinctProduct.new(name: "Desk", category: "Furniture", price: 299.99, manufacturer: "WoodWorks").tap { |p| p.save }
+      products << CountDistinctProduct.new(name: "Chair", category: "Furniture", price: 199.99, manufacturer: "WoodWorks").tap { |p| p.save }
+      products << CountDistinctProduct.new(name: "Notebook", category: "Stationery", price: 4.99, manufacturer: "PaperCo").tap { |p| p.save }
+      products << CountDistinctProduct.new(name: "Pen", category: "Stationery", price: 1.99, manufacturer: "PaperCo").tap { |p| p.save }
+      products << CountDistinctProduct.new(name: "Monitor", category: "Electronics", price: 399.99, manufacturer: "DisplayTech").tap { |p| p.save }
 
       # Count distinct categories
-      distinct_categories = Product.query.count_distinct(:category)
+      distinct_categories = CountDistinctProduct.query.count_distinct(:category)
       assert_equal 3, distinct_categories, "Should have 3 distinct categories"
 
       # Count distinct manufacturers
-      distinct_manufacturers = Product.query.count_distinct(:manufacturer)
+      distinct_manufacturers = CountDistinctProduct.query.count_distinct(:manufacturer)
       assert_equal 4, distinct_manufacturers, "Should have 4 distinct manufacturers"
     end
   end
@@ -74,15 +75,15 @@ class CountDistinctIntegrationTest < Minitest::Test
 
       # Create orders with different statuses and payment methods
       orders = []
-      orders << Order.new(order_number: "ORD001", customer_name: "John", total_amount: 100.00, status: "completed", payment_method: "credit_card").tap { |o| o.save }
-      orders << Order.new(order_number: "ORD002", customer_name: "Jane", total_amount: 200.00, status: "completed", payment_method: "paypal").tap { |o| o.save }
-      orders << Order.new(order_number: "ORD003", customer_name: "Bob", total_amount: 150.00, status: "pending", payment_method: "credit_card").tap { |o| o.save }
-      orders << Order.new(order_number: "ORD004", customer_name: "Alice", total_amount: 300.00, status: "completed", payment_method: "credit_card").tap { |o| o.save }
-      orders << Order.new(order_number: "ORD005", customer_name: "Charlie", total_amount: 250.00, status: "shipped", payment_method: "paypal").tap { |o| o.save }
-      orders << Order.new(order_number: "ORD006", customer_name: "Diana", total_amount: 180.00, status: "completed", payment_method: "debit_card").tap { |o| o.save }
+      orders << CountDistinctOrder.new(order_number: "ORD001", customer_name: "John", total_amount: 100.00, status: "completed", payment_method: "credit_card").tap { |o| o.save }
+      orders << CountDistinctOrder.new(order_number: "ORD002", customer_name: "Jane", total_amount: 200.00, status: "completed", payment_method: "paypal").tap { |o| o.save }
+      orders << CountDistinctOrder.new(order_number: "ORD003", customer_name: "Bob", total_amount: 150.00, status: "pending", payment_method: "credit_card").tap { |o| o.save }
+      orders << CountDistinctOrder.new(order_number: "ORD004", customer_name: "Alice", total_amount: 300.00, status: "completed", payment_method: "credit_card").tap { |o| o.save }
+      orders << CountDistinctOrder.new(order_number: "ORD005", customer_name: "Charlie", total_amount: 250.00, status: "shipped", payment_method: "paypal").tap { |o| o.save }
+      orders << CountDistinctOrder.new(order_number: "ORD006", customer_name: "Diana", total_amount: 180.00, status: "completed", payment_method: "debit_card").tap { |o| o.save }
 
       # Count distinct payment methods for completed orders
-      distinct_payment_methods = Order.query
+      distinct_payment_methods = CountDistinctOrder.query
         .where(status: "completed")
         .count_distinct(:payment_method)
 
@@ -92,7 +93,7 @@ class CountDistinctIntegrationTest < Minitest::Test
       # Orders matching: ORD002 (200, completed), ORD004 (300, completed),
       #                  ORD005 (250, shipped), ORD006 (180, completed)
       # Distinct statuses: "completed", "shipped" = 2
-      distinct_statuses = Order.query
+      distinct_statuses = CountDistinctOrder.query
         .where(:total_amount.gt => 150)
         .count_distinct(:status)
 
@@ -114,7 +115,7 @@ class CountDistinctIntegrationTest < Minitest::Test
 
       # Create reviews with different dates and ratings
       reviews = []
-      reviews << Review.new(
+      reviews << CountDistinctReview.new(
         product_name: "Laptop",
         reviewer_name: "John",
         rating: 5,
@@ -123,7 +124,7 @@ class CountDistinctIntegrationTest < Minitest::Test
         review_date: base_time,
       ).tap { |r| r.save }
 
-      reviews << Review.new(
+      reviews << CountDistinctReview.new(
         product_name: "Laptop",
         reviewer_name: "Jane",
         rating: 4,
@@ -132,7 +133,7 @@ class CountDistinctIntegrationTest < Minitest::Test
         review_date: yesterday,
       ).tap { |r| r.save }
 
-      reviews << Review.new(
+      reviews << CountDistinctReview.new(
         product_name: "Mouse",
         reviewer_name: "Bob",
         rating: 4,
@@ -141,7 +142,7 @@ class CountDistinctIntegrationTest < Minitest::Test
         review_date: yesterday,
       ).tap { |r| r.save }
 
-      reviews << Review.new(
+      reviews << CountDistinctReview.new(
         product_name: "Monitor",
         reviewer_name: "Alice",
         rating: 5,
@@ -150,7 +151,7 @@ class CountDistinctIntegrationTest < Minitest::Test
         review_date: base_time,
       ).tap { |r| r.save }
 
-      reviews << Review.new(
+      reviews << CountDistinctReview.new(
         product_name: "Keyboard",
         reviewer_name: "Charlie",
         rating: 4,
@@ -159,7 +160,7 @@ class CountDistinctIntegrationTest < Minitest::Test
         review_date: yesterday,
       ).tap { |r| r.save }
 
-      reviews << Review.new(
+      reviews << CountDistinctReview.new(
         product_name: "Mouse",
         reviewer_name: "Diana",
         rating: 4,
@@ -168,7 +169,7 @@ class CountDistinctIntegrationTest < Minitest::Test
         review_date: yesterday,
       ).tap { |r| r.save }
 
-      reviews << Review.new(
+      reviews << CountDistinctReview.new(
         product_name: "Laptop",
         reviewer_name: "Eve",
         rating: 5,
@@ -183,7 +184,7 @@ class CountDistinctIntegrationTest < Minitest::Test
       # Complex query: Count distinct products reviewed recently with high ratings by verified purchasers
       recent_cutoff = (now - 172800).utc # 2 days ago
 
-      distinct_products = Review.query
+      distinct_products = CountDistinctReview.query
         .where(
           created_at: { "$gte" => recent_cutoff },
           rating: { "$gte" => 4 },
@@ -196,7 +197,7 @@ class CountDistinctIntegrationTest < Minitest::Test
       # Another complex query: Count distinct reviewers for specific products in date range
       week_cutoff = (now - 604800).utc
 
-      distinct_reviewers = Review.query
+      distinct_reviewers = CountDistinctReview.query
         .where(
           created_at: { "$gte" => week_cutoff, "$lte" => now },
           product_name: { "$in" => ["Laptop", "Mouse", "Monitor"] },
@@ -208,7 +209,7 @@ class CountDistinctIntegrationTest < Minitest::Test
 
       # Test with boolean and date conditions
       week_cutoff_for_verified = (now - 604800).utc
-      distinct_verified_products = Review.query
+      distinct_verified_products = CountDistinctReview.query
         .where(
           verified_purchase: true,
           created_at: { "$gte" => week_cutoff_for_verified },
@@ -227,11 +228,11 @@ class CountDistinctIntegrationTest < Minitest::Test
       reset_database!
 
       # Create simple test data
-      p1 = Product.new(name: "Test1", category: "A")
+      p1 = CountDistinctProduct.new(name: "Test1", category: "A")
       p1.save
-      p2 = Product.new(name: "Test2", category: "A")
+      p2 = CountDistinctProduct.new(name: "Test2", category: "A")
       p2.save
-      p3 = Product.new(name: "Test1", category: "B")
+      p3 = CountDistinctProduct.new(name: "Test1", category: "B")
       p3.save
 
       puts "Created products with createdAt times:"
@@ -240,7 +241,7 @@ class CountDistinctIntegrationTest < Minitest::Test
       puts "Product 3: #{p3.created_at}"
 
       # Test without date conditions (baseline)
-      count_no_date = Product.query.count_distinct(:name)
+      count_no_date = CountDistinctProduct.query.count_distinct(:name)
       puts "Count without date filter: #{count_no_date}"
       assert_equal 2, count_no_date, "Should have 2 distinct names without date filter"
 
@@ -251,11 +252,11 @@ class CountDistinctIntegrationTest < Minitest::Test
       puts "\n=== TESTING DATE QUERIES ==="
 
       # Test 1: Query without any date filter
-      all_products = Product.query.results
+      all_products = CountDistinctProduct.query.results
       puts "All products (no filter): #{all_products.length}"
 
       # Test 2: Query with very permissive date
-      query_with_date = Product.query.where(created_at: { "$gte" => epoch_cutoff })
+      query_with_date = CountDistinctProduct.query.where(created_at: { "$gte" => epoch_cutoff })
       puts "Products with date >= 2020: #{query_with_date.results.length}"
 
       # Test 3: Test count_distinct with same date filter
@@ -264,7 +265,7 @@ class CountDistinctIntegrationTest < Minitest::Test
       puts "Count distinct with date >= 2020: #{count_result}"
 
       # Test 4: Test aggregation that should definitely work
-      simple_agg = Product.query.aggregate([
+      simple_agg = CountDistinctProduct.query.aggregate([
         { "$group" => { "_id" => "$name" } },
         { "$count" => "distinctCount" },
       ], verbose: true)
@@ -287,16 +288,16 @@ class CountDistinctIntegrationTest < Minitest::Test
       day = 86400 # seconds in a day
 
       products = []
-      products << Product.new(name: "iPhone", category: "Electronics", price: 999.99, in_stock: true, manufacturer: "Apple", rating: 4.5, release_date: now - (30 * day)).tap { |p| p.save }
-      products << Product.new(name: "iPad", category: "Electronics", price: 599.99, in_stock: true, manufacturer: "Apple", rating: 4.3, release_date: now - (60 * day)).tap { |p| p.save }
-      products << Product.new(name: "MacBook", category: "Electronics", price: 1299.99, in_stock: false, manufacturer: "Apple", rating: 4.7, release_date: now - (90 * day)).tap { |p| p.save }
-      products << Product.new(name: "Surface", category: "Electronics", price: 899.99, in_stock: true, manufacturer: "Microsoft", rating: 4.2, release_date: now - (45 * day)).tap { |p| p.save }
-      products << Product.new(name: "Xbox", category: "Gaming", price: 499.99, in_stock: true, manufacturer: "Microsoft", rating: 4.6, release_date: now - (30 * day)).tap { |p| p.save }
-      products << Product.new(name: "PlayStation", category: "Gaming", price: 499.99, in_stock: false, manufacturer: "Sony", rating: 4.8, release_date: now - (60 * day)).tap { |p| p.save }
-      products << Product.new(name: "Switch", category: "Gaming", price: 299.99, in_stock: true, manufacturer: "Nintendo", rating: 4.5, release_date: now - (45 * day)).tap { |p| p.save }
+      products << CountDistinctProduct.new(name: "iPhone", category: "Electronics", price: 999.99, in_stock: true, manufacturer: "Apple", rating: 4.5, release_date: now - (30 * day)).tap { |p| p.save }
+      products << CountDistinctProduct.new(name: "iPad", category: "Electronics", price: 599.99, in_stock: true, manufacturer: "Apple", rating: 4.3, release_date: now - (60 * day)).tap { |p| p.save }
+      products << CountDistinctProduct.new(name: "MacBook", category: "Electronics", price: 1299.99, in_stock: false, manufacturer: "Apple", rating: 4.7, release_date: now - (90 * day)).tap { |p| p.save }
+      products << CountDistinctProduct.new(name: "Surface", category: "Electronics", price: 899.99, in_stock: true, manufacturer: "Microsoft", rating: 4.2, release_date: now - (45 * day)).tap { |p| p.save }
+      products << CountDistinctProduct.new(name: "Xbox", category: "Gaming", price: 499.99, in_stock: true, manufacturer: "Microsoft", rating: 4.6, release_date: now - (30 * day)).tap { |p| p.save }
+      products << CountDistinctProduct.new(name: "PlayStation", category: "Gaming", price: 499.99, in_stock: false, manufacturer: "Sony", rating: 4.8, release_date: now - (60 * day)).tap { |p| p.save }
+      products << CountDistinctProduct.new(name: "Switch", category: "Gaming", price: 299.99, in_stock: true, manufacturer: "Nintendo", rating: 4.5, release_date: now - (45 * day)).tap { |p| p.save }
 
       # Count distinct manufacturers for in-stock electronics with good ratings
-      distinct_manufacturers = Product.query
+      distinct_manufacturers = CountDistinctProduct.query
         .where(
           category: "Electronics",
           in_stock: true,
@@ -318,7 +319,7 @@ class CountDistinctIntegrationTest < Minitest::Test
       # Distinct categories: Electronics, Gaming = 2
       recent_release = now - (100 * day)
 
-      distinct_categories = Product.query
+      distinct_categories = CountDistinctProduct.query
         .where(
           :release_date.gte => recent_release,
           :price.lt => 1000,
@@ -329,7 +330,7 @@ class CountDistinctIntegrationTest < Minitest::Test
 
       # Count distinct manufacturers for gaming products in price range $299.99 - $499.99
       # Gaming products: Xbox (Microsoft), PlayStation (Sony), Switch (Nintendo) = 3
-      gaming_manufacturers = Product.query
+      gaming_manufacturers = CountDistinctProduct.query
         .where(
           category: "Gaming",
           :price.gte => 299.99,

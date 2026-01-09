@@ -2,6 +2,7 @@
 # frozen_string_literal: true
 
 require_relative "../../test_helper_integration"
+require_relative "../../../lib/parse/live_query"
 
 # Define a test model for LiveQuery integration tests
 class TestLiveQueryModel < Parse::Object
@@ -17,14 +18,18 @@ class LiveQueryIntegrationTest < Minitest::Test
   LIVE_QUERY_URL = "ws://localhost:2337"
 
   def setup
-    super
+    # Setup Parse client connection first (this is normally done by the module)
+    Parse::Test::ServerHelper.setup
+
+    # Enable LiveQuery feature
+    Parse.live_query_enabled = true
 
     # Configure LiveQuery
-    Parse::LiveQuery.configure(
-      url: LIVE_QUERY_URL,
-      application_id: "myAppId",
-      client_key: "test-rest-key",
-    )
+    Parse::LiveQuery.configure do |config|
+      config.url = LIVE_QUERY_URL
+      config.application_id = "myAppId"
+      config.client_key = "test-rest-key"
+    end
 
     # Clean up any existing test data
     cleanup_test_objects
@@ -33,7 +38,6 @@ class LiveQueryIntegrationTest < Minitest::Test
   def teardown
     Parse::LiveQuery.reset!
     cleanup_test_objects
-    super
   end
 
   def cleanup_test_objects
