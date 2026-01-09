@@ -1,5 +1,15 @@
 ## Parse-Stack Changelog
 
+### 3.3.0
+
+#### Breaking Changes
+
+- **BREAKING**: Minimum Ruby version is now 3.1 (previously 3.0). Ruby 3.0 reached end-of-life in March 2024.
+
+#### Improvements
+
+- **IMPROVED**: CI now tests against Ruby 3.1, 3.2, 3.3, and 3.4.
+
 ### 3.2.3
 
 #### Improvements
