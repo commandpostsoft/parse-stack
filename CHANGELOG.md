@@ -1,5 +1,8 @@
 ## Parse-Stack Changelog
 
+### 3.3.1
+- Bundle update
+
 ### 3.3.0
 
 #### Breaking Changes
