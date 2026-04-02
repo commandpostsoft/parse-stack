@@ -3,6 +3,8 @@
 
 require "webrick"
 require "json"
+require "active_support/core_ext/object/blank"
+require "active_support/security_utils"
 
 module Parse
   class Agent
@@ -38,6 +40,15 @@ module Parse
       # Default port for the MCP server
       @default_port = 3001
 
+      # Maximum allowed request body size (1 MB)
+      MAX_BODY_SIZE = 1_048_576
+
+      # Maximum JSON nesting depth
+      MAX_JSON_NESTING = 20
+
+      # HTTP header for MCP API key authentication
+      MCP_API_KEY_HEADER = "X-MCP-API-Key"
+
       class << self
         attr_accessor :default_port
 
@@ -47,7 +58,7 @@ module Parse
         # @param permissions [Symbol] agent permission level
         # @param session_token [String, nil] optional session token
         # @param host [String] host to bind to
-        def run(port: nil, permissions: :readonly, session_token: nil, host: "0.0.0.0")
+        def run(port: nil, permissions: :readonly, session_token: nil, host: "127.0.0.1", api_key: nil)
           unless Parse::Agent.mcp_enabled?
             raise "MCP server not enabled. Call Parse::Agent.enable_mcp! first"
           end
@@ -57,6 +68,7 @@ module Parse
             permissions: permissions,
             session_token: session_token,
             host: host,
+            api_key: api_key,
           )
           server.start
         end
@@ -77,9 +89,10 @@ module Parse
       # @param host [String] host to bind to
       # @param permissions [Symbol] agent permission level
       # @param session_token [String, nil] optional session token
-      def initialize(port: 3001, host: "0.0.0.0", permissions: :readonly, session_token: nil)
+      def initialize(port: 3001, host: "127.0.0.1", permissions: :readonly, session_token: nil, api_key: nil)
         @port = port
         @host = host
+        @api_key = api_key || ENV["MCP_API_KEY"]
         @agent = Parse::Agent.new(permissions: permissions, session_token: session_token)
         @server = nil
       end
@@ -116,13 +129,20 @@ module Parse
         # MCP endpoint for all protocol messages
         @server.mount_proc("/mcp") { |req, res| handle_mcp_request(req, res) }
 
-        # Health check endpoint
+        # Health check endpoint (unauthenticated - standard for monitoring)
         @server.mount_proc("/health") do |_req, res|
           json_response(res, { status: "ok", mcp_enabled: true })
         end
 
-        # Tool list endpoint (convenience)
-        @server.mount_proc("/tools") do |_req, res|
+        # Tool list endpoint (requires auth if API key is configured)
+        @server.mount_proc("/tools") do |req, res|
+          if @api_key.present?
+            provided_key = req[MCP_API_KEY_HEADER].to_s
+            unless ActiveSupport::SecurityUtils.secure_compare(@api_key, provided_key)
+              error_response(res, 401, "Unauthorized: invalid or missing API key")
+              next
+            end
+          end
           json_response(res, @agent.tool_definitions(format: :mcp))
         end
       end
@@ -133,9 +153,23 @@ module Parse
           return error_response(res, 405, "Method not allowed")
         end
 
+        # C4: API key authentication
+        if @api_key.present?
+          provided_key = req[MCP_API_KEY_HEADER].to_s
+          unless ActiveSupport::SecurityUtils.secure_compare(@api_key, provided_key)
+            return error_response(res, 401, "Unauthorized: invalid or missing API key")
+          end
+        end
+
+        # C5: Payload size limit
+        raw_body = req.body || "{}"
+        if raw_body.bytesize > MAX_BODY_SIZE
+          return error_response(res, 413, "Payload too large (max #{MAX_BODY_SIZE} bytes)")
+        end
+
         begin
-          body = JSON.parse(req.body || "{}")
-        rescue JSON::ParserError => e
+          body = JSON.parse(raw_body, max_nesting: MAX_JSON_NESTING)
+        rescue JSON::ParserError, JSON::NestingError => e
           return error_response(res, 400, "Invalid JSON: #{e.message}")
         end
 

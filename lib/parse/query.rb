@@ -2265,7 +2265,12 @@ module Parse
     #   aggregation = Asset.query.aggregate(pipeline, verbose: true)
     #   # With MongoDB direct (required for $inQuery constraints in aggregation)
     #   aggregation = Asset.query.aggregate(pipeline, mongo_direct: true)
+    # Pipeline stages that are blocked to prevent data exfiltration or destructive operations.
+    BLOCKED_PIPELINE_STAGES = %w[$out $merge $planCacheSetFilter $planCacheClear $function $accumulator $collMod $createIndex $dropIndex].freeze
+
     def aggregate(pipeline, verbose: nil, mongo_direct: nil)
+      validate_pipeline!(pipeline)
+
       # Automatically prepend query constraints as pipeline stages
       complete_pipeline = []
       lookup_stages = []  # Track if we have $inQuery constraints
@@ -2386,6 +2391,39 @@ module Parse
       complete_pipeline = deduplicate_consecutive_match_stages(complete_pipeline)
 
       Aggregation.new(self, complete_pipeline, verbose: verbose, mongo_direct: use_mongo_direct || false)
+    end
+
+    # Validates that a pipeline does not contain blocked stages or dangerous operators.
+    # @param pipeline [Array<Hash>] the aggregation pipeline stages.
+    # @raise [ArgumentError] if a blocked stage or dangerous operator is found.
+    def validate_pipeline!(pipeline)
+      pipeline.each do |stage|
+        next unless stage.is_a?(Hash)
+        stage.each_key do |key|
+          if BLOCKED_PIPELINE_STAGES.include?(key.to_s)
+            raise ArgumentError, "Aggregation pipeline stage '#{key}' is blocked for security reasons"
+          end
+        end
+        # Block $where inside $match stages
+        if stage.key?("$match") && stage["$match"].is_a?(Hash)
+          validate_no_where_operator!(stage["$match"])
+        end
+      end
+    end
+
+    # Recursively checks a hash for $where operators.
+    # @param hash [Hash] the hash to check.
+    # @raise [ArgumentError] if $where is found.
+    def validate_no_where_operator!(hash)
+      hash.each do |key, value|
+        if key.to_s == "$where"
+          raise ArgumentError, "The $where operator is blocked for security reasons"
+        end
+        validate_no_where_operator!(value) if value.is_a?(Hash)
+        if value.is_a?(Array)
+          value.each { |v| validate_no_where_operator!(v) if v.is_a?(Hash) }
+        end
+      end
     end
 
     # Converts the current query into an aggregate pipeline and executes it.

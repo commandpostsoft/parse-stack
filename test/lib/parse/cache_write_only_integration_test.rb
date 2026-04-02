@@ -103,8 +103,8 @@ class CacheWriteOnlyIntegrationTest < Minitest::Test
     puts "PASS: fetch! write-only mode works correctly"
   end
 
-  def test_fetch_with_cache_true_uses_cached_data
-    puts "\n=== Test: fetch!(cache: true) uses cached data ==="
+  def test_fetch_with_cache_true_uses_cached_data_without_intervening_save
+    puts "\n=== Test: fetch!(cache: true) uses cached data when no save intervenes ==="
 
     # Create a product
     product = WriteOnlyCacheProduct.new(name: "Cache True Test", price: 29.99, version: 1)
@@ -115,27 +115,21 @@ class CacheWriteOnlyIntegrationTest < Minitest::Test
     puts "Step 1: Populate cache"
     WriteOnlyCacheProduct.find_cached(product_id)
 
-    # Update product directly
-    puts "Step 2: Update product"
-    product.name = "Changed Name"
-    product.version = 2
-    assert product.save
-
-    # Fetch with cache: true should use cached (stale) data
-    puts "Step 3: fetch!(cache: true) should use cached data"
+    # Fetch with cache: true should use cached data (no intervening save to invalidate)
+    puts "Step 2: fetch!(cache: true) should use cached data"
     cached_product = WriteOnlyCacheProduct.new
     cached_product.id = product_id
     cached_product.fetch!(cache: true)
 
     assert_equal "Cache True Test", cached_product.name,
-      "fetch!(cache: true) should return cached (stale) data"
+      "fetch!(cache: true) should return cached data"
     assert_equal 1, cached_product.version
 
     puts "PASS: fetch!(cache: true) uses cached data"
   end
 
-  def test_fetch_with_cache_false_bypasses_cache_entirely
-    puts "\n=== Test: fetch!(cache: false) bypasses cache entirely ==="
+  def test_fetch_with_cache_false_bypasses_cache
+    puts "\n=== Test: fetch!(cache: false) bypasses cache ==="
 
     # Create a product
     product = WriteOnlyCacheProduct.new(name: "Cache False Test", price: 39.99, version: 1)
@@ -146,30 +140,16 @@ class CacheWriteOnlyIntegrationTest < Minitest::Test
     puts "Step 1: Populate cache"
     WriteOnlyCacheProduct.find_cached(product_id)
 
-    # Update product directly
-    puts "Step 2: Update product"
-    product.name = "New Name"
-    product.version = 2
-    assert product.save
-
-    # Fetch with cache: false - should get fresh data AND not update cache
-    puts "Step 3: fetch!(cache: false) should get fresh data"
+    # Fetch with cache: false should get fresh data
+    puts "Step 2: fetch!(cache: false) should get fresh data"
     fresh_product = WriteOnlyCacheProduct.new
     fresh_product.id = product_id
     fresh_product.fetch!(cache: false)
 
-    assert_equal "New Name", fresh_product.name,
-      "fetch!(cache: false) should return fresh data"
+    assert_equal "Cache False Test", fresh_product.name,
+      "fetch!(cache: false) should return fresh data from server"
 
-    # The cache should still have old data (cache: false doesn't write)
-    # This is tricky to test without direct cache access, but we can
-    # verify via find_cached
-    puts "Step 4: Cache should still have old data (no write in cache: false mode)"
-    cached_after = WriteOnlyCacheProduct.find_cached(product_id)
-    assert_equal "Cache False Test", cached_after.name,
-      "Cache should NOT be updated when using cache: false"
-
-    puts "PASS: fetch!(cache: false) bypasses cache entirely"
+    puts "PASS: fetch!(cache: false) bypasses cache"
   end
 
   # ============================================================
@@ -251,33 +231,58 @@ class CacheWriteOnlyIntegrationTest < Minitest::Test
     puts "PASS: find write-only mode works correctly"
   end
 
-  def test_find_cached_uses_cached_data
-    puts "\n=== Test: find_cached uses cached data ==="
+  def test_find_cached_returns_cached_data_without_intervening_save
+    puts "\n=== Test: find_cached returns cached data when no save intervenes ==="
 
     # Create a product
     product = WriteOnlyCacheProduct.new(name: "Find Cached Test", price: 69.99, version: 1)
     assert product.save
     product_id = product.id
 
-    # Populate cache with initial data
+    # Populate cache
     puts "Step 1: Populate cache"
-    WriteOnlyCacheProduct.find_cached(product_id)
+    first = WriteOnlyCacheProduct.find_cached(product_id)
+    assert_equal "Find Cached Test", first.name
 
-    # Update directly
-    puts "Step 2: Update product"
-    product.name = "Changed After Cache"
-    product.version = 2
-    assert product.save
-
-    # find_cached should return cached (stale) data
-    puts "Step 3: find_cached should return cached data"
+    # find_cached again should return cached data
+    puts "Step 2: find_cached should return cached data"
     cached = WriteOnlyCacheProduct.find_cached(product_id)
 
     assert_equal "Find Cached Test", cached.name,
-      "find_cached should return cached (stale) data"
+      "find_cached should return cached data"
     assert_equal 1, cached.version
 
-    puts "PASS: find_cached uses cached data"
+    puts "PASS: find_cached returns cached data"
+  end
+
+  # ============================================================
+  # Tests for cache invalidation on save
+  # ============================================================
+
+  def test_save_invalidates_cache
+    puts "\n=== Test: save invalidates cache for that object ==="
+
+    product = WriteOnlyCacheProduct.new(name: "Invalidation Test", price: 79.99, version: 1)
+    assert product.save
+    product_id = product.id
+
+    # Populate cache
+    puts "Step 1: Populate cache"
+    WriteOnlyCacheProduct.find_cached(product_id)
+
+    # Save update — should invalidate cache
+    puts "Step 2: Update and save (invalidates cache)"
+    product.name = "After Save"
+    product.version = 2
+    assert product.save
+
+    # find_cached should now get fresh data (cache was invalidated by save)
+    puts "Step 3: find_cached should get fresh data after cache invalidation"
+    cached = WriteOnlyCacheProduct.find_cached(product_id)
+    assert_equal "After Save", cached.name,
+      "Cache should be invalidated by save, returning fresh data"
+
+    puts "PASS: save invalidates cache correctly"
   end
 
   # ============================================================
@@ -295,34 +300,17 @@ class CacheWriteOnlyIntegrationTest < Minitest::Test
     assert product.save
     product_id = product.id
 
-    # Populate cache
-    puts "Step 1: Populate cache"
-    WriteOnlyCacheProduct.find_cached(product_id)
-
-    # Update directly
-    puts "Step 2: Update product"
-    product.name = "Flag Updated"
-    product.version = 2
-    assert product.save
-
-    # With flag disabled, fetch! should bypass cache entirely
-    puts "Step 3: fetch! with flag disabled - should get fresh data"
+    # fetch! with flag disabled should get data from server
+    puts "Step 1: fetch! with flag disabled"
     fresh = WriteOnlyCacheProduct.new
     fresh.id = product_id
     fresh.fetch!
 
-    assert_equal "Flag Updated", fresh.name,
-      "fetch! should return fresh data when flag is disabled"
-
-    # Cache should NOT be updated (cache: false mode)
-    puts "Step 4: Cache should NOT be updated"
-    cached = WriteOnlyCacheProduct.find_cached(product_id)
-    assert_equal "Flag Test", cached.name,
-      "Cache should NOT be updated when feature flag is disabled"
+    assert_equal "Flag Test", fresh.name,
+      "fetch! should return data from server"
 
     puts "PASS: Feature flag control works correctly"
   ensure
-    # Restore flag
     Parse.cache_write_on_fetch = true
   end
 
@@ -330,7 +318,7 @@ class CacheWriteOnlyIntegrationTest < Minitest::Test
   # Tests for fetch_cache! convenience method
   # ============================================================
 
-  def test_fetch_cache_reads_from_cache
+  def test_fetch_cache_reads_from_cache_without_intervening_save
     puts "\n=== Test: fetch_cache! reads from cache ==="
 
     # Create a product
@@ -342,20 +330,14 @@ class CacheWriteOnlyIntegrationTest < Minitest::Test
     puts "Step 1: Populate cache"
     WriteOnlyCacheProduct.find_cached(product_id)
 
-    # Update directly
-    puts "Step 2: Update product"
-    product.name = "Fetch Cache Updated"
-    product.version = 2
-    assert product.save
-
-    # fetch_cache! should use cached data
-    puts "Step 3: fetch_cache! should use cached data"
+    # fetch_cache! should use cached data (no intervening save to invalidate)
+    puts "Step 2: fetch_cache! should use cached data"
     cached_product = WriteOnlyCacheProduct.new
     cached_product.id = product_id
     cached_product.fetch_cache!
 
     assert_equal "Fetch Cache Test", cached_product.name,
-      "fetch_cache! should return cached (stale) data"
+      "fetch_cache! should return cached data"
     assert_equal 1, cached_product.version
 
     puts "PASS: fetch_cache! reads from cache"

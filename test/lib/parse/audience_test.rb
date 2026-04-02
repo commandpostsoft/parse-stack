@@ -8,10 +8,23 @@ class AudienceTest < Minitest::Test
   def setup
     # Clear cache before each test
     Parse::Audience.clear_cache!
+    # Override find_by_name_uncached to avoid network calls
+    @original_method = Parse::Audience.method(:find_by_name_uncached)
+    @fetch_return = nil
+    @fetch_count = 0
+    test_instance = self
+    Parse::Audience.define_singleton_method(:find_by_name_uncached) do |name|
+      test_instance.instance_variable_set(:@fetch_count, test_instance.instance_variable_get(:@fetch_count) + 1)
+      test_instance.instance_variable_get(:@fetch_return)
+    end
   end
 
   def teardown
-    # Clean up after tests
+    # Restore original method and clean up
+    original = @original_method
+    Parse::Audience.define_singleton_method(:find_by_name_uncached) do |name|
+      original.call(name)
+    end
     Parse::Audience.clear_cache!
   end
 
@@ -62,46 +75,34 @@ class AudienceTest < Minitest::Test
   end
 
   def test_concurrent_cache_access_does_not_raise
-    # Mock the find_by_name_uncached to avoid actual network calls
-    Parse::Audience.stub(:find_by_name_uncached, nil) do
-      threads = 10.times.map do |i|
-        Thread.new do
-          10.times do |j|
-            Parse::Audience.cache_fetch("test_audience_#{i}_#{j}", cache: true)
-          end
+    threads = 10.times.map do |i|
+      Thread.new do
+        10.times do |j|
+          Parse::Audience.cache_fetch("test_audience_#{i}_#{j}", cache: true)
         end
       end
-
-      # Should complete without race conditions
-      threads.each(&:join)
-      assert true, "concurrent cache access should be thread-safe"
     end
+
+    # Should complete without race conditions
+    threads.each(&:join)
+    assert true, "concurrent cache access should be thread-safe"
   end
 
   def test_cache_fetch_with_concurrent_writes
-    call_count = 0
+    @fetch_return = nil
     mutex = Mutex.new
 
-    # Mock that tracks how many times the uncached fetch is called
-    mock_fetch = lambda do |name|
-      mutex.synchronize { call_count += 1 }
-      sleep(0.01) # Simulate network delay
-      nil
-    end
-
-    Parse::Audience.stub(:find_by_name_uncached, mock_fetch) do
-      threads = 5.times.map do
-        Thread.new do
-          Parse::Audience.cache_fetch("same_audience", cache: true)
-        end
+    threads = 5.times.map do
+      Thread.new do
+        Parse::Audience.cache_fetch("same_audience", cache: true)
       end
-
-      threads.each(&:join)
-
-      # Due to mutex synchronization, concurrent requests for the same key
-      # may result in multiple fetches (acceptable) but should not corrupt cache
-      assert call_count >= 1, "should have made at least one fetch call"
     end
+
+    threads.each(&:join)
+
+    # Due to mutex synchronization, concurrent requests for the same key
+    # may result in multiple fetches (acceptable) but should not corrupt cache
+    assert @fetch_count >= 1, "should have made at least one fetch call"
   end
 
   # ==========================================================================
@@ -109,56 +110,38 @@ class AudienceTest < Minitest::Test
   # ==========================================================================
 
   def test_cache_fetch_returns_nil_for_missing_audience
-    Parse::Audience.stub(:find_by_name_uncached, nil) do
-      result = Parse::Audience.cache_fetch("nonexistent", cache: true)
-      assert_nil result
-    end
+    @fetch_return = nil
+    result = Parse::Audience.cache_fetch("nonexistent", cache: true)
+    assert_nil result
   end
 
   def test_cache_fetch_bypasses_cache_when_disabled
-    call_count = 0
-    mock_fetch = lambda do |name|
-      call_count += 1
-      nil
-    end
-
-    Parse::Audience.stub(:find_by_name_uncached, mock_fetch) do
-      3.times { Parse::Audience.cache_fetch("test", cache: false) }
-      assert_equal 3, call_count, "should bypass cache and fetch each time"
-    end
+    @fetch_return = nil
+    @fetch_count = 0
+    3.times { Parse::Audience.cache_fetch("test", cache: false) }
+    assert_equal 3, @fetch_count, "should bypass cache and fetch each time"
   end
 
   def test_cache_fetch_uses_cache_when_enabled
-    call_count = 0
-    mock_fetch = lambda do |name|
-      call_count += 1
-      nil
-    end
-
-    Parse::Audience.stub(:find_by_name_uncached, mock_fetch) do
-      3.times { Parse::Audience.cache_fetch("test", cache: true) }
-      assert_equal 1, call_count, "should use cache after first fetch"
-    end
+    @fetch_return = nil
+    @fetch_count = 0
+    3.times { Parse::Audience.cache_fetch("test", cache: true) }
+    assert_equal 1, @fetch_count, "should use cache after first fetch"
   end
 
   def test_cache_respects_ttl
-    call_count = 0
-    mock_fetch = lambda do |name|
-      call_count += 1
-      nil
-    end
+    @fetch_return = nil
+    @fetch_count = 0
 
     # Set very short TTL for testing
     original_ttl = Parse::Audience.cache_ttl
     Parse::Audience.cache_ttl = 0  # Immediate expiry
 
-    Parse::Audience.stub(:find_by_name_uncached, mock_fetch) do
-      Parse::Audience.cache_fetch("test", cache: true)
-      sleep(0.01)  # Wait for cache to expire
-      Parse::Audience.cache_fetch("test", cache: true)
+    Parse::Audience.cache_fetch("test", cache: true)
+    sleep(0.01)  # Wait for cache to expire
+    Parse::Audience.cache_fetch("test", cache: true)
 
-      assert_equal 2, call_count, "should refetch after TTL expires"
-    end
+    assert_equal 2, @fetch_count, "should refetch after TTL expires"
   ensure
     Parse::Audience.cache_ttl = original_ttl
   end

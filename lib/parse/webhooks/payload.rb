@@ -74,7 +74,7 @@ module Parse
       # provided to you when using Parse::Webhooks.
       # @see Parse::Webhooks
       def initialize(hash = {})
-        hash = JSON.parse(hash) if hash.is_a?(String)
+        hash = JSON.parse(hash, max_nesting: 20) if hash.is_a?(String)
         hash = Hash[hash.map { |k, v| [k.to_s.underscore.to_sym, v] }]
         @raw = hash
         @master = hash[:master]

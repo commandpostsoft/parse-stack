@@ -3,6 +3,7 @@
 
 require "faraday"
 require "moneta"
+require "digest"
 require_relative "protocol"
 
 module Parse
@@ -127,7 +128,8 @@ module Parse
 
         if @request_headers.key?(SESSION_TOKEN)
           @session_token = @request_headers[SESSION_TOKEN]
-          @cache_key = "#{@session_token}:#{@cache_key}" # prefix tokens
+          hashed_token = Digest::SHA256.hexdigest(@session_token.to_s)[0, 32]
+          @cache_key = "#{hashed_token}:#{@cache_key}" # prefix with hashed token
         elsif @request_headers.key?(MASTER_KEY)
           @cache_key = "mk:#{@cache_key}" # prefix for master key requests
         end

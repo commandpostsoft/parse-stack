@@ -303,11 +303,18 @@ module Parse
       @api_key = opts[:api_key] || opts[:rest_api_key] || ENV["PARSE_SERVER_REST_API_KEY"] || ENV["PARSE_API_KEY"]
       @master_key = opts[:master_key] || ENV["PARSE_SERVER_MASTER_KEY"] || ENV["PARSE_MASTER_KEY"]
 
-      # Security warning for HTTP usage (except localhost/127.0.0.1 for development)
+      @require_https = opts.fetch(:require_https, ENV["PARSE_REQUIRE_HTTPS"] == "true")
+
+      # Security check for HTTP usage (except localhost/127.0.0.1 for development)
       if @server_url&.start_with?("http://") && !@server_url.match?(%r{^http://(localhost|127\.0\.0\.1)(:|/)})
-        warn "[Parse::Client] SECURITY WARNING: Using HTTP instead of HTTPS for Parse server. " \
-             "This exposes credentials and data to network interception. " \
-             "Use HTTPS in production: #{@server_url}"
+        if @require_https
+          raise ArgumentError, "[Parse::Client] HTTPS required but server URL uses HTTP: #{@server_url}. " \
+                               "Set require_https: false or use an HTTPS URL."
+        else
+          warn "[Parse::Client] SECURITY WARNING: Using HTTP instead of HTTPS for Parse server. " \
+               "This exposes credentials and data to network interception. " \
+               "Use HTTPS in production: #{@server_url}"
+        end
       end
 
       # Determine the HTTP adapter to use

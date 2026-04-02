@@ -1,5 +1,35 @@
 ## Parse-Stack Changelog
 
+### 3.3.2
+
+#### Security Fixes
+
+- **FIXED**: Login now uses POST instead of GET, preventing passwords from appearing in server logs, browser history, and URL query parameters.
+- **FIXED**: Webhook key comparison now uses constant-time `ActiveSupport::SecurityUtils.secure_compare` to prevent timing attacks. Invalid webhook keys are no longer logged.
+- **FIXED**: MCP server default binding changed from `0.0.0.0` to `127.0.0.1`, preventing unintended network exposure.
+- **FIXED**: Field names in queries are now validated to block MongoDB operator injection (`$where`, `$function`, etc.).
+- **FIXED**: Aggregation pipelines now block dangerous stages (`$out`, `$merge`) and `$where` operators inside `$match` stages.
+- **FIXED**: Sensitive fields (passwords, tokens, auth data) are now redacted from debug log output.
+- **NEW**: Client-side login rate limiting with exponential backoff after repeated failures to mitigate brute force attacks.
+- **FIXED**: Session tokens in cache keys are now hashed with SHA-256 instead of stored as plaintext.
+- **NEW**: MCP server now supports API key authentication via `MCP_API_KEY` env var or `api_key:` parameter. Requests must include `X-MCP-API-Key` header when configured.
+- **FIXED**: JSON payloads in webhooks and MCP server are now limited to 1 MB size and 20 levels of nesting depth to prevent denial-of-service attacks.
+- **FIXED**: Tool method invocation in MCP server now blocks dangerous methods (`eval`, `exec`, `system`, `send`, `method`, `binding`, etc.) to prevent code execution via user-controlled method names.
+- **FIXED**: Blocked methods list moved to always-loaded `Parse::Agent::Tools` module, fixing load-order crash when MCP server is not enabled.
+- **FIXED**: Login rate limiter is now thread-safe (Mutex-protected) with periodic cleanup of expired entries to prevent memory leaks.
+- **FIXED**: MCP server now explicitly requires ActiveSupport modules, preventing load-order failures.
+- **FIXED**: Session token cache key hash increased from 16 to 32 hex characters (128 bits) to reduce collision risk.
+- **FIXED**: MCP `/tools` endpoint now requires API key authentication when configured, preventing unauthenticated schema enumeration.
+- **FIXED**: Response body logging is now redacted alongside request logging, preventing session tokens from appearing in debug output.
+- **NEW**: `require_https` option for `Parse::Client` raises an error when HTTP is used with a non-localhost server URL. Enable via `require_https: true` or `PARSE_REQUIRE_HTTPS=true`.
+- **FIXED**: `login_with_mfa` now applies the same rate limiting and exponential backoff as the standard `login` method.
+- **FIXED**: Aggregation pipeline blocklist expanded to also block `$function`, `$accumulator`, `$collMod`, `$createIndex`, and `$dropIndex` stages.
+
+#### Bug Fixes
+
+- **FIXED**: `Parse::Object.transaction` now correctly assigns `objectId`, `createdAt`, and `updatedAt` to all objects in the batch. Previously, only the first unsaved object received its server-assigned ID because `Parse::Object#hash` treats all unsaved objects as equal, causing Hash key collisions in the internal tracking map.
+- **FIXED**: `AggregateTestComment` and `AggregateTestPost` test models now use `belongs_to` for pointer fields instead of `property :object`, which caused Parse Server schema mismatch errors when saving pointer values.
+
 ### 3.3.1
 - Bundle update
 

@@ -1,21 +1,20 @@
 require_relative "../../../test_helper"
 
 class TestCloudFunctions < Minitest::Test
-  extend Minitest::Spec::DSL
   include Parse::API::CloudFunctions
 
   def setup
-    @mock_client = Minitest::Mock.new
+    @last_request = nil
   end
 
   def request(method, path, **args)
     # Mock the request method that would normally be provided by Parse::Client
     @last_request = { method: method, path: path, args: args }
 
-    # Return a mock successful response
-    response = Minitest::Mock.new
-    response.expect :result, { "result" => "success" }
-    response.expect :error?, false
+    # Return a simple response-like object
+    response = Object.new
+    def response.result; { "result" => "success" }; end
+    def response.error?; false; end
     response
   end
 

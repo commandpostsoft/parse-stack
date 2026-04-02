@@ -15,7 +15,7 @@ class AggregateTestPost < Parse::Object
   parse_class "AggregateTestPost"
   property :title, :string
   property :content, :string
-  property :author, :object  # pointer to AggregateTestUser
+  belongs_to :author, as: :aggregate_test_user
   property :category, :string
   property :likes, :integer
   property :published_at, :date
@@ -25,8 +25,8 @@ end
 class AggregateTestComment < Parse::Object
   parse_class "AggregateTestComment"
   property :text, :string
-  property :post, :object  # pointer to AggregateTestPost
-  property :commenter, :object  # pointer to AggregateTestUser
+  belongs_to :post, as: :aggregate_test_post
+  belongs_to :commenter, as: :aggregate_test_user
   # Note: created_at is already defined as a BASE_KEY in Parse::Object
   property :rating, :integer
 end

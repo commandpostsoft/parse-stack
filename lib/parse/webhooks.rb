@@ -269,10 +269,13 @@ module Parse
         request = Rack::Request.new env
         response = Rack::Response.new
 
-        if self.key.present? && self.key != request.env[HTTP_PARSE_WEBHOOK]
-          puts "[Parse::Webhooks] Invalid Parse-Webhook Key: #{request.env[HTTP_PARSE_WEBHOOK]}"
-          response.write error("Invalid Parse Webhook Key")
-          return response.finish
+        if self.key.present?
+          provided_key = request.env[HTTP_PARSE_WEBHOOK].to_s
+          unless ActiveSupport::SecurityUtils.secure_compare(self.key, provided_key)
+            puts "[Parse::Webhooks] Invalid Parse-Webhook Key received"
+            response.write error("Invalid Parse Webhook Key")
+            return response.finish
+          end
         end
 
         unless request.content_type.present? && request.content_type.include?(CONTENT_TYPE)
@@ -281,8 +284,13 @@ module Parse
         end
 
         request.body.rewind
+        body_str = request.body.read
+        if body_str.bytesize > 1_048_576
+          response.write error("Payload too large.")
+          return response.finish
+        end
         begin
-          payload = Parse::Webhooks::Payload.new request.body.read
+          payload = Parse::Webhooks::Payload.new body_str
         rescue => e
           warn "Invalid webhook payload format: #{e}"
           response.write error("Invalid payload format. Should be valid JSON.")

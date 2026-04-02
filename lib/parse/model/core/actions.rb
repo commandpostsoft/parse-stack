@@ -161,9 +161,13 @@ module Parse
             klass == Parse::BatchOperation
           end
           batch_wrapper.define_singleton_method(:add) do |obj|
-            # Store original state when object is first added to transaction
-            if obj.respond_to?(:attributes) && obj.respond_to?(:id) && !original_states.key?(obj)
-              original_states[obj] = {
+            # Store original state when object is first added to transaction.
+            # Use obj.object_id (Ruby identity) as the key because Parse::Object#hash
+            # and #eql? treat all unsaved objects (nil id) as equal, which would cause
+            # only the first unsaved object to be tracked.
+            if obj.respond_to?(:attributes) && obj.respond_to?(:id) && !original_states.key?(obj.object_id)
+              original_states[obj.object_id] = {
+                object: obj,
                 attributes: obj.attributes.dup,
                 changed_attributes: obj.instance_variable_get(:@changed_attributes)&.dup || {},
                 id: obj.id,
@@ -237,7 +241,8 @@ module Parse
               error_response = responses.find { |r| !r.success? }
 
               # Rollback local object states
-              original_states.each do |obj, state|
+              original_states.each_value do |state|
+                obj = state[:object]
                 obj.instance_variable_set(:@attributes, state[:attributes])
                 obj.instance_variable_set(:@changed_attributes, state[:changed_attributes])
                 obj.instance_variable_set(:@id, state[:id])
@@ -256,7 +261,8 @@ module Parse
             end
 
             # Rollback local object states on final failure
-            original_states.each do |obj, state|
+            original_states.each_value do |state|
+              obj = state[:object]
               obj.instance_variable_set(:@attributes, state[:attributes])
               obj.instance_variable_set(:@changed_attributes, state[:changed_attributes])
               obj.instance_variable_set(:@id, state[:id])

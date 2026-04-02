@@ -17,6 +17,16 @@ module Parse
     module Tools
       extend self
 
+      # Methods that are dangerous and should never be invoked via tools.
+      # Defined here (rather than MCPServer) so it's always available.
+      BLOCKED_METHODS = %w[
+        eval exec system ` send __send__ public_send instance_eval class_eval
+        module_eval define_method remove_method undef_method
+        open fork spawn syscall load require require_relative
+        const_get const_set remove_const method binding
+        instance_variable_set instance_variable_get
+      ].freeze
+
       # Default timeout for tool operations (seconds)
       DEFAULT_TIMEOUT = 30
 
@@ -478,8 +488,12 @@ module Parse
         raise Agent::ToolTimeoutError.new(tool_name, timeout)
       end
 
-      # Call a method with arguments, handling both positional and keyword args
+      # Call a method with arguments, handling both positional and keyword args.
+      # Validates that the method is not on the blocked list to prevent
+      # code execution via user-controlled method names.
+      # @raise [ArgumentError] if the method is blocked.
       def call_with_args(target, method_sym, args)
+        validate_method_name!(method_sym)
         if args.empty?
           target.public_send(method_sym)
         else
@@ -490,6 +504,15 @@ module Parse
             # Method might not accept keyword args
             target.public_send(method_sym)
           end
+        end
+      end
+
+      # Validates that a method name is not on the blocked list.
+      # @param method_name [Symbol, String] the method name to validate.
+      # @raise [ArgumentError] if the method is blocked.
+      def validate_method_name!(method_name)
+        if BLOCKED_METHODS.include?(method_name.to_s)
+          raise ArgumentError, "Method '#{method_name}' is blocked for security reasons"
         end
       end
 
