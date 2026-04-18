@@ -890,7 +890,7 @@ module Parse
       # @version 1.7.2
       # @return [void]
       def no_read!
-        @write = false
+        @read = false
       end
 
       # Sets the *write* value of the permission to false.

@@ -234,10 +234,14 @@ module Parse
       end
 
       # Removes expired entries from the rate limit tracker.
+      # Only deletes entries whose lockout has actually expired past the TTL —
+      # never deletes pre-lockout failure counters (which would defeat rate limiting
+      # by letting an attacker flood random usernames to trigger cleanup and reset
+      # a target's in-progress counter).
       def cleanup_login_rate_limits
         now = Time.now
         login_rate_limits.delete_if do |_username, entry|
-          entry[:locked_until].nil? || (now - entry[:locked_until]) > LOGIN_RATE_LIMIT_TTL
+          entry[:locked_until] && (now - entry[:locked_until]) > LOGIN_RATE_LIMIT_TTL
         end
       end
 

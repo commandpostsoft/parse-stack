@@ -35,6 +35,16 @@ module Parse
       # Fields that should be redacted from log output.
       SENSITIVE_FIELDS = %w[password token sessionToken session_token access_token authData].freeze
       SENSITIVE_PATTERN = /(#{SENSITIVE_FIELDS.join("|")})(["']?\s*[=:>]\s*["']?)([^"&\s,}\]]+)/i
+      # Request headers that must never be printed verbatim in debug logs.
+      # Matched case-insensitively against Faraday header keys.
+      REDACTED_HEADERS = [
+        Parse::Protocol::MASTER_KEY,
+        Parse::Protocol::API_KEY,
+        Parse::Protocol::SESSION_TOKEN,
+        "X-Parse-JavaScript-Key",
+        "Authorization",
+        "Cookie",
+      ].map(&:downcase).freeze
 
       class << self
         # Allows logging. Set to `true` to enable logging, `false` to disable.
@@ -80,8 +90,11 @@ module Parse
         if self.class.logging
           puts "[Request #{env.method.upcase}] #{self.class.redact(env[:url].to_s)}"
           env[:request_headers].each do |k, v|
-            next if k == Parse::Protocol::MASTER_KEY
-            puts "[Header] #{k} : #{v}"
+            if REDACTED_HEADERS.include?(k.to_s.downcase)
+              puts "[Header] #{k} : [FILTERED]"
+            else
+              puts "[Header] #{k} : #{v}"
+            end
           end
 
           puts "[Request Body] #{self.class.redact(env[:body].to_s)}"

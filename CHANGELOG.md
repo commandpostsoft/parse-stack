@@ -1,5 +1,16 @@
 ## Parse-Stack Changelog
 
+### 3.3.3
+
+#### Security Fixes
+
+- **FIXED**: Login rate limiter cleanup no longer wipes in-progress failure counters. The previous `delete_if` predicate removed every entry where `locked_until` was nil, which included pre-lockout counters (1-4 failures). An attacker could trigger cleanup by flooding unique usernames and reset a target account's failure counter, defeating rate limiting. Cleanup now only removes entries whose lockout has actually expired past the TTL. (`lib/parse/api/users.rb`)
+- **FIXED**: Debug log header redaction expanded to cover all credential-bearing headers. Previously only `X-Parse-Master-Key` was skipped; `X-Parse-REST-API-Key`, `X-Parse-Session-Token`, `X-Parse-JavaScript-Key`, `Authorization`, and `Cookie` were printed verbatim when `Parse.logging = :debug` was enabled. (`lib/parse/client/body_builder.rb`)
+
+#### Bug Fixes
+
+- **FIXED**: `Parse::ACL::Permission#no_read!` now correctly sets `@read = false` instead of `@write = false`. The outer `Parse::ACL#no_read!` does not route through this method so no production code path relied on the buggy behavior, but the inner method was incorrect. (`lib/parse/model/acl.rb`)
+
 ### 3.3.2
 
 #### Security Fixes
