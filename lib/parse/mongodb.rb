@@ -75,6 +75,13 @@ module Parse
     # Error raised when MongoDB connection fails
     class ConnectionError < StandardError; end
 
+    # Threshold above which `Parse::MongoDB.find` emits a deprecation warning
+    # when called without an explicit `:limit` option. A future major release
+    # will enforce this as a hard default limit. Callers should pass an
+    # explicit `:limit` (including `:limit => 0` for unbounded) to silence the
+    # warning.
+    DEFAULT_FIND_LIMIT = 1000
+
     class << self
       # @!attribute [rw] enabled
       #   Feature flag to enable/disable direct MongoDB queries.
@@ -189,15 +196,28 @@ module Parse
       # Execute a find query directly on MongoDB
       # @param collection_name [String] the collection name
       # @param filter [Hash] the query filter
-      # @param options [Hash] additional options (limit, skip, sort, projection)
+      # @param options [Hash] additional options (limit, skip, sort, projection).
+      #   If :limit is omitted and the result exceeds DEFAULT_FIND_LIMIT rows,
+      #   a deprecation warning is emitted. A future major release will apply
+      #   DEFAULT_FIND_LIMIT as a hard default. Pass `limit: 0` to explicitly
+      #   request unbounded behavior without a warning.
       # @return [Array<Hash>] the raw results from MongoDB
       def find(collection_name, filter = {}, **options)
         cursor = collection(collection_name).find(filter)
-        cursor = cursor.limit(options[:limit]) if options[:limit]
+        if options[:limit] && options[:limit] > 0
+          cursor = cursor.limit(options[:limit])
+        end
         cursor = cursor.skip(options[:skip]) if options[:skip]
         cursor = cursor.sort(options[:sort]) if options[:sort]
         cursor = cursor.projection(options[:projection]) if options[:projection]
-        cursor.to_a
+        results = cursor.to_a
+        if !options.key?(:limit) && results.size > DEFAULT_FIND_LIMIT
+          warn "[DEPRECATION] Parse::MongoDB.find on '#{collection_name}' returned " \
+               "#{results.size} rows with no :limit specified. A future release will " \
+               "apply a default limit of #{DEFAULT_FIND_LIMIT}. Pass an explicit :limit " \
+               "to silence this warning, or :limit => 0 to preserve unbounded behavior."
+        end
+        results
       end
 
       # List Atlas Search indexes for a collection

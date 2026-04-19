@@ -649,8 +649,10 @@ module Parse
           _retry_delay = retry_after
           warn "[Parse:Retry] Using Retry-After header: #{_retry_delay}s"
         else
+          # Deterministic exponential backoff with +/-25% jitter. Never zero —
+          # zero-wait retries amplify DoS against upstream and stampede on 429.
           backoff_delay = RETRY_DELAY * (self.retry_limit - _retry_count)
-          _retry_delay = [0, RETRY_DELAY, backoff_delay].sample
+          _retry_delay = backoff_delay * (0.75 + rand * 0.5)
         end
         sleep _retry_delay if _retry_delay > 0
         retry
@@ -661,7 +663,7 @@ module Parse
         warn "[Parse:Retry] Retries remaining #{_retry_count} : #{_request}"
         _retry_count -= 1
         backoff_delay = RETRY_DELAY * (self.retry_limit - _retry_count)
-        _retry_delay = [0, RETRY_DELAY, backoff_delay].sample
+        _retry_delay = backoff_delay * (0.75 + rand * 0.5)
         sleep _retry_delay if _retry_delay > 0
         retry
       end

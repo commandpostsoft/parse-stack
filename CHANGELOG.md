@@ -6,6 +6,13 @@
 
 - **FIXED**: Login rate limiter cleanup no longer wipes in-progress failure counters. The previous `delete_if` predicate removed every entry where `locked_until` was nil, which included pre-lockout counters (1-4 failures). An attacker could trigger cleanup by flooding unique usernames and reset a target account's failure counter, defeating rate limiting. Cleanup now only removes entries whose lockout has actually expired past the TTL. (`lib/parse/api/users.rb`)
 - **FIXED**: Debug log header redaction expanded to cover all credential-bearing headers. Previously only `X-Parse-Master-Key` was skipped; `X-Parse-REST-API-Key`, `X-Parse-Session-Token`, `X-Parse-JavaScript-Key`, `Authorization`, and `Cookie` were printed verbatim when `Parse.logging = :debug` was enabled. (`lib/parse/client/body_builder.rb`)
+- **FIXED**: Webhook payload debug logging now passes through the sensitive-field redactor. Previously `payload.as_json` was printed raw when `Parse::Webhooks.logging == :debug`, exposing any session tokens, passwords, or auth data carried in the payload. (`lib/parse/webhooks.rb`)
+- **FIXED**: `Parse::Query#resolve_parse_pointer` now resolves server-returned `className` values via the registered `Parse::Model.find_class` registry instead of `Object.const_get`. Prevents attacker-influenced className strings from triggering autoload of arbitrary constants. (`lib/parse/query.rb`)
+
+#### Improvements
+
+- **IMPROVED**: HTTP retry delay on `429 Too Many Requests` and connection errors now uses deterministic exponential backoff with +/-25% jitter. The previous `[0, RETRY_DELAY, backoff_delay].sample` implementation had a one-in-three probability of retrying immediately, which amplified backpressure against upstream rate-limited servers. (`lib/parse/client.rb`)
+- **DEPRECATED**: `Parse::MongoDB.find` now emits a deprecation warning when called without an explicit `:limit` option and the result exceeds `Parse::MongoDB::DEFAULT_FIND_LIMIT` (1000) rows. Existing callers continue to receive unbounded results, but a future major release will apply 1000 as a hard default to prevent unbounded `cursor.to_a` from exhausting memory. Pass an explicit `:limit` to silence the warning, or `:limit => 0` to preserve unbounded behavior long-term. (`lib/parse/mongodb.rb`)
 
 #### Bug Fixes
 

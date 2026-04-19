@@ -3502,13 +3502,16 @@ module Parse
       return pointer unless pointer["className"] && pointer["objectId"]
 
       begin
-        # Try to find the model class and fetch the object
-        model_class = Object.const_get(pointer["className"])
-        if model_class < Parse::Object
+        # Resolve via the registered Parse::Object subclass map rather than
+        # Object.const_get — never let a server-returned className trigger
+        # autoload of arbitrary constants. find_class returns nil for unknown
+        # names (no exception).
+        model_class = Parse::Model.find_class(pointer["className"])
+        if model_class && model_class.is_a?(Class) && model_class < Parse::Object
           resolved_obj = model_class.find(pointer["objectId"])
           return resolved_obj if resolved_obj
         end
-      rescue NameError, Parse::Error
+      rescue Parse::Error
         # If we can't resolve, fall back to displaying pointer info
       end
 

@@ -305,7 +305,7 @@ module Parse
           end
           if self.logging == :debug
             puts "[Webhooks::Payload] ----------------------------"
-            puts payload.as_json
+            puts Parse::Middleware::BodyBuilder.redact(payload.as_json.to_json)
             puts "----------------------------------------------------\n"
           end
         end
