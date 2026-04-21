@@ -9,6 +9,7 @@ group :test, :development do
   gem "rake"
   gem "byebug"
   gem "minitest"
+  gem "minitest-mock"
   gem 'minitest-reporters'
   gem "pry"
   gem "pry-stack_explorer"

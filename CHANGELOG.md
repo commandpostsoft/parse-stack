@@ -1,5 +1,13 @@
 ## Parse-Stack Changelog
 
+### 3.3.4
+
+#### Improvements
+
+- **NEW**: `Parse.call_function!`, `Parse.call_function_with_session!`, `Parse.trigger_job!`, and `Parse.trigger_job_with_session!` raise `Parse::Error::CloudCodeError` when the cloud function or job returns an error response, instead of silently returning nil. The error carries `function_name`, `code`, `http_status`, and the underlying `Parse::Response` for debugging. Use these variants when you want failures to propagate rather than be coerced to nil. (`lib/parse/client.rb`)
+- **IMPROVED**: `Parse.call_function` and `Parse.trigger_job` now emit a `[Parse:CloudCodeError]` warning to stderr when the response indicates an error, instead of silently returning nil. Previously, both methods coerced any cloud-code error response to a nil return value with no log line, making misconfigured calls (missing session token, failed `error!()` in cloud code) invisible to callers and tests. The nil return is preserved for backwards compatibility; the warning surfaces the failure. Matches the existing warn-then-raise pattern used by other HTTP error paths in `Parse::Client#request`. (`lib/parse/client.rb`)
+- **FIXED**: `Parse.call_function`, `Parse.trigger_job`, and their `!` variants no longer raise `TypeError` on unusual successful response bodies. Result extraction now guards against non-Hash response payloads (e.g., a bare string body) by returning the raw result rather than indexing into a non-Hash. (`lib/parse/client.rb`)
+
 ### 3.3.3
 
 #### Security Fixes

@@ -58,6 +58,25 @@ module Parse
 
     # An error when the session token provided in the request is invalid.
     class InvalidSessionTokenError < Error; end
+
+    # An error raised when a cloud function or job returns an error response
+    # (e.g. when the cloud code calls error!()). Carries the function name,
+    # Parse error code, HTTP status, and the underlying Response for debugging.
+    class CloudCodeError < Error
+      attr_reader :function_name, :code, :http_status, :response
+
+      def initialize(function_name, response)
+        @function_name = function_name
+        @response = response
+        @code = response.code
+        @http_status = response.http_status
+        super("Parse cloud function `#{function_name}` failed: [#{@code}] #{response.error} (HTTP #{@http_status})")
+      end
+
+      def inspect
+        "#<#{self.class} function=#{@function_name.inspect} code=#{@code.inspect} http_status=#{@http_status.inspect}>"
+      end
+    end
   end
 
   # Retrieve the App specific Parse configuration parameters. The configuration
@@ -764,6 +783,15 @@ module Parse
     end
   end
 
+  # @!visibility private
+  # Unwrap the `{ "result" => ... }` envelope from a successful cloud-code response.
+  # Guards against unusual server payloads (non-Hash bodies) by returning the raw
+  # result rather than raising TypeError on `String#[]`/`Integer#[]`.
+  def self._extract_cloud_result(response)
+    r = response.result
+    r.is_a?(Hash) ? r["result"] : r
+  end
+
   # Helper method to trigger cloud jobs and get results.
   # @param name [String] the name of the cloud code job to trigger.
   # @param body [Hash] the set of parameters to pass to the job.
@@ -779,7 +807,26 @@ module Parse
 
     response = Parse::Client.client(conn).trigger_job(name, body, opts: request_opts)
     return response if opts[:raw].present?
-    response.error? ? nil : response.result["result"]
+    if response.error?
+      warn "[Parse:CloudCodeError] `#{name}` [#{response.code}] #{response.error} (HTTP #{response.http_status})"
+      return nil
+    end
+    _extract_cloud_result(response)
+  end
+
+  # Same as {Parse.trigger_job} but raises {Parse::Error::CloudCodeError} when
+  # the job returns an error instead of silently returning nil. HTTP-level
+  # errors (auth, timeouts, throttling, etc.) still raise their specific
+  # {Parse::Error} subclasses as the underlying client does.
+  # @param name (see Parse.trigger_job)
+  # @param body (see Parse.trigger_job)
+  # @param opts (see Parse.trigger_job) — :raw is ignored.
+  # @raise [Parse::Error::CloudCodeError] when the response indicates a cloud-code error.
+  # @return [Object] the result data of the response.
+  def self.trigger_job!(name, body = {}, **opts)
+    response = trigger_job(name, body, **opts.merge(raw: true))
+    raise Parse::Error::CloudCodeError.new(name, response) if response.error?
+    _extract_cloud_result(response)
   end
 
   # Helper method to trigger cloud jobs with a session token.
@@ -792,6 +839,20 @@ module Parse
   def self.trigger_job_with_session(name, body = {}, session_token, **opts)
     opts[:session_token] = session_token
     trigger_job(name, body, **opts)
+  end
+
+  # Same as {Parse.trigger_job_with_session} but raises
+  # {Parse::Error::CloudCodeError} when the job returns an error instead of
+  # silently returning nil.
+  # @param name (see Parse.trigger_job_with_session)
+  # @param body (see Parse.trigger_job_with_session)
+  # @param session_token (see Parse.trigger_job_with_session)
+  # @param opts (see Parse.trigger_job_with_session)
+  # @raise [Parse::Error::CloudCodeError] when the response indicates a cloud-code error.
+  # @return [Object] the result data of the response.
+  def self.trigger_job_with_session!(name, body = {}, session_token, **opts)
+    opts[:session_token] = session_token
+    trigger_job!(name, body, **opts)
   end
 
   # Helper method to call cloud functions and get results.
@@ -814,7 +875,26 @@ module Parse
 
     response = Parse::Client.client(conn).call_function(name, body, opts: request_opts)
     return response if opts[:raw].present?
-    response.error? ? nil : response.result["result"]
+    if response.error?
+      warn "[Parse:CloudCodeError] `#{name}` [#{response.code}] #{response.error} (HTTP #{response.http_status})"
+      return nil
+    end
+    _extract_cloud_result(response)
+  end
+
+  # Same as {Parse.call_function} but raises {Parse::Error::CloudCodeError}
+  # when the cloud function returns an error instead of silently returning nil.
+  # HTTP-level errors (auth, timeouts, throttling, etc.) still raise their
+  # specific {Parse::Error} subclasses as the underlying client does.
+  # @param name (see Parse.call_function)
+  # @param body (see Parse.call_function)
+  # @param opts (see Parse.call_function) — :raw is ignored.
+  # @raise [Parse::Error::CloudCodeError] when the response indicates a cloud-code error.
+  # @return [Object] the result data of the response.
+  def self.call_function!(name, body = {}, **opts)
+    response = call_function(name, body, **opts.merge(raw: true))
+    raise Parse::Error::CloudCodeError.new(name, response) if response.error?
+    _extract_cloud_result(response)
   end
 
   # Helper method to call cloud functions with a session token.
@@ -827,5 +907,19 @@ module Parse
   def self.call_function_with_session(name, body = {}, session_token, **opts)
     opts[:session_token] = session_token
     call_function(name, body, **opts)
+  end
+
+  # Same as {Parse.call_function_with_session} but raises
+  # {Parse::Error::CloudCodeError} when the cloud function returns an error
+  # instead of silently returning nil.
+  # @param name (see Parse.call_function_with_session)
+  # @param body (see Parse.call_function_with_session)
+  # @param session_token (see Parse.call_function_with_session)
+  # @param opts (see Parse.call_function_with_session)
+  # @raise [Parse::Error::CloudCodeError] when the response indicates a cloud-code error.
+  # @return [Object] the result data of the response.
+  def self.call_function_with_session!(name, body = {}, session_token, **opts)
+    opts[:session_token] = session_token
+    call_function!(name, body, **opts)
   end
 end
