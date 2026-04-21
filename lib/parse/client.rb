@@ -240,7 +240,35 @@ module Parse
       def setup(opts = {}, &block)
         @clients[:default] = self.new(opts, &block)
       end
+
+      # @!visibility private
+      # Emit a redacted warning about a Parse::Response error to stderr.
+      #
+      # Routes the response error string through
+      # {Parse::Middleware::BodyBuilder.redact} to strip credentials (passwords,
+      # tokens, sessionTokens, access_tokens, authData) before logging, and
+      # truncates to {SAFE_WARN_MAX_ERROR_LENGTH} chars.
+      #
+      # @param tag [String] the bracketed prefix (e.g. "AuthenticationError").
+      # @param response [Parse::Response] the response carrying the error.
+      # @param name [String, nil] optional cloud-function or job name for context.
+      # @return [nil]
+      def _safe_warn(tag, response, name: nil)
+        err = Parse::Middleware::BodyBuilder.redact(response.error.to_s)[0, SAFE_WARN_MAX_ERROR_LENGTH]
+        if name
+          warn "[Parse:#{tag}] `#{name}` [#{response.code}] #{err} (HTTP #{response.http_status})"
+        else
+          warn "[Parse:#{tag}] [E-#{response.code}] #{response.request} : #{err} (#{response.http_status})"
+        end
+        nil
+      end
     end
+
+    # @!visibility private
+    # Maximum number of characters of a Parse::Response error string to include
+    # in safe warn output. Bounds log volume from chatty server errors or
+    # misbehaving cloud functions.
+    SAFE_WARN_MAX_ERROR_LENGTH = 200
 
     # Create a new client connected to the Parse Server REST API endpoint.
     # @param opts [Hash] a set of connection options to configure the client.
@@ -618,41 +646,41 @@ module Parse
 
       case response.http_status
       when 401, 403
-        warn "[Parse:AuthenticationError] #{response}"
+        Parse::Client._safe_warn("AuthenticationError", response)
         raise Parse::Error::AuthenticationError, response
       when 400, 408
         if response.code == Parse::Response::ERROR_TIMEOUT || response.code == 143 #"net/http: timeout awaiting response headers"
-          warn "[Parse:TimeoutError] #{response}"
+          Parse::Client._safe_warn("TimeoutError", response)
           raise Parse::Error::TimeoutError, response
         end
       when 404
         unless response.object_not_found?
-          warn "[Parse:ConnectionError] #{response}"
+          Parse::Client._safe_warn("ConnectionError", response)
           raise Parse::Error::ConnectionError, response
         end
       when 405, 406
-        warn "[Parse:ProtocolError] #{response}"
+        Parse::Client._safe_warn("ProtocolError", response)
         raise Parse::Error::ProtocolError, response
       when 429 # Request over the throttle limit
-        warn "[Parse:RequestLimitExceededError] #{response}"
+        Parse::Client._safe_warn("RequestLimitExceededError", response)
         raise Parse::Error::RequestLimitExceededError, response
       when 500, 503
-        warn "[Parse:ServiceUnavailableError] #{response}"
+        Parse::Client._safe_warn("ServiceUnavailableError", response)
         raise Parse::Error::ServiceUnavailableError, response
       end
 
       if response.error?
         if response.code <= Parse::Response::ERROR_SERVICE_UNAVAILABLE
-          warn "[Parse:ServiceUnavailableError] #{response}"
+          Parse::Client._safe_warn("ServiceUnavailableError", response)
           raise Parse::Error::ServiceUnavailableError, response
         elsif response.code <= 100
-          warn "[Parse:ServerError] #{response}"
+          Parse::Client._safe_warn("ServerError", response)
           raise Parse::Error::ServerError, response
         elsif response.code == Parse::Response::ERROR_EXCEEDED_BURST_LIMIT
-          warn "[Parse:RequestLimitExceededError] #{response}"
+          Parse::Client._safe_warn("RequestLimitExceededError", response)
           raise Parse::Error::RequestLimitExceededError, response
         elsif response.code == 209 # Error 209: invalid session token
-          warn "[Parse:InvalidSessionTokenError] #{response}"
+          Parse::Client._safe_warn("InvalidSessionTokenError", response)
           raise Parse::Error::InvalidSessionTokenError, response
         end
       end
@@ -808,7 +836,7 @@ module Parse
     response = Parse::Client.client(conn).trigger_job(name, body, opts: request_opts)
     return response if opts[:raw].present?
     if response.error?
-      warn "[Parse:CloudCodeError] `#{name}` [#{response.code}] #{response.error} (HTTP #{response.http_status})"
+      Parse::Client._safe_warn("CloudCodeError", response, name: name)
       return nil
     end
     _extract_cloud_result(response)
@@ -876,7 +904,7 @@ module Parse
     response = Parse::Client.client(conn).call_function(name, body, opts: request_opts)
     return response if opts[:raw].present?
     if response.error?
-      warn "[Parse:CloudCodeError] `#{name}` [#{response.code}] #{response.error} (HTTP #{response.http_status})"
+      Parse::Client._safe_warn("CloudCodeError", response, name: name)
       return nil
     end
     _extract_cloud_result(response)

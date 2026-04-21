@@ -1,5 +1,11 @@
 ## Parse-Stack Changelog
 
+### 3.3.5
+
+#### Security Fixes
+
+- **FIXED**: Stderr `warn` output for HTTP errors and cloud-code errors no longer bypasses the credential redaction filter. All twelve `warn` call sites in `Parse::Client` (HTTP 401/403/404/405/406/408/429/500/503, Parse error codes 1/2/100/155/209, plus `Parse.call_function` and `Parse.trigger_job` cloud-code errors) now route through a single `_safe_warn` helper that runs the response error string through `Parse::Middleware::BodyBuilder.redact` (stripping `password`, `token`, `sessionToken`, `session_token`, `access_token`, and `authData` values) and truncates to 200 characters. Previously, a cloud function calling `error!("auth failed for token #{token}")` or a Parse server error message containing credentials would be reflected verbatim to stderr on every failed request, bypassing the redaction middleware added in 3.3.2/3.3.3 for request/response body logging. Output format is preserved for backwards compatibility with log scrapers. (`lib/parse/client.rb`)
+
 ### 3.3.4
 
 #### Improvements
