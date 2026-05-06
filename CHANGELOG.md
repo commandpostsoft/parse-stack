@@ -1,5 +1,14 @@
 ## Parse-Stack Changelog
 
+### 3.3.6
+
+#### Fixes
+
+- **FIXED**: `:field.set_equals` and `:field.not_set_equals` constraints no longer raise MongoDB error 17044 (`All operands of $setEquals must be arrays. 1-th argument is of type: missing`) when any matched document is missing the array field. Previously, the compiled aggregation passed `"$<field>"` directly into `$setEquals`, which resolves to `Missing` for legacy documents that predate the field's introduction (commonly seen on classes where an array property was added after the collection already had data). MongoDB then aborted the entire pipeline and Parse Server surfaced this as error 102, so even documents that did have the field were never returned. Both compile paths (simple value arrays and pointer arrays via `$map`) now wrap the field reference in `$ifNull => ["$<field>", []]`, coercing a missing or null field to an empty array. Set-equality semantics are preserved: a missing field and `[]` are now equivalent for matching purposes — both fail to match `set_equals: ["A","B"]` and both succeed to match `set_equals: []`. This mirrors the existing treatment of missing/empty fields in `:size`, `:arr_empty`, and `:empty_or_nil`. (`lib/parse/query/constraints.rb`)
+- **FIXED**: `:field.subset_of` constraint no longer raises MongoDB error 17044 / 16554 on documents missing the field. Both the simple-value branch (`$setIsSubset` over a raw field reference) and the pointer-array branch (`$map` over a raw field reference, fed into `$setIsSubset`) now wrap the field in `$ifNull => ["$<field>", []]`. Semantics: the empty set is a subset of every set, so a document missing the field now matches `subset_of: ["a", "b"]` — consistent with treating a missing field as `[]`. (`lib/parse/query/constraints.rb`)
+- **FIXED**: `:field.eq_array` and `:field.neq` pointer-array branches no longer raise a MongoDB type error when matched documents are missing the relation field. Both branches feed `"$<field>"` into `$map`, which fails on a missing field reference; both now wrap the input in `$ifNull => ["$<field>", []]`. The simple-value branches are also wrapped so that a missing field is treated as `[]` consistently — `eq_array: []` now matches a missing field, and `neq: []` no longer matches a missing field, aligning with the rest of the array-constraint family.  (`lib/parse/query/constraints.rb`)
+- **IMPROVED**: `:field.first` and `:field.last` constraints now wrap field references in `$ifNull => ["$<field>", []]` for consistency with the rest of the array-constraint family. Previous behavior returned `null` from `$arrayElemAt` on missing fields, which was already non-crashing; the change is defensive and does not alter results. (`lib/parse/query/constraints.rb`)
+
 ### 3.3.5
 
 #### Security Fixes

@@ -675,6 +675,134 @@ class ArrayEqualityIntegrationTest < Minitest::Test
   end
 
   # ==========================================================================
+  # Regression: $setEquals must not error on documents missing the field.
+  # Before the fix, "$<field>" passed directly to $setEquals raised MongoDB
+  # error 17044 ("All operands of $setEquals must be arrays. ... type: missing")
+  # whenever any matched document lacked the field, breaking the entire query.
+  # ==========================================================================
+  def test_set_equals_simple_values_with_missing_field
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
+
+    with_parse_server do
+      puts "\n=== Testing :set_equals against documents with missing array field ==="
+
+      with_timeout(15, "creating test data with missing fields") do
+        # One doc with the field set to a real array.
+        TaggedItem.new(name: "exact", tags: ["rock", "pop"]).save
+
+        # One doc that genuinely lacks the field. Saving with tags then
+        # using op_destroy! issues a Parse __op: Delete, which removes the
+        # field from the underlying MongoDB document (not the same as []).
+        legacy = TaggedItem.new(name: "missing_field", tags: ["temp"])
+        legacy.save
+        legacy.op_destroy!(:tags)
+      end
+
+      with_timeout(10, "querying set_equals against missing field") do
+        # Non-empty target: missing-field doc must NOT match, but the query
+        # must succeed — previously it raised Parse error 102 (MongoDB 17044).
+        results = TaggedItem.query(:tags.set_equals => ["rock", "pop"]).all
+        names = results.map(&:name).sort
+        assert_includes names, "exact", "set_equals should still match docs that do have the field"
+        refute_includes names, "missing_field", "set_equals should not match a doc with no field"
+
+        # Empty target: missing-field is treated the same as []. Both match.
+        results = TaggedItem.query(:tags.set_equals => []).all
+        names = results.map(&:name).sort
+        assert_includes names, "missing_field", "set_equals => [] should match a missing field"
+        refute_includes names, "exact", "set_equals => [] should not match a non-empty array"
+
+        puts "✅ set_equals tolerates documents missing the array field"
+      end
+    end
+  end
+
+  def test_not_set_equals_simple_values_with_missing_field
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
+
+    with_parse_server do
+      puts "\n=== Testing :not_set_equals against documents with missing array field ==="
+
+      with_timeout(15, "creating test data with missing fields") do
+        TaggedItem.new(name: "exact", tags: ["rock", "pop"]).save
+
+        legacy = TaggedItem.new(name: "missing_field", tags: ["temp"])
+        legacy.save
+        legacy.op_destroy!(:tags)
+      end
+
+      with_timeout(10, "querying not_set_equals against missing field") do
+        # Non-empty target: missing-field is set-unequal to ["rock","pop"], so it MUST match.
+        results = TaggedItem.query(:tags.not_set_equals => ["rock", "pop"]).all
+        names = results.map(&:name).sort
+        refute_includes names, "exact", "not_set_equals should not match an exact set match"
+        assert_includes names, "missing_field", "not_set_equals should treat missing field as []"
+
+        # Empty target: missing-field is set-equal to [], so it must NOT match.
+        results = TaggedItem.query(:tags.not_set_equals => []).all
+        names = results.map(&:name).sort
+        assert_includes names, "exact", "not_set_equals => [] should match a non-empty array"
+        refute_includes names, "missing_field", "not_set_equals => [] should not match a missing field"
+
+        puts "✅ not_set_equals tolerates documents missing the array field"
+      end
+    end
+  end
+
+  def test_pointer_set_equals_with_missing_field
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
+
+    with_parse_server do
+      puts "\n=== Testing pointer :set_equals against documents with missing relation field ==="
+
+      cat1 = cat2 = nil
+
+      with_timeout(20, "creating pointer test data with missing fields") do
+        cat1 = Category.new(name: "Electronics").tap(&:save)
+        cat2 = Category.new(name: "Computers").tap(&:save)
+
+        prod_exact = Product.new(name: "exact_match")
+        prod_exact.categories = [cat1, cat2]
+        prod_exact.save
+
+        # Genuinely unset categories: save with values, then __op: Delete.
+        prod_legacy = Product.new(name: "missing_field")
+        prod_legacy.categories = [cat1]
+        prod_legacy.save
+        prod_legacy.op_destroy!(:categories)
+      end
+
+      with_timeout(10, "querying pointer set_equals against missing field") do
+        # Non-empty target: missing-field must NOT match and must not raise.
+        results = Product.query(:categories.set_equals => [cat1, cat2]).all
+        names = results.map(&:name).sort
+        assert_includes names, "exact_match"
+        refute_includes names, "missing_field", "pointer set_equals should not match missing field"
+
+        # Empty target: missing-field is treated as [], so it MUST match.
+        results = Product.query(:categories.set_equals => []).all
+        names = results.map(&:name).sort
+        assert_includes names, "missing_field", "pointer set_equals => [] should match missing field"
+        refute_includes names, "exact_match"
+
+        # not_set_equals with non-empty target: missing-field must match (it's not equal to {cat1,cat2}).
+        results = Product.query(:categories.not_set_equals => [cat1, cat2]).all
+        names = results.map(&:name).sort
+        refute_includes names, "exact_match"
+        assert_includes names, "missing_field"
+
+        # not_set_equals with empty target: missing-field must NOT match.
+        results = Product.query(:categories.not_set_equals => []).all
+        names = results.map(&:name).sort
+        assert_includes names, "exact_match"
+        refute_includes names, "missing_field"
+
+        puts "✅ pointer set_equals/not_set_equals tolerate missing relation field"
+      end
+    end
+  end
+
+  # ==========================================================================
   # Test 14: arr_empty and arr_nempty constraints
   # ==========================================================================
   def test_arr_empty_and_nempty_constraints

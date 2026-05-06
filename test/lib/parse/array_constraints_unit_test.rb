@@ -306,6 +306,153 @@ class ArrayConstraintsUnitTest < Minitest::Test
     puts "✅ set_equals correctly handles empty array"
   end
 
+  # ==========================================================================
+  # Test: $setEquals wraps field reference in $ifNull so missing fields
+  # don't raise "All operands of $setEquals must be arrays" (error 17044)
+  # on legacy documents that lack the field.
+  # ==========================================================================
+
+  def test_set_equals_simple_values_wraps_field_in_ifnull
+    query = Parse::Query.new("TestClass")
+    query.where(:tags.set_equals => ["rock", "pop"])
+
+    pipeline = query.pipeline
+    match_stage = pipeline.find { |stage| stage["$match"] }
+    set_equals = match_stage["$match"]["$expr"]["$setEquals"]
+
+    assert_equal({ "$ifNull" => ["$tags", []] }, set_equals[0],
+                 "First operand should wrap field reference in $ifNull => []")
+    assert_equal ["rock", "pop"], set_equals[1], "Second operand is the target value array"
+  end
+
+  def test_set_equals_pointer_array_wraps_map_input_in_ifnull
+    saved_pointer = MockPointer.new(id: "abc123")
+
+    query = Parse::Query.new("TestClass")
+    query.where(:categories.set_equals => [saved_pointer])
+
+    pipeline = query.pipeline
+    match_stage = pipeline.find { |stage| stage["$match"] }
+    set_equals = match_stage["$match"]["$expr"]["$setEquals"]
+
+    map_op = set_equals[0]["$map"]
+    assert map_op, "First operand should be a $map expression for pointer arrays"
+    assert_equal({ "$ifNull" => ["$categories", []] }, map_op["input"],
+                 "$map input should wrap field reference in $ifNull => []")
+    assert_equal "p", map_op["as"]
+    assert_equal "$$p.objectId", map_op["in"]
+    assert_equal ["abc123"], set_equals[1]
+  end
+
+  def test_not_set_equals_simple_values_wraps_field_in_ifnull
+    query = Parse::Query.new("TestClass")
+    query.where(:tags.not_set_equals => ["rock", "pop"])
+
+    pipeline = query.pipeline
+    match_stage = pipeline.find { |stage| stage["$match"] }
+    set_equals = match_stage["$match"]["$expr"]["$not"]["$setEquals"]
+
+    assert_equal({ "$ifNull" => ["$tags", []] }, set_equals[0],
+                 "First operand should wrap field reference in $ifNull => [] inside $not")
+    assert_equal ["rock", "pop"], set_equals[1]
+  end
+
+  def test_not_set_equals_pointer_array_wraps_map_input_in_ifnull
+    saved_pointer = MockPointer.new(id: "abc123")
+
+    query = Parse::Query.new("TestClass")
+    query.where(:categories.not_set_equals => [saved_pointer])
+
+    pipeline = query.pipeline
+    match_stage = pipeline.find { |stage| stage["$match"] }
+    set_equals = match_stage["$match"]["$expr"]["$not"]["$setEquals"]
+
+    map_op = set_equals[0]["$map"]
+    assert map_op, "First operand should be a $map expression for pointer arrays inside $not"
+    assert_equal({ "$ifNull" => ["$categories", []] }, map_op["input"],
+                 "$map input should wrap field reference in $ifNull => []")
+    assert_equal ["abc123"], set_equals[1]
+  end
+
+  # ==========================================================================
+  # Sibling-constraint missing-field defenses. Same shape as the set_equals fix:
+  # eq_array, neq, subset_of, first, and last all wrap field references in
+  # $ifNull => [] so missing-field documents don't crash $map / $setIsSubset
+  # and are treated consistently as []. Behavior alignment with arr_empty,
+  # empty_or_nil, and size.
+  # ==========================================================================
+
+  def test_eq_array_simple_values_wraps_field_in_ifnull
+    query = Parse::Query.new("TestClass")
+    query.where(:tags.eq_array => ["rock", "pop"])
+
+    eq = query.pipeline.find { |s| s["$match"] }["$match"]["$expr"]["$eq"]
+    assert_equal({ "$ifNull" => ["$tags", []] }, eq[0])
+    assert_equal ["rock", "pop"], eq[1]
+  end
+
+  def test_eq_array_pointer_wraps_map_input_in_ifnull
+    saved = MockPointer.new(id: "abc")
+    query = Parse::Query.new("TestClass")
+    query.where(:categories.eq_array => [saved])
+
+    eq = query.pipeline.find { |s| s["$match"] }["$match"]["$expr"]["$eq"]
+    assert_equal({ "$ifNull" => ["$categories", []] }, eq[0]["$map"]["input"])
+  end
+
+  def test_neq_simple_values_wraps_field_in_ifnull
+    query = Parse::Query.new("TestClass")
+    query.where(:tags.neq => ["rock", "pop"])
+
+    ne = query.pipeline.find { |s| s["$match"] }["$match"]["$expr"]["$ne"]
+    assert_equal({ "$ifNull" => ["$tags", []] }, ne[0])
+  end
+
+  def test_neq_pointer_wraps_map_input_in_ifnull
+    saved = MockPointer.new(id: "abc")
+    query = Parse::Query.new("TestClass")
+    query.where(:categories.neq => [saved])
+
+    ne = query.pipeline.find { |s| s["$match"] }["$match"]["$expr"]["$ne"]
+    assert_equal({ "$ifNull" => ["$categories", []] }, ne[0]["$map"]["input"])
+  end
+
+  def test_subset_of_simple_values_wraps_field_in_ifnull
+    query = Parse::Query.new("TestClass")
+    query.where(:tags.subset_of => ["rock", "pop", "jazz"])
+
+    subset = query.pipeline.find { |s| s["$match"] }["$match"]["$expr"]["$setIsSubset"]
+    assert_equal({ "$ifNull" => ["$tags", []] }, subset[0])
+    assert_equal ["rock", "pop", "jazz"], subset[1]
+  end
+
+  def test_subset_of_pointer_wraps_map_input_in_ifnull
+    saved = MockPointer.new(id: "abc")
+    query = Parse::Query.new("TestClass")
+    query.where(:categories.subset_of => [saved])
+
+    subset = query.pipeline.find { |s| s["$match"] }["$match"]["$expr"]["$setIsSubset"]
+    assert_equal({ "$ifNull" => ["$categories", []] }, subset[0]["$map"]["input"])
+  end
+
+  def test_first_simple_value_wraps_arrayelemat_input_in_ifnull
+    query = Parse::Query.new("TestClass")
+    query.where(:tags.first => "rock")
+
+    eq = query.pipeline.find { |s| s["$match"] }["$match"]["$expr"]["$eq"]
+    assert_equal({ "$ifNull" => ["$tags", []] }, eq[0]["$arrayElemAt"][0])
+    assert_equal 0, eq[0]["$arrayElemAt"][1]
+  end
+
+  def test_last_simple_value_wraps_arrayelemat_input_in_ifnull
+    query = Parse::Query.new("TestClass")
+    query.where(:tags.last => "pop")
+
+    eq = query.pipeline.find { |s| s["$match"] }["$match"]["$expr"]["$eq"]
+    assert_equal({ "$ifNull" => ["$tags", []] }, eq[0]["$arrayElemAt"][0])
+    assert_equal(-1, eq[0]["$arrayElemAt"][1])
+  end
+
   def test_eq_array_with_empty_array
     puts "\n=== Testing eq_array with empty array ==="
 

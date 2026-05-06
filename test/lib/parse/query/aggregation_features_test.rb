@@ -457,7 +457,9 @@ class TestQueryAggregationFeatures < Minitest::Test
     # First element should be the $map expression
     map_expr = eq_content[0]
     assert map_expr.key?("$map"), "First $eq operand should be $map expression"
-    assert_equal "$authorTeam", map_expr["$map"]["input"]
+    # $map.input wraps the field reference in $ifNull => [] so a missing field
+    # is coerced to an empty array (avoiding $map type errors on legacy docs).
+    assert_equal({ "$ifNull" => ["$authorTeam", []] }, map_expr["$map"]["input"])
 
     # Second element should be array containing the object ID
     id_array = eq_content[1]

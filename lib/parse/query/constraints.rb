@@ -862,13 +862,19 @@ module Parse
             raise ArgumentError, "#{self.class.name}: Cannot use unsaved objects (missing ID) in array constraint"
           end
 
-          # For pointer arrays, we need to map the objectIds from the stored pointers
+          # For pointer arrays, we need to map the objectIds from the stored pointers.
+          # $ifNull coerces a missing/null field to [] so $map (and $setEquals) don't
+          # raise type errors on legacy documents that lack the field.
           pipeline = [
             {
               "$match" => {
                 "$expr" => {
                   "$setEquals" => [
-                    { "$map" => { "input" => "$#{field_name}", "as" => "p", "in" => "$$p.objectId" } },
+                    { "$map" => {
+                        "input" => { "$ifNull" => ["$#{field_name}", []] },
+                        "as" => "p",
+                        "in" => "$$p.objectId",
+                      } },
                     target_ids,
                   ],
                 },
@@ -876,12 +882,17 @@ module Parse
             },
           ]
         else
-          # For simple value arrays (strings, numbers, etc.)
+          # For simple value arrays (strings, numbers, etc.).
+          # $ifNull coerces a missing/null field to [] so $setEquals doesn't raise
+          # a type error on legacy documents that lack the field.
           pipeline = [
             {
               "$match" => {
                 "$expr" => {
-                  "$setEquals" => ["$#{field_name}", val],
+                  "$setEquals" => [
+                    { "$ifNull" => ["$#{field_name}", []] },
+                    val,
+                  ],
                 },
               },
             },
@@ -947,13 +958,19 @@ module Parse
             raise ArgumentError, "#{self.class.name}: Cannot use unsaved objects (missing ID) in array constraint"
           end
 
-          # For pointer arrays, compare mapped objectIds with exact equality (order matters)
+          # For pointer arrays, compare mapped objectIds with exact equality (order matters).
+          # $ifNull coerces a missing/null field to [] so $map doesn't raise a type
+          # error on legacy documents that lack the field.
           pipeline = [
             {
               "$match" => {
                 "$expr" => {
                   "$eq" => [
-                    { "$map" => { "input" => "$#{field_name}", "as" => "p", "in" => "$$p.objectId" } },
+                    { "$map" => {
+                        "input" => { "$ifNull" => ["$#{field_name}", []] },
+                        "as" => "p",
+                        "in" => "$$p.objectId",
+                      } },
                     target_ids,
                   ],
                 },
@@ -961,12 +978,17 @@ module Parse
             },
           ]
         else
-          # For simple value arrays, direct $eq comparison (order matters)
+          # For simple value arrays, direct $eq comparison (order matters).
+          # $ifNull coerces a missing/null field to [] so a doc lacking the field
+          # is treated the same as one with [], consistent with set_equals/arr_empty.
           pipeline = [
             {
               "$match" => {
                 "$expr" => {
-                  "$eq" => ["$#{field_name}", val],
+                  "$eq" => [
+                    { "$ifNull" => ["$#{field_name}", []] },
+                    val,
+                  ],
                 },
               },
             },
@@ -1026,13 +1048,19 @@ module Parse
             raise ArgumentError, "#{self.class.name}: Cannot use unsaved objects (missing ID) in array constraint"
           end
 
-          # For pointer arrays, compare mapped objectIds with $ne (order matters)
+          # For pointer arrays, compare mapped objectIds with $ne (order matters).
+          # $ifNull coerces a missing/null field to [] so $map doesn't raise a type
+          # error on legacy documents that lack the field.
           pipeline = [
             {
               "$match" => {
                 "$expr" => {
                   "$ne" => [
-                    { "$map" => { "input" => "$#{field_name}", "as" => "p", "in" => "$$p.objectId" } },
+                    { "$map" => {
+                        "input" => { "$ifNull" => ["$#{field_name}", []] },
+                        "as" => "p",
+                        "in" => "$$p.objectId",
+                      } },
                     target_ids,
                   ],
                 },
@@ -1040,12 +1068,17 @@ module Parse
             },
           ]
         else
-          # For simple value arrays, direct $ne comparison (order matters)
+          # For simple value arrays, direct $ne comparison (order matters).
+          # $ifNull coerces a missing/null field to [] so a doc lacking the field
+          # is treated the same as one with [], consistent with set_equals/arr_empty.
           pipeline = [
             {
               "$match" => {
                 "$expr" => {
-                  "$ne" => ["$#{field_name}", val],
+                  "$ne" => [
+                    { "$ifNull" => ["$#{field_name}", []] },
+                    val,
+                  ],
                 },
               },
             },
@@ -1105,14 +1138,21 @@ module Parse
             raise ArgumentError, "#{self.class.name}: Cannot use unsaved objects (missing ID) in array constraint"
           end
 
-          # For pointer arrays, use $not with $setEquals on mapped objectIds
+          # For pointer arrays, use $not with $setEquals on mapped objectIds.
+          # $ifNull coerces a missing/null field to [] so $map doesn't raise a type
+          # error on legacy documents that lack the field. A missing field is
+          # treated the same as [] for set-equality purposes.
           pipeline = [
             {
               "$match" => {
                 "$expr" => {
                   "$not" => {
                     "$setEquals" => [
-                      { "$map" => { "input" => "$#{field_name}", "as" => "p", "in" => "$$p.objectId" } },
+                      { "$map" => {
+                          "input" => { "$ifNull" => ["$#{field_name}", []] },
+                          "as" => "p",
+                          "in" => "$$p.objectId",
+                        } },
                       target_ids,
                     ],
                   },
@@ -1121,13 +1161,18 @@ module Parse
             },
           ]
         else
-          # For simple value arrays, use $not with $setEquals
+          # For simple value arrays, use $not with $setEquals.
+          # $ifNull coerces a missing/null field to [] so $setEquals doesn't raise
+          # a type error on legacy documents that lack the field.
           pipeline = [
             {
               "$match" => {
                 "$expr" => {
                   "$not" => {
-                    "$setEquals" => ["$#{field_name}", val],
+                    "$setEquals" => [
+                      { "$ifNull" => ["$#{field_name}", []] },
+                      val,
+                    ],
                   },
                 },
               },
@@ -1260,12 +1305,20 @@ module Parse
             raise ArgumentError, "#{self.class.name}: Cannot use unsaved objects (missing ID) in array constraint"
           end
 
+          # $ifNull coerces a missing/null field to [] so $map (and $setIsSubset)
+          # don't raise type errors on legacy documents that lack the field.
+          # The empty set is a subset of every set, so a missing field matches
+          # any subset_of target — consistent with treating missing as [].
           pipeline = [
             {
               "$match" => {
                 "$expr" => {
                   "$setIsSubset" => [
-                    { "$map" => { "input" => "$#{field_name}", "as" => "p", "in" => "$$p.objectId" } },
+                    { "$map" => {
+                        "input" => { "$ifNull" => ["$#{field_name}", []] },
+                        "as" => "p",
+                        "in" => "$$p.objectId",
+                      } },
                     target_ids,
                   ],
                 },
@@ -1273,11 +1326,16 @@ module Parse
             },
           ]
         else
+          # $ifNull coerces a missing/null field to [] so $setIsSubset doesn't
+          # raise a type error on legacy documents that lack the field.
           pipeline = [
             {
               "$match" => {
                 "$expr" => {
-                  "$setIsSubset" => ["$#{field_name}", val],
+                  "$setIsSubset" => [
+                    { "$ifNull" => ["$#{field_name}", []] },
+                    val,
+                  ],
                 },
               },
             },
@@ -1311,7 +1369,9 @@ module Parse
         val = formatted_value
         field_name = Parse::Query.format_field(@operation.operand)
 
-        # Handle pointer values
+        # Handle pointer values. Wrap field reference in $ifNull so a missing
+        # field is treated as [] (yielding null from $arrayElemAt) rather than
+        # propagating a Missing value through the pipeline.
         if val.respond_to?(:id)
           compare_val = val.id
           pipeline = [
@@ -1319,7 +1379,11 @@ module Parse
               "$match" => {
                 "$expr" => {
                   "$eq" => [
-                    { "$arrayElemAt" => [{ "$map" => { "input" => "$#{field_name}", "as" => "p", "in" => "$$p.objectId" } }, 0] },
+                    { "$arrayElemAt" => [{ "$map" => {
+                        "input" => { "$ifNull" => ["$#{field_name}", []] },
+                        "as" => "p",
+                        "in" => "$$p.objectId",
+                      } }, 0] },
                     compare_val,
                   ],
                 },
@@ -1333,7 +1397,11 @@ module Parse
               "$match" => {
                 "$expr" => {
                   "$eq" => [
-                    { "$arrayElemAt" => [{ "$map" => { "input" => "$#{field_name}", "as" => "p", "in" => "$$p.objectId" } }, 0] },
+                    { "$arrayElemAt" => [{ "$map" => {
+                        "input" => { "$ifNull" => ["$#{field_name}", []] },
+                        "as" => "p",
+                        "in" => "$$p.objectId",
+                      } }, 0] },
                     compare_val,
                   ],
                 },
@@ -1346,7 +1414,7 @@ module Parse
               "$match" => {
                 "$expr" => {
                   "$eq" => [
-                    { "$arrayElemAt" => ["$#{field_name}", 0] },
+                    { "$arrayElemAt" => [{ "$ifNull" => ["$#{field_name}", []] }, 0] },
                     val,
                   ],
                 },
@@ -1382,7 +1450,9 @@ module Parse
         val = formatted_value
         field_name = Parse::Query.format_field(@operation.operand)
 
-        # Handle pointer values
+        # Handle pointer values. Wrap field reference in $ifNull so a missing
+        # field is treated as [] (yielding null from $arrayElemAt) rather than
+        # propagating a Missing value through the pipeline.
         if val.respond_to?(:id)
           compare_val = val.id
           pipeline = [
@@ -1390,7 +1460,11 @@ module Parse
               "$match" => {
                 "$expr" => {
                   "$eq" => [
-                    { "$arrayElemAt" => [{ "$map" => { "input" => "$#{field_name}", "as" => "p", "in" => "$$p.objectId" } }, -1] },
+                    { "$arrayElemAt" => [{ "$map" => {
+                        "input" => { "$ifNull" => ["$#{field_name}", []] },
+                        "as" => "p",
+                        "in" => "$$p.objectId",
+                      } }, -1] },
                     compare_val,
                   ],
                 },
@@ -1404,7 +1478,11 @@ module Parse
               "$match" => {
                 "$expr" => {
                   "$eq" => [
-                    { "$arrayElemAt" => [{ "$map" => { "input" => "$#{field_name}", "as" => "p", "in" => "$$p.objectId" } }, -1] },
+                    { "$arrayElemAt" => [{ "$map" => {
+                        "input" => { "$ifNull" => ["$#{field_name}", []] },
+                        "as" => "p",
+                        "in" => "$$p.objectId",
+                      } }, -1] },
                     compare_val,
                   ],
                 },
@@ -1417,7 +1495,7 @@ module Parse
               "$match" => {
                 "$expr" => {
                   "$eq" => [
-                    { "$arrayElemAt" => ["$#{field_name}", -1] },
+                    { "$arrayElemAt" => [{ "$ifNull" => ["$#{field_name}", []] }, -1] },
                     val,
                   ],
                 },
