@@ -1,5 +1,19 @@
 ## Parse-Stack Changelog
 
+### 4.0.2
+
+#### Security Fixes
+
+- **FIXED**: `Parse::User#signup!` now applies an allow-list (`SIGNUP_RESPONSE_APPLY_KEYS`) to the signup response body, matching the hardening that was already in place for the save-as-signup path (`signup_create`). Only `sessionToken` and `emailVerified` are fed through the typed property writers; `objectId`, `createdAt`, and `updatedAt` are extracted directly into the corresponding `@`-vars. Any other key in the response — `authData`, `_rperm`, `_wperm`, `roles`, a redirected `username`, etc. — is dropped. Previously, `signup!` called `apply_attributes!` on the full response, and because `Parse::User` declares `property :auth_data, :object` the typed `authData_set_attribute!` writer exists, so a compromised or MITM'd Parse Server could plant attacker-controlled `authData` into the in-memory user via the `signup!` path. The save-as-signup path was not affected because it already used this filter. (`lib/parse/model/classes/user.rb`)
+
+#### Bug Fixes
+
+- **FIXED**: `Parse::User#signup!` and `Parse::User#login!` now clear dirty state on a successful round-trip, mirroring what `Parse::Object#save` does after a successful create/update. Previously, both methods called `apply_attributes!` on the server response but never `changes_applied!`, so `password` (and for `signup!`, `username` and `email`) remained marked dirty. A subsequent `user.save!` (or any indirect cascade that saved the user object) re-transmitted `password` in the update body, which Parse Server treats as a password change under `revokeSessionOnPasswordReset` and revoked the session that `signup!`/`login!` had just issued. The fix calls `changes_applied!` and `clear_partial_fetch_state!` inside both methods after a successful response so subsequent saves only send genuinely-changed fields. Matches the behavior of Parse JS and iOS SDKs, which clear pending operations after signup/login. (`lib/parse/model/classes/user.rb`)
+
+#### Behavior Changes
+
+- **CHANGED**: `Parse::User#signup!`, `Parse::User#login!`, and the save-as-signup path now clear the in-memory plaintext `password` attribute (`@password = nil`) immediately after a successful response, as defense-in-depth against heap-dump exposure of credentials. The clear is performed via direct instance-variable assignment so it does not register as a dirty change. Matches the Parse JS SDK behavior of releasing the password attribute after a successful save/signup. On failure (e.g. `UsernameTakenError`, invalid credentials), the password is preserved so the caller may retry. Reading `user.password` after a successful signup/login will now return `nil`; callers that depended on round-tripping the plaintext password through the in-memory object should hold their own reference. (`lib/parse/model/classes/user.rb`)
+
 ### 4.0.1
 
 #### Security Fixes

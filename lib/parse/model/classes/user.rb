@@ -299,7 +299,40 @@ module Parse
       response = client.create_user signup_attrs
 
       if response.success?
-        apply_attributes! response.result
+        # Restrict what the server can plant into the in-memory user via
+        # the signup response, matching the defense in {#signup_create}.
+        # `POST /parse/users` legitimately returns objectId, createdAt,
+        # updatedAt (extracted into @-vars directly below), sessionToken,
+        # and emailVerified. Any other key in the response body --
+        # `authData`, `_rperm`, `_wperm`, `roles`, etc. -- is dropped, so
+        # a compromised or MITM'd Parse Server cannot use this code path
+        # to plant credentials/permissions onto the user we just signed
+        # up. The previous `apply_attributes! response.result` accepted
+        # every key the server returned through the typed property
+        # writers (`authData_set_attribute!` exists because we declare
+        # `property :auth_data, :object`), which was a footgun the
+        # save-as-signup path had already addressed.
+        result = response.result
+        @id = result[Parse::Model::OBJECT_ID] || @id
+        @created_at = result["createdAt"] || @created_at
+        @updated_at = result["updatedAt"] || result["createdAt"] || @updated_at
+        set_attributes!(result.slice(*SIGNUP_RESPONSE_APPLY_KEYS))
+        # Drop the plaintext password from memory now that the server
+        # has it hashed and we no longer need it. Matches the Parse JS
+        # SDK behavior of clearing the password attribute after a
+        # successful save/signup. Uses direct ivar assignment so the
+        # dirty tracker doesn't record this clear as a pending change
+        # that would be re-sent on the next save.
+        @password = nil
+        # Mirror Parse::Object#save: a successful round-trip means the
+        # locally-set credential fields are now in sync with the server
+        # and must NOT be re-sent on the next save. Without this, a
+        # subsequent user.save! re-transmits `password`, which Parse
+        # Server treats as a password change under
+        # revokeSessionOnPasswordReset and revokes the session just
+        # minted by this signup.
+        changes_applied!
+        clear_partial_fetch_state!
         return true
       end
 
@@ -352,7 +385,25 @@ module Parse
     def login!(passwd = nil)
       self.password = passwd || self.password
       response = client.login(username.to_s, password.to_s)
-      apply_attributes! response.result
+      if response.success?
+        # Unlike signup, login's response is the canonical state of an
+        # existing user, including any linked authData. Applying the
+        # full response body here is intentional -- the server is
+        # telling us what the account currently looks like. (Compare
+        # signup, where we narrow to an allow-list because a brand-new
+        # account has no legitimate authData to report.)
+        apply_attributes! response.result
+        # Drop the plaintext password from memory now that the login
+        # has succeeded. Direct ivar assignment so the dirty tracker
+        # doesn't record this clear as a pending change.
+        @password = nil
+        # Clear dirty state so a subsequent user.save! does not re-send
+        # `password` (which Parse Server would treat as a password
+        # change and use to revoke the session this login just issued).
+        # See the matching note in #signup!.
+        changes_applied!
+        clear_partial_fetch_state!
+      end
       self.session_token.present?
     end
 
@@ -585,6 +636,11 @@ module Parse
           @id = result[Parse::Model::OBJECT_ID] || @id
           @created_at = result["createdAt"] || @created_at
           @updated_at = result["updatedAt"] || result["createdAt"] || @updated_at
+          # Plaintext password is no longer needed locally; the server
+          # has it hashed. Direct ivar assignment avoids re-dirtying the
+          # field that the surrounding `save` will mark clean via
+          # `changes_applied!` in actions.rb after this method returns.
+          @password = nil
           set_attributes!(result.slice(*SIGNUP_RESPONSE_APPLY_KEYS))
         end
         puts "Error creating #{self.parse_class}: #{res.error}" if res.error?

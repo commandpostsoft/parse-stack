@@ -398,8 +398,16 @@ class TestUserSaveSignup < Minitest::Test
     assert user.save
     assert_equal "leo", user.username,
                  "username from response body must NOT clobber the user's chosen username"
-    assert_equal "p4ss", user.password,
-                 "password from response body must NOT replace the caller's password"
+    # In 4.0.2 the post-signup plaintext password is cleared from the
+    # in-memory user (defense-in-depth against heap-dump exposure;
+    # parity with Parse JS SDK). The original guarantee -- a malicious
+    # `"password" => "rewritten"` server response must not become the
+    # in-memory password -- still holds: the value is nil, not the
+    # attacker-supplied string.
+    assert_nil user.password,
+               "post-signup password must be cleared from memory (and definitely must not be the attacker-supplied value)"
+    refute_equal "rewritten", user.password,
+                 "attacker-supplied password from response must never be applied"
   end
 
   # --------------------------------------------------------------------
@@ -438,6 +446,80 @@ class TestUserSaveSignup < Minitest::Test
                  user.auth_data, "explicit setter must remain functional")
   end
 
+  # --------------------------------------------------------------------
+  # 4.0.2: signup! response is allow-listed and @password is cleared
+  # --------------------------------------------------------------------
+
+  def test_signup_bang_response_is_filtered_by_allow_list
+    # A compromised / MITM'd Parse Server can plant arbitrary keys on
+    # the signup response. signup! must mirror signup_create's
+    # SIGNUP_RESPONSE_APPLY_KEYS filter so that authData, _rperm,
+    # _wperm, roles, etc. never reach the in-memory user.
+    client = StubClient.new({ create_user: StubResponse.new(result: {
+      "objectId" => "u-su1",
+      "createdAt" => "2026-05-15T00:00:00Z",
+      "sessionToken" => "r:legit",
+      "authData" => { "facebook" => { "id" => "attacker", "access_token" => "stolen" } },
+      "username" => "attacker",
+    }) })
+    user = new_user_with_client(client, username: "ursula", password: "p4ss")
+
+    assert user.signup!
+    assert_equal "r:legit", user.session_token, "sessionToken still applied (allow-listed)"
+    assert_equal "u-su1", user.id, "objectId still applied (extracted directly)"
+    assert_nil user.auth_data, "authData from signup response must NOT be applied"
+    assert_equal "ursula", user.username,
+                 "username from signup response must NOT clobber the caller-chosen username"
+  end
+
+  def test_signup_bang_clears_plaintext_password_on_success
+    client = StubClient.new
+    user = new_user_with_client(client, username: "vince", password: "p4ss")
+
+    assert user.signup!
+    assert_nil user.password, "plaintext password must be cleared from memory after signup!"
+    refute_includes user.changed, "password",
+                    "password clear must not leave a dirty diff (otherwise next save would send null)"
+  end
+
+  def test_login_bang_clears_plaintext_password_on_success
+    client = StubClient.new({ login: StubResponse.new(result: {
+      "objectId" => "u-li1",
+      "createdAt" => "2026-05-15T00:00:00Z",
+      "sessionToken" => "r:login-tok",
+      "username" => "wanda",
+    }) })
+    # The stub client doesn't define `login`; add a stub method on the
+    # client instance so login! can complete.
+    def client.login(_user, _pass)
+      @calls << [:login]
+      @responses.fetch(:login)
+    end
+    user = new_user_with_client(client, username: "wanda", password: "p4ss")
+
+    assert user.login!
+    assert_nil user.password, "plaintext password must be cleared from memory after login!"
+    refute_includes user.changed, "password",
+                    "password clear must not leave a dirty diff after login!"
+    assert_equal "r:login-tok", user.session_token, "session token still applied from login response"
+  end
+
+  def test_signup_bang_failure_preserves_password
+    # Belt-and-suspenders: the @password = nil clear only runs in the
+    # success branch. A failed signup! must leave the caller's
+    # password intact so they can retry.
+    client = StubClient.new({ create_user: StubResponse.new(
+      result: {},
+      code: Parse::Response::ERROR_USERNAME_TAKEN,
+      error: "Account already exists",
+    ) })
+    user = new_user_with_client(client, username: "xander", password: "p4ss")
+
+    assert_raises(Parse::Error::UsernameTakenError) { user.signup! }
+    assert_equal "p4ss", user.password,
+                 "failed signup! must NOT clear the caller's password (they may retry)"
+  end
+
   def test_save_applies_email_verified_from_signup_response
     # emailVerified is an allow-listed key: Parse Server can flag the
     # user as verified at signup time (e.g. via a beforeSignUp trigger
@@ -453,5 +535,101 @@ class TestUserSaveSignup < Minitest::Test
 
     assert user.save
     assert user.email_verified, "emailVerified should be applied from signup response"
+  end
+
+  # --------------------------------------------------------------------
+  # Session-token preservation on existing-user updates
+  # --------------------------------------------------------------------
+  # Regression coverage for the worry that signup-on-save (added in 4.0.1)
+  # could leak into the existing-user update path and invalidate / replace
+  # the in-memory session token when an unrelated field is saved.
+
+  # Helper: build an "already persisted" user wired to a stub client, with
+  # a session_token in place and dirty state cleared.
+  def existing_user_with_session(client, session_token: "r:original-token", **attrs)
+    user = new_user_with_client(client, **attrs)
+    user.id = "existing-id"
+    user.disable_autofetch!
+    user.send(:changes_applied!)
+    user.session_token = session_token
+    user
+  end
+
+  def test_existing_user_save_preserves_session_token_when_updating_random_field
+    client = StubClient.new
+    user = existing_user_with_session(client, username: "paul")
+    assert_equal "r:original-token", user.session_token, "precondition"
+
+    user.email = "paul@example.com"
+    assert user.save
+
+    assert_equal 1, client.calls_to(:update_object).size, "should hit update path"
+    assert_empty client.calls_to(:create_user),  "must not route through signup endpoint"
+    assert_empty client.calls_to(:create_object), "must not route through raw class endpoint"
+    assert_equal "r:original-token", user.session_token,
+                 "save! on a random field must not clear/replace the in-memory session token"
+    assert user.logged_in?, "user should still be logged in after a random-field update"
+  end
+
+  def test_existing_user_update_body_does_not_contain_password
+    # Even when signup_on_save is true, an update should never carry the
+    # password field (Parse never returns it on fetch; the dirty tracker
+    # should not include it for a random-field save).
+    client = StubClient.new
+    user = existing_user_with_session(client, username: "quinn")
+
+    user.email = "quinn@example.com"
+    assert user.save
+
+    body = client.calls_to(:update_object).first[3]
+    refute body.key?(:password),  "password must not appear in update body"
+    refute body.key?("password"), "password must not appear in update body"
+    refute body.key?(:username),  "username must not appear in update body for unrelated field change"
+    refute body.key?("username"), "username must not appear in update body for unrelated field change"
+  end
+
+  def test_existing_user_save_passes_session_token_via_save_session_arg
+    # `_session_token` for an update is the one explicitly passed via
+    # `save(session: ...)`, not the user's own `session_token`. This is
+    # the same as pre-4.0.1 behavior and verifies the new commit hasn't
+    # shifted the auth context used for the PUT.
+    client = StubClient.new
+    user = existing_user_with_session(client, username: "rita")
+
+    user.email = "rita@example.com"
+    assert user.save(session: "r:caller-session")
+
+    update_call = client.calls_to(:update_object).first
+    assert_equal "r:caller-session", update_call.last,
+                 "update_object should receive the caller-supplied save(session:) token"
+  end
+
+  def test_existing_user_save_without_session_arg_sends_no_session_token
+    client = StubClient.new
+    user = existing_user_with_session(client, username: "sam")
+
+    user.email = "sam@example.com"
+    assert user.save
+
+    update_call = client.calls_to(:update_object).first
+    assert_nil update_call.last,
+               "no explicit session: => update_object must be invoked with session_token: nil"
+  end
+
+  def test_existing_user_save_with_signup_on_save_false_still_preserves_session_token
+    # Belt-and-suspenders: even with the new flag off, the update path
+    # must behave identically. Confirms the flag does not gate the
+    # update path at all.
+    Parse::User.signup_on_save = false
+    client = StubClient.new
+    user = existing_user_with_session(client, username: "tom")
+
+    user.email = "tom@example.com"
+    assert user.save
+
+    assert_equal 1, client.calls_to(:update_object).size
+    assert_equal "r:original-token", user.session_token
+  ensure
+    Parse::User.signup_on_save = true
   end
 end
