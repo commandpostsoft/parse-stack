@@ -146,6 +146,38 @@ module Parse
   # @see Parse::Object
   class User < Parse::Object
     parse_class Parse::Model::CLASS_USER
+
+    # When true (default), saving a new {Parse::User} that has a `password`
+    # value routes through Parse Server's signup endpoint (`POST /parse/users`)
+    # with the `X-Parse-Revocable-Session` header set, so the signup response
+    # returns a session token that is applied to the in-memory user object
+    # via the standard `sessionToken_set_attribute!` hydration path. Without
+    # this flag, `Parse::User.new(...).save!` left `session_token` `nil`
+    # because the underlying create path did not request a revocable session.
+    #
+    # Set to `false` to always create users without requesting a revocable
+    # session token - for example, when a master-key server-side script is
+    # provisioning user rows that will receive credentials later. New users
+    # created with no password always fall through to the standard create
+    # path regardless of this flag.
+    #
+    # `auth_data` (federated identity / OAuth) signup is deliberately NOT
+    # triggered by this flag. `POST /parse/users` treats `auth_data` as a
+    # claim against an existing account, so allowing mass-assigned `auth_data`
+    # to trigger a revocable-session signup would let attacker-controlled
+    # params plant another user's session token onto the in-memory object.
+    # Use {.autologin_service} or {.signup} (the explicit class methods) for
+    # OAuth-driven signup; both bypass the mass-assignment filter because the
+    # caller is explicitly choosing the federated-identity flow.
+    #
+    # Inherited through subclasses via {ActiveSupport::Concern}'s
+    # `class_attribute`, so an application-specific subclass may override
+    # the default without affecting `Parse::User` itself.
+    #
+    # @return [Boolean]
+    class_attribute :signup_on_save, instance_writer: false
+    self.signup_on_save = true
+
     # @return [String] The session token if this user is logged in.
     attr_reader :session_token
 
@@ -284,6 +316,34 @@ module Parse
         raise Parse::Error::InvalidEmailAddress, response
       end
       raise Parse::Client::ResponseError, response
+    end
+
+    # Override of {Parse::Core::Actions::InstanceMethods#create} so that
+    # saving a new user that has a `password` goes through Parse Server's
+    # signup endpoint and the returned session token is applied to the
+    # in-memory object. Falls through to the inherited raw `_User` insert
+    # when the new user has no password or when {.signup_on_save} has been
+    # disabled. Like the inherited `:create` path, the `before_create` /
+    # `after_create` callback chain still fires and the method returns the
+    # response's success flag (errors propagate to {Parse::Object#save} as
+    # a `false` return, which the caller may turn into a
+    # {Parse::RecordNotSaved} via `save!` / `autoraise: true`).
+    #
+    # `auth_data`-only signups (federated-identity / OAuth flows where no
+    # password is set) are deliberately NOT routed through this path,
+    # because `POST /parse/users` treats `auth_data` as an identity claim
+    # against an existing user — accepting it from a mass-assigned hash
+    # would expose a session-token planting vector. OAuth signup is the
+    # responsibility of the explicit {#signup!} method (or
+    # {Parse::User.autologin_service}), whose call sites necessarily make
+    # the federated-identity decision themselves.
+    # @!visibility private
+    def create
+      if self.class.signup_on_save && self.password.present?
+        signup_create
+      else
+        super
+      end
     end
 
     # Login and get a session token for this user.
@@ -488,6 +548,48 @@ module Parse
     #   end
     def multi_session?
       active_session_count > 1
+    end
+
+    private
+
+    # Keys that {#signup_create} will accept from a `POST /parse/users`
+    # response body and feed through {#set_attributes!}. `sessionToken`
+    # is the operative output of the signup endpoint; `emailVerified` is
+    # the only other field Parse Server commonly emits and is harmless to
+    # apply. All other keys are dropped, even if the server response
+    # contains them — this blocks a compromised or MITM'd Parse Server
+    # from planting `authData`, `_rperm`, `_wperm`, `roles`, or other
+    # security-sensitive fields into the in-memory user object via the
+    # save-as-signup path. `objectId`, `createdAt`, and `updatedAt` are
+    # extracted directly into the corresponding `@`-vars below and so do
+    # not need to appear in this list.
+    SIGNUP_RESPONSE_APPLY_KEYS = %w[sessionToken emailVerified].freeze
+
+    # Body of {#create} when signup-on-save applies. Mirrors the inherited
+    # Parse::Object create path but uses `create_user` (signup endpoint)
+    # instead of `create_object`, and so picks up the `sessionToken` that
+    # Parse Server only emits on the signup endpoint. Errors are not
+    # promoted to typed exceptions here (see {#signup!} for that variant);
+    # the response's success flag is returned so the caller's `save` /
+    # `save!` handles the failure via the standard `RecordNotSaved` path.
+    def signup_create
+      run_callbacks :create do
+        body = attribute_updates
+        # Match {#signup!} -- strip server-managed and special fields from
+        # the request body so the signup endpoint applies its own defaults
+        # for ACL and never sees a caller-supplied objectId/timestamps.
+        body.except!(*Parse::Properties::BASE_FIELD_MAP.flatten)
+        res = client.create_user(body, session_token: _session_token)
+        unless res.error?
+          result = res.result
+          @id = result[Parse::Model::OBJECT_ID] || @id
+          @created_at = result["createdAt"] || @created_at
+          @updated_at = result["updatedAt"] || result["createdAt"] || @updated_at
+          set_attributes!(result.slice(*SIGNUP_RESPONSE_APPLY_KEYS))
+        end
+        puts "Error creating #{self.parse_class}: #{res.error}" if res.error?
+        res.success?
+      end
     end
   end
 end

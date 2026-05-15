@@ -41,7 +41,7 @@ module Parse
       sessionToken session_token
       roles _rperm _wperm
       _hashed_password _password_history
-      authData _auth_data
+      authData _auth_data auth_data
       className __type
       createdAt created_at updatedAt updated_at
     ].freeze
