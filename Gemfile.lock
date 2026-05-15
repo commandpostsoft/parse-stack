@@ -1,7 +1,7 @@
 PATH
   remote: .
   specs:
-    parse-stack (4.0.0)
+    parse-stack (4.0.1)
       activemodel (>= 6.1, < 9)
       activesupport (>= 6.1, < 9)
       faraday (~> 2.0)

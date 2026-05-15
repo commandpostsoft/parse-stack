@@ -169,11 +169,11 @@ module Parse
   # Error raised when autofetch would be triggered but Parse.autofetch_raise_on_missing_keys is true.
   # This helps developers identify where they need to add additional keys to their queries.
   class AutofetchTriggeredError < StandardError
-    attr_reader :klass, :object_id, :field, :is_pointer
+    attr_reader :klass, :parse_object_id, :field, :is_pointer
 
     def initialize(klass, object_id, field, is_pointer:)
       @klass = klass
-      @object_id = object_id
+      @parse_object_id = object_id
       @field = field
       @is_pointer = is_pointer
 

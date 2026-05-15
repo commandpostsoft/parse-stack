@@ -1,5 +1,15 @@
 ## Parse-Stack Changelog
 
+### 4.0.1
+
+#### Bug Fixes
+
+- **FIXED**: `Parse::AutofetchTriggeredError` no longer overrides Ruby's built-in `Object#object_id` method. The accessor for the Parse object id is renamed from `object_id` to `parse_object_id`; the constructor's positional argument is unchanged. Loading `parse/stack` under `ruby -W` no longer emits `warning: redefining 'object_id' may cause serious problems`, and `error.object_id` on an instance of this class once again returns Ruby's identity value rather than the Parse id. Callers reading the Parse id from a rescued `AutofetchTriggeredError` should use `error.parse_object_id`. (`lib/parse/stack.rb`)
+- **FIXED**: `Parse::Query.register` (the query-DSL operator hook installed on `Symbol`) no longer emits `method redefined; discarding old size` when `parse/stack` is loaded under `ruby -W`. The DSL intentionally repurposes `Symbol#size` so that `:tags.size => N` builds an `ArraySizeConstraint`; the prior `Symbol#size` definition is now explicitly removed before `define_method` runs, so Ruby treats the override as a clean replacement rather than a noisy redefinition. The DSL behavior is unchanged. (`lib/parse/query/operation.rb`)
+- **FIXED**: Removed a duplicate `Parse::Query#all(expressions, &block)` definition in `lib/parse/model/core/actions.rb`. The same method (same body) is defined at `lib/parse/query.rb:2892`; the duplicate was a legacy reopen that, after the Ruby-3 keyword-block migration, became a redundant identical override and produced `method redefined; discarding old all` on load. The `first_or_create` and `save_all` scope-chaining hooks in that file are unchanged. (`lib/parse/model/core/actions.rb`)
+- **FIXED**: `Parse::CollectionProxy` no longer emits `method redefined; discarding old collection=` on load. The dirty-tracking-aware writer (`collection=` at `lib/parse/model/associations/collection_proxy.rb:138`) is now the sole definition; the redundant `attr_writer :collection` declaration that had generated a competing trivial setter was removed. Runtime behavior is unchanged - the explicit writer always took effect because it loaded second. (`lib/parse/model/associations/collection_proxy.rb`)
+- **FIXED**: `Parse::Object#acl_was` no longer emits `method redefined; discarding old acl_was` on load. The `EnhancedChangeTracking` module installs an `acl_was` shim via `define_method` when `property :acl` is processed; the ACL-snapshot override defined later in the same class is now preceded by an explicit `remove_method(:acl_was)` so Ruby treats the override as a clean replacement. The override is intentional - ACL is a mutable object and dirty tracking needs a deep-copy snapshot rather than a same-reference comparison. `super` in the override still walks to ActiveModel's underlying `acl_was`, matching prior behavior. (`lib/parse/model/object.rb`)
+
 ### 4.0.0
 
 #### Breaking Changes

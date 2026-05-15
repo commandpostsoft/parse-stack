@@ -1458,6 +1458,13 @@ module Parse
       super
     end
 
+    # EnhancedChangeTracking defines acl_was via define_method when
+    # `property :acl` is processed above. Remove that definition so the
+    # explicit override below does not emit "method redefined" under ruby -W.
+    # The override is intentional - ACL needs snapshot-based dirty tracking
+    # because it is a mutable object.
+    remove_method(:acl_was) if method_defined?(:acl_was, false)
+
     # Override acl_was to return the captured snapshot instead of the reference
     # stored by ActiveModel's dirty tracking.
     # @return [Parse::ACL] the ACL value before any changes were made.

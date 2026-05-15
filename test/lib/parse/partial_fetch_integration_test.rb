@@ -2062,7 +2062,7 @@ class PartialFetchIntegrationTest < Minitest::Test
 
           # Verify error details
           assert_equal PartialFetchPost, error.klass, "Error should have correct class"
-          assert_equal post_id, error.object_id, "Error should have correct object_id"
+          assert_equal post_id, error.parse_object_id, "Error should have correct object_id"
           assert_equal :content, error.field, "Error should have correct field"
           refute error.is_pointer, "Error should indicate this is not a pointer fetch"
 
@@ -2110,7 +2110,7 @@ class PartialFetchIntegrationTest < Minitest::Test
 
           # Verify error details
           assert_equal PartialFetchPost, error.klass, "Error should have correct class"
-          assert_equal post_id, error.object_id, "Error should have correct object_id"
+          assert_equal post_id, error.parse_object_id, "Error should have correct object_id"
           assert_equal :title, error.field, "Error should have correct field"
           assert error.is_pointer, "Error should indicate this is a pointer fetch"
 

@@ -13,14 +13,6 @@ require_relative "fetching"
 module Parse
   class Query
 
-    # Supporting the `all` class method to be used in scope chaining with queries.
-    # @!visibility private
-    def all(expressions = { limit: :max }, &block)
-      conditions(expressions)
-      return results(&block) if block_given?
-      results
-    end
-
     # Supporting the `first_or_create` class method to be used in scope chaining with queries.
     # @!visibility private
     def first_or_create(query_attrs = {}, resource_attrs = {})
