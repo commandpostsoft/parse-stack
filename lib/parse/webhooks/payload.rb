@@ -199,6 +199,26 @@ module Parse
       def parse_object(pristine = false)
         return nil unless object?
         return Parse::Object.build(@object) if pristine
+        # Memoize so pre-block guard application and the user webhook handler
+        # observe the same instance. Otherwise field_guards applied on the
+        # framework's pre-built object would be invisible to the block's
+        # later parse_object call (which would construct a fresh dirty-tracked
+        # object from @object/@original).
+        return @parse_object if defined?(@parse_object) && !@parse_object.nil?
+        @parse_object = build_parse_object
+      end
+
+      # Force a fresh build, discarding any memoized parse_object. Used by the
+      # webhook framework after mutating @object / @update so a subsequent
+      # parse_object call picks up the modified payload state.
+      # @!visibility private
+      def reset_parse_object_cache!
+        @parse_object = nil
+      end
+
+      private
+
+      def build_parse_object
         # if its a before trigger, then we build the original object and apply the updates
         # in order to create a Parse::Object that has the dirty tracking information
         # if no original is nil, then it means this is a brand new object, so we create
@@ -228,6 +248,8 @@ module Parse
         end # if before_trigger?
         Parse::Object.build(@object)
       end
+
+      public
 
       # This method will intentionally raise a {Parse::Webhooks::ResponseError} with
       # a specific message. When used inside of a registered cloud code webhook

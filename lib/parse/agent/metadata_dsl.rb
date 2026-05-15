@@ -78,6 +78,49 @@ module Parse
         # This method is provided there via the `property` DSL with `_description:` option.
         # @see Parse::Properties::ClassMethods#property_descriptions
 
+        # Declare which fields are surfaced to agent tools for this class.
+        # When set, agent schema enrichment trims the field list down to this
+        # allowlist (plus the always-on `objectId`/`createdAt`/`updatedAt`), and
+        # agent query/fetch tools push the allowlist into the server-side `keys`
+        # projection unless the caller passed an explicit `keys:` override.
+        # Called without arguments, returns the current allowlist.
+        #
+        # @example Limit agent visibility to analytics-relevant fields
+        #   class Team < Parse::Object
+        #     agent_fields :name, :status, :member_count, :owner
+        #   end
+        #
+        # @param names [Array<Symbol, String>] field names to allow
+        # @return [Array<Symbol>] the resulting allowlist
+        def agent_fields(*names)
+          return @agent_field_allowlist ||= [] if names.empty?
+          @agent_field_allowlist = names.flatten.map(&:to_sym).freeze
+        end
+
+        # Read-only accessor for the agent field allowlist.
+        # @return [Array<Symbol>] the allowlist (empty if not declared)
+        def agent_field_allowlist
+          @agent_field_allowlist || []
+        end
+
+        # Class-level analytics usage hint, surfaced inside agent schema output.
+        # Distinct from `agent_description` (a short human summary): use this for
+        # specific guidance the LLM needs to query the class well — enum values,
+        # denormalization caveats, recommended aggregations, etc.
+        #
+        # @example
+        #   agent_usage <<~USAGE
+        #     `status` values: "active" | "archived" | "frozen".
+        #     `member_count` is denormalized; recompute via _User pointer.
+        #   USAGE
+        #
+        # @param text [String, nil] the usage text to set, or nil to read
+        # @return [String, nil] the current usage hint
+        def agent_usage(text = nil)
+          return @agent_usage unless text
+          @agent_usage = text.to_s.strip.freeze
+        end
+
         # Storage hash for agent-allowed methods.
         # Maps method names (symbols) to their metadata hashes.
         #
@@ -192,8 +235,10 @@ module Parse
         # @return [Boolean] true if any metadata is present
         def has_agent_metadata?
           !agent_description.nil? ||
+            !agent_usage.nil? ||
             !property_descriptions.empty? ||
-            !agent_methods.empty?
+            !agent_methods.empty? ||
+            !agent_field_allowlist.empty?
         end
 
         # Get all agent metadata as a hash for serialization.
@@ -202,8 +247,10 @@ module Parse
         def agent_metadata
           {
             description: agent_description,
+            usage: agent_usage,
             property_descriptions: property_descriptions.dup,
             methods: agent_methods.dup,
+            field_allowlist: agent_field_allowlist.dup,
           }
         end
 

@@ -20,8 +20,11 @@ module Parse
       # Methods that are dangerous and should never be invoked via tools.
       # Defined here (rather than MCPServer) so it's always available.
       BLOCKED_METHODS = %w[
-        eval exec system ` send __send__ public_send instance_eval class_eval
-        module_eval define_method remove_method undef_method
+        eval exec system ` send __send__ public_send
+        instance_eval class_eval module_eval
+        instance_exec class_exec module_exec
+        define_method define_singleton_method remove_method undef_method
+        singleton_class
         open fork spawn syscall load require require_relative
         const_get const_set remove_const method binding
         instance_variable_set instance_variable_get
@@ -258,7 +261,10 @@ module Parse
         query[:limit] = limit
         query[:skip] = skip if skip && skip > 0
         query[:order] = order if order
-        query[:keys] = keys.join(",") if keys&.any?
+        # Apply caller-supplied keys verbatim; if absent, fall back to the model's
+        # agent_fields allowlist so the LLM only sees analytics-relevant columns.
+        effective_keys = keys&.any? ? keys.map(&:to_s) : MetadataRegistry.field_allowlist(class_name)
+        query[:keys] = effective_keys.join(",") if effective_keys&.any?
         query[:include] = include.join(",") if include&.any?
 
         # SECURITY: Constraint validation happens in ConstraintTranslator.translate
@@ -317,6 +323,10 @@ module Parse
         query = {}
         query[:include] = include.join(",") if include&.any?
 
+        # Project to the agent_fields allowlist when one is declared
+        allowlist = MetadataRegistry.field_allowlist(class_name)
+        query[:keys] = allowlist.join(",") if allowlist&.any?
+
         response = agent.client.fetch_object(class_name, object_id, query: query, **agent.request_opts)
 
         unless response.success?
@@ -342,6 +352,10 @@ module Parse
           limit: limit,
           order: "-createdAt",
         }
+
+        # Project to the agent_fields allowlist when one is declared
+        allowlist = MetadataRegistry.field_allowlist(class_name)
+        query[:keys] = allowlist.join(",") if allowlist&.any?
 
         response = agent.client.find_objects(class_name, query, **agent.request_opts)
 
@@ -488,30 +502,53 @@ module Parse
         raise Agent::ToolTimeoutError.new(tool_name, timeout)
       end
 
-      # Call a method with arguments, handling both positional and keyword args.
-      # Validates that the method is not on the blocked list to prevent
-      # code execution via user-controlled method names.
-      # @raise [ArgumentError] if the method is blocked.
+      # Call a method with arguments using parameter introspection.
+      #
+      # We avoid the prior "try kwargs, rescue ArgumentError, retry with no args"
+      # pattern because it silently swallows real ArgumentErrors raised from inside
+      # the method body (e.g. validation failures), making bugs invisible. Instead
+      # we look at Method#parameters and either pass kwargs, or raise a clear
+      # error explaining why the call can't be made.
+      #
+      # @raise [ArgumentError] if the method is blocked, takes positional args
+      #   only, or accepts no args but was called with some.
       def call_with_args(target, method_sym, args)
         validate_method_name!(method_sym)
-        if args.empty?
-          target.public_send(method_sym)
+        return target.public_send(method_sym) if args.nil? || args.empty?
+
+        param_types = target.method(method_sym).parameters.map(&:first)
+        accepts_kwargs = (param_types & %i[key keyreq keyrest]).any?
+
+        if accepts_kwargs
+          target.public_send(method_sym, **args)
+        elsif (param_types & %i[req opt rest]).any?
+          raise ArgumentError,
+                "Method '#{method_sym}' takes positional arguments only; " \
+                "agent-exposed methods must accept keyword arguments " \
+                "(received #{truncated_keys(args)})."
         else
-          # Try keyword args first, fall back to no args if method doesn't accept them
-          begin
-            target.public_send(method_sym, **args)
-          rescue ArgumentError
-            # Method might not accept keyword args
-            target.public_send(method_sym)
-          end
+          raise ArgumentError,
+                "Method '#{method_sym}' takes no arguments but was called " \
+                "with #{truncated_keys(args)}."
         end
       end
 
+      # Compact, bounded preview of arg keys for use in error messages.
+      # Caps at 5 keys so a caller cannot use long error messages as an
+      # enumeration oracle for which kwargs round-trip through the agent.
+      def truncated_keys(args)
+        keys = args.keys
+        shown = keys.first(5).join(", ")
+        keys.size > 5 ? "#{keys.size} keys (#{shown}, ...)" : "keys: #{shown}"
+      end
+
       # Validates that a method name is not on the blocked list.
+      # Comparison is case-insensitive so e.g. `:Instance_Exec` cannot bypass the
+      # denylist on Ruby versions / receivers where casing variations are valid.
       # @param method_name [Symbol, String] the method name to validate.
       # @raise [ArgumentError] if the method is blocked.
       def validate_method_name!(method_name)
-        if BLOCKED_METHODS.include?(method_name.to_s)
+        if BLOCKED_METHODS.include?(method_name.to_s.downcase)
           raise ArgumentError, "Method '#{method_name}' is blocked for security reasons"
         end
       end

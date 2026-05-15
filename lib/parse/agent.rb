@@ -3,6 +3,7 @@
 
 require_relative "agent/metadata_dsl"
 require_relative "agent/metadata_registry"
+require_relative "agent/relation_graph"
 require_relative "agent/tools"
 require_relative "agent/constraint_translator"
 require_relative "agent/result_formatter"
@@ -196,6 +197,17 @@ module Parse
 
     # Default operation log size (circular buffer)
     DEFAULT_MAX_LOG_SIZE = 1000
+
+    # Generic Parse-platform conventions shared with the LLM. Appended to the
+    # default system prompt and exposed as the `parse_conventions` MCP prompt.
+    # Kept intentionally short — every call pays the token cost.
+    PARSE_CONVENTIONS = <<~CONVENTIONS.strip.freeze
+      Parse conventions: every object has objectId (10-char alphanumeric), createdAt, updatedAt (ISO8601 dates, server-managed).
+      Pointers appear as {"__type":"Pointer","className":"X","objectId":"Y"}; dates as {"__type":"Date","iso":"..."}.
+      _User is auth/accounts (pointers to users target _User); _Role is access roles.
+      ACL is a permission hash, never user content.
+      _-prefixed classes are Parse internals — skip unless asked.
+    CONVENTIONS
 
     # @return [Symbol] the current permission level (:readonly, :write, or :admin)
     attr_reader :permissions
@@ -866,10 +878,14 @@ module Parse
     # Alias for backward compatibility
     alias_method :system_prompt, :computed_system_prompt
 
-    # Default system prompt - optimized for token efficiency
+    # Default system prompt - optimized for token efficiency.
+    # Begins with tool roster, ends with platform conventions so the LLM knows
+    # the shape of pointers/dates/system fields without re-deriving them.
     def default_system_prompt
       <<~PROMPT
         Parse database assistant. Tools: get_all_schemas (list classes), get_schema (class fields), query_class (find objects), count_objects, get_object (by ID), aggregate (analytics), call_method (model methods). Use get_all_schemas first. Be concise.
+
+        #{PARSE_CONVENTIONS}
       PROMPT
     end
 

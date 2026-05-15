@@ -22,6 +22,12 @@ module Parse
     #   builder.with_highlight(path: :lyrics)
     #   stage = builder.build
     class SearchBuilder
+      # Maximum length of a regex or wildcard query string. Atlas Search uses
+      # Lucene's bounded regex evaluator; long patterns and full-string
+      # wildcards force a state-machine explosion or whole-index scan and can
+      # be used to DoS the search node.
+      MAX_PATTERN_LENGTH = 256
+
       attr_reader :index_name, :operators, :highlight_config, :count_config
 
       def initialize(index_name: nil)
@@ -109,7 +115,10 @@ module Parse
       # @param path [String, Symbol, Array] field(s) to search
       # @param allow_analyzed_field [Boolean] allow searching analyzed fields
       # @return [self] for chaining
+      # @raise [ArgumentError] if `query` is empty, too long, or begins with
+      #   a leading wildcard (`*` or `?`) which forces a full-index scan.
       def wildcard(query:, path:, allow_analyzed_field: nil)
+        validate_pattern!(query, kind: "wildcard")
         operator = {
           "wildcard" => {
             "query" => query,
@@ -128,7 +137,11 @@ module Parse
       # @param path [String, Symbol, Array] field(s) to search
       # @param allow_analyzed_field [Boolean] allow searching analyzed fields
       # @return [self] for chaining
+      # @raise [ArgumentError] if `query` is empty, too long, or starts with
+      #   an unbounded match (`.*`, `.+`, `*`, `?`) that would scan the full
+      #   index.
       def regex(query:, path:, allow_analyzed_field: nil)
+        validate_pattern!(query, kind: "regex")
         operator = {
           "regex" => {
             "query" => query,
@@ -265,6 +278,37 @@ module Parse
       end
 
       private
+
+      # Reject empty, oversized, or leading-wildcard patterns. Leading
+      # wildcards on `wildcard` / `regex` operators force Atlas Search to
+      # evaluate against every term in the index, which is both very slow
+      # and a denial-of-service vector when the input is user-controlled.
+      def validate_pattern!(query, kind:)
+        unless query.is_a?(String) && !query.empty?
+          raise ArgumentError, "#{kind} query must be a non-empty String"
+        end
+        if query.length > MAX_PATTERN_LENGTH
+          raise ArgumentError,
+            "#{kind} query exceeds #{MAX_PATTERN_LENGTH} chars (#{query.length}). " \
+            "Long patterns are denial-of-service vectors against Atlas Search."
+        end
+        if kind == "wildcard"
+          if query.start_with?("*") || query.start_with?("?")
+            raise ArgumentError,
+              "wildcard query may not begin with '*' or '?'; leading wildcards " \
+              "force a full-index scan. Anchor the pattern with a literal prefix."
+          end
+        else # regex
+          if query.start_with?(".*") || query.start_with?(".+") ||
+             query.start_with?("*") || query.start_with?("?")
+            raise ArgumentError,
+              "regex query may not begin with '.*', '.+', '*', or '?'; " \
+              "unbounded leading matches force a full-index scan. Anchor the " \
+              "pattern with a literal prefix."
+          end
+        end
+        nil
+      end
 
       def normalize_path(path)
         case path

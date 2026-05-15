@@ -386,32 +386,55 @@ module Parse
         # Create TCP socket
         tcp_socket = TCPSocket.new(host, port)
 
-        # Wrap with SSL if wss://
-        if uri.scheme == "wss"
-          ssl_context = OpenSSL::SSL::SSLContext.new
-          ssl_context.verify_mode = OpenSSL::SSL::VERIFY_PEER
-          ssl_context.cert_store = OpenSSL::X509::Store.new
-          ssl_context.cert_store.set_default_paths
+        begin
+          # Wrap with SSL if wss://
+          if uri.scheme == "wss"
+            ssl_context = OpenSSL::SSL::SSLContext.new
+            ssl_context.verify_mode = OpenSSL::SSL::VERIFY_PEER
+            ssl_context.cert_store = OpenSSL::X509::Store.new
+            ssl_context.cert_store.set_default_paths
 
-          # Apply TLS version constraints from configuration
-          cfg = config
-          if cfg.ssl_min_version
-            ssl_context.min_version = Configuration.tls_version_constant(cfg.ssl_min_version)
-          end
-          if cfg.ssl_max_version
-            ssl_context.max_version = Configuration.tls_version_constant(cfg.ssl_max_version)
+            # Apply TLS version constraints from configuration
+            cfg = config
+            if cfg.ssl_min_version
+              ssl_context.min_version = Configuration.tls_version_constant(cfg.ssl_min_version)
+            end
+            if cfg.ssl_max_version
+              ssl_context.max_version = Configuration.tls_version_constant(cfg.ssl_max_version)
+            end
+
+            @socket = OpenSSL::SSL::SSLSocket.new(tcp_socket, ssl_context)
+            @socket.sync_close = true
+            @socket.hostname = host
+            @socket.connect
+            # SNI does not verify the cert matches the hostname; this does.
+            # Without it, any cert signed by a trusted CA for any host would be
+            # accepted, enabling MITM of LiveQuery sessions.
+            @socket.post_connection_check(host)
+          else
+            @socket = tcp_socket
           end
 
-          @socket = OpenSSL::SSL::SSLSocket.new(tcp_socket, ssl_context)
-          @socket.sync_close = true
-          @socket.hostname = host
-          @socket.connect
-        else
-          @socket = tcp_socket
+          # Perform WebSocket handshake
+          perform_handshake(host, path)
+        rescue
+          # Clean up both sockets on any failure mid-handshake. sync_close=true
+          # would close tcp_socket via @socket.close, but if @socket wasn't yet
+          # assigned (or assignment failed), we still need to close tcp_socket.
+          if @socket
+            begin
+              @socket.close
+            rescue StandardError
+            end
+            @socket = nil
+          else
+            begin
+              tcp_socket.close
+            rescue StandardError
+            end
+          end
+          raise
         end
-
-        # Perform WebSocket handshake
-        perform_handshake(host, path)
       end
 
       # Perform WebSocket handshake

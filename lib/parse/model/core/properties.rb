@@ -24,6 +24,27 @@ module Parse
     BASE = { objectId: :string, createdAt: :date, updatedAt: :date, ACL: :acl }.freeze
     # The list of properties that are part of all objects
     BASE_KEYS = [:id, :created_at, :updated_at].freeze
+    # Attribute names refused on the mass-assignment path
+    # (`Parse::Object#attributes=` and `apply_attributes!` with
+    # `dirty_track: true`). Internal hydration from server responses uses
+    # `dirty_track: false` and is unaffected, so server-issued
+    # sessionTokens etc. still flow through during decoding.
+    #
+    # The list intentionally covers ONLY server-managed and security-
+    # internal fields. User-facing properties like `acl` and `objectId`
+    # are deliberately omitted because constructor calls like
+    # `Document.new(acl: my_acl)` are legitimate developer code. Rails
+    # applications receiving form input should use StrongParameters
+    # (`params.permit(...)`) to filter attacker-controlled keys before
+    # passing the hash to `Model.new` or `attributes=`.
+    PROTECTED_MASS_ASSIGNMENT_KEYS = %w[
+      sessionToken session_token
+      roles _rperm _wperm
+      _hashed_password _password_history
+      authData _auth_data
+      className __type
+      createdAt created_at updatedAt updated_at
+    ].freeze
     # Default hash map of local attribute name to remote column name
     BASE_FIELD_MAP = { id: :objectId, created_at: :createdAt, updated_at: :updatedAt, acl: :ACL }.freeze
     # The delete operation hash.
@@ -485,13 +506,24 @@ module Parse
     # if dirty_track: is set to false (default), attributes are set without dirty tracking.
     # Allos mass assignment of properties with a provided hash.
     # @param hash [Hash] the hash matching the property field names.
-    # @param dirty_track [Boolean] whether dirty tracking be enabled
+    # @param dirty_track [Boolean] whether dirty tracking be enabled. When true,
+    #   permission-sensitive keys ({Parse::Properties::PROTECTED_MASS_ASSIGNMENT_KEYS})
+    #   are skipped so attacker-controlled params cannot overwrite acl/roles/
+    #   sessionToken/etc. Set explicitly via the typed property writers when
+    #   the caller is trusted.
     # @return [Hash]
     def apply_attributes!(hash, dirty_track: false)
       return unless hash.is_a?(Hash)
 
-      @id ||= hash[Parse::Model::ID] || hash[Parse::Model::OBJECT_ID] || hash[:objectId]
+      protected_keys = dirty_track ? Parse::Properties::PROTECTED_MASS_ASSIGNMENT_KEYS : nil
+      # Internal hydration path lifts objectId out of the response hash. The
+      # mass-assignment path must not, or attacker-controlled params can
+      # overwrite the primary key of an in-memory object.
+      unless dirty_track
+        @id ||= hash[Parse::Model::ID] || hash[Parse::Model::OBJECT_ID] || hash[:objectId]
+      end
       hash.each do |key, value|
+        next if protected_keys && protected_keys.include?(key.to_s)
         method = "#{key}_set_attribute!".freeze
         send(method, value, dirty_track) if respond_to?(method)
       end

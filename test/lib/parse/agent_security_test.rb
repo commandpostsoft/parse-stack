@@ -147,14 +147,16 @@ class PipelineValidatorTest < Minitest::Test
   # ============================================================
 
   def test_rejects_deeply_nested_pipeline
-    # Build a deeply nested structure
+    # Build a structure deeper than MAX_DEPTH (now 20 to accommodate real
+    # $facet+$lookup+$let chains). The DoS guardrail must still fire well
+    # before pathological depths.
     deep_value = { "value" => 1 }
-    15.times { deep_value = { "nested" => deep_value } }
+    (Parse::PipelineSecurity::MAX_DEPTH + 5).times { deep_value = { "nested" => deep_value } }
 
     error = assert_raises(Parse::Agent::PipelineValidator::PipelineSecurityError) do
       Parse::Agent::PipelineValidator.validate!([{ "$match" => deep_value }])
     end
-    assert_match(/depth/, error.message.downcase)
+    assert_match(/depth|nesting/, error.message.downcase)
   end
 
   # ============================================================

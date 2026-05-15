@@ -3,6 +3,7 @@
 
 require "date"
 require "time"
+require_relative "pipeline_security"
 
 module Parse
   # Direct MongoDB access module for bypassing Parse Server.
@@ -74,6 +75,12 @@ module Parse
 
     # Error raised when MongoDB connection fails
     class ConnectionError < StandardError; end
+
+    # Error raised when a denied operator is detected in a raw filter or
+    # pipeline forwarded through {Parse::MongoDB.find} or
+    # {Parse::MongoDB.aggregate}. Currently blocks $where, $function, and
+    # $accumulator, which all execute server-side JavaScript.
+    class DeniedOperator < StandardError; end
 
     # Threshold above which `Parse::MongoDB.find` emits a deprecation warning
     # when called without an explicit `:limit` option. A future major release
@@ -185,11 +192,18 @@ module Parse
         client[name]
       end
 
+      # @deprecated Retained for backwards compatibility. The canonical list now lives
+      #   in {Parse::PipelineSecurity::DENIED_OPERATORS}.
+      DENIED_OPERATORS = Parse::PipelineSecurity::DENIED_OPERATORS
+
       # Execute an aggregation pipeline directly on MongoDB
       # @param collection_name [String] the collection name
       # @param pipeline [Array<Hash>] the aggregation pipeline stages
       # @return [Array<Hash>] the raw results from MongoDB
+      # @raise [Parse::MongoDB::DeniedOperator] if the pipeline contains
+      #   a server-side JS or data-mutating operator at any depth.
       def aggregate(collection_name, pipeline)
+        assert_no_denied_operators!(pipeline)
         collection(collection_name).aggregate(pipeline).to_a
       end
 
@@ -197,26 +211,43 @@ module Parse
       # @param collection_name [String] the collection name
       # @param filter [Hash] the query filter
       # @param options [Hash] additional options (limit, skip, sort, projection).
-      #   If :limit is omitted and the result exceeds DEFAULT_FIND_LIMIT rows,
-      #   a deprecation warning is emitted. A future major release will apply
-      #   DEFAULT_FIND_LIMIT as a hard default. Pass `limit: 0` to explicitly
-      #   request unbounded behavior without a warning.
+      #   When :limit is omitted, DEFAULT_FIND_LIMIT is applied before the
+      #   cursor is materialized and a warning is emitted if the cap is hit.
+      #   Pass `limit: 0` to explicitly request unbounded behavior.
       # @return [Array<Hash>] the raw results from MongoDB
+      # @raise [Parse::MongoDB::DeniedOperator] if the filter contains
+      #   $where, $function, or $accumulator at any depth.
       def find(collection_name, filter = {}, **options)
+        assert_no_denied_operators!(filter)
         cursor = collection(collection_name).find(filter)
-        if options[:limit] && options[:limit] > 0
-          cursor = cursor.limit(options[:limit])
+        explicit_limit = options.key?(:limit)
+        applied_default_limit = false
+
+        if explicit_limit
+          cursor = cursor.limit(options[:limit]) if options[:limit] > 0
+        else
+          # Apply the hard default BEFORE to_a so we never materialize an
+          # unbounded result set. Fetch one extra row so we can detect when
+          # callers hit the cap and warn them.
+          cursor = cursor.limit(DEFAULT_FIND_LIMIT + 1)
+          applied_default_limit = true
         end
+
         cursor = cursor.skip(options[:skip]) if options[:skip]
         cursor = cursor.sort(options[:sort]) if options[:sort]
         cursor = cursor.projection(options[:projection]) if options[:projection]
         results = cursor.to_a
-        if !options.key?(:limit) && results.size > DEFAULT_FIND_LIMIT
-          warn "[DEPRECATION] Parse::MongoDB.find on '#{collection_name}' returned " \
-               "#{results.size} rows with no :limit specified. A future release will " \
-               "apply a default limit of #{DEFAULT_FIND_LIMIT}. Pass an explicit :limit " \
-               "to silence this warning, or :limit => 0 to preserve unbounded behavior."
+
+        if applied_default_limit && results.size > DEFAULT_FIND_LIMIT
+          # Trim the sentinel row and warn — the caller asked for everything
+          # but the result set is larger than the safety cap.
+          results = results.first(DEFAULT_FIND_LIMIT)
+          warn "[Parse::MongoDB.find] on '#{collection_name}' truncated to " \
+               "#{DEFAULT_FIND_LIMIT} rows (no :limit specified). Pass an " \
+               "explicit :limit to control the size, or :limit => 0 for " \
+               "unbounded behavior."
         end
+
         results
       end
 
@@ -483,6 +514,21 @@ module Parse
             value
           end
         end
+      end
+
+      public
+
+      # Walk a filter hash or aggregation pipeline (Hash or Array) and
+      # raise {DeniedOperator} if any nested key matches an entry in
+      # {Parse::PipelineSecurity::DENIED_OPERATORS}.
+      #
+      # Public for testability and for callers that want to validate
+      # input before forwarding to {.find} / {.aggregate}.
+      def assert_no_denied_operators!(node)
+        Parse::PipelineSecurity.validate_filter!(node)
+        nil
+      rescue Parse::PipelineSecurity::Error => e
+        raise DeniedOperator, e.message
       end
     end
 

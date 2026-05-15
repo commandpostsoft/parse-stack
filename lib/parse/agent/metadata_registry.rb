@@ -59,13 +59,26 @@ module Parse
         schemas.select { |s| visible_names.include?(s["className"]) }
       end
 
+      # Fields that always pass through the agent_fields allowlist filter.
+      # These carry semantic meaning the LLM needs even when not explicitly
+      # listed as analytics-relevant.
+      ALWAYS_KEEP_FIELDS = %w[objectId createdAt updatedAt].freeze
+
+      # Per-field metadata keys that bloat the agent schema response without
+      # helping analytics queries. Dropped before the schema reaches the LLM.
+      NOISY_FIELD_METADATA = %w[indexed].freeze
+
       # Enrich a server schema with local model metadata.
       #
       # @param class_name [String] the Parse class name
       # @param server_schema [Hash] the schema from Parse Server
       # @param agent_permission [Symbol] the agent's permission level for method filtering
+      # @param edges [Array<Hash>, nil] pre-built relation edges from
+      #   {RelationGraph.build}. When omitted, edges are built on demand for
+      #   this single class; pass a pre-built array when enriching many
+      #   schemas in a row to avoid the N+1 traversal.
       # @return [Hash] the enriched schema
-      def enriched_schema(class_name, server_schema, agent_permission: :readonly)
+      def enriched_schema(class_name, server_schema, agent_permission: :readonly, edges: nil)
         klass = find_model_class(class_name)
         return server_schema unless klass&.respond_to?(:has_agent_metadata?) && klass.has_agent_metadata?
 
@@ -76,9 +89,32 @@ module Parse
           schema["description"] = klass.agent_description
         end
 
+        # Add class-level analytics usage hint (distinct from description)
+        if klass.respond_to?(:agent_usage) && klass.agent_usage
+          schema["usage"] = klass.agent_usage
+        end
+
         # Enrich fields with property descriptions
         if schema["fields"] && klass.property_descriptions.any?
           schema["fields"] = enrich_fields(schema["fields"], klass)
+        end
+
+        # Filter fields to the declared allowlist (plus always-on system fields).
+        # When no allowlist is declared, leave the field set alone.
+        if schema["fields"] && klass.respond_to?(:agent_field_allowlist) && klass.agent_field_allowlist.any?
+          allowed = klass.agent_field_allowlist.map(&:to_s) | ALWAYS_KEEP_FIELDS
+          schema["fields"] = schema["fields"].select { |name, _| allowed.include?(name) }
+        end
+
+        # Strip noisy per-field metadata regardless of allowlist
+        if schema["fields"]
+          schema["fields"] = schema["fields"].transform_values do |config|
+            next config unless config.is_a?(Hash)
+            cleaned = config.reject { |k, _| NOISY_FIELD_METADATA.include?(k) }
+            # Drop defaultValue if it's effectively empty (nil/empty string carry no signal)
+            cleaned = cleaned.reject { |k, v| k == "defaultValue" && (v.nil? || v == "") }
+            cleaned
+          end
         end
 
         # Add agent-allowed methods (filtered by permission)
@@ -87,17 +123,46 @@ module Parse
           schema["agent_methods"] = format_methods(available_methods)
         end
 
+        # Embed this class's relationship edges (incoming/outgoing) so the LLM
+        # sees pointer/relation context alongside fields. Keeps each schema
+        # response self-contained without the cost of the full graph.
+        per_class = Parse::Agent::RelationGraph.edges_for(class_name, edges)
+        if per_class[:outgoing].any? || per_class[:incoming].any?
+          schema["relations"] = {
+            "outgoing" => per_class[:outgoing].map { |e| edge_summary(e) },
+            "incoming" => per_class[:incoming].map { |e| edge_summary(e) },
+          }
+        end
+
         schema
       end
 
-      # Enrich multiple schemas at once.
+      # Resolve the agent_fields allowlist for a Parse class name. Returns an
+      # array of field-name strings including the always-keep system fields,
+      # or nil when the model has no allowlist declared (callers should treat
+      # nil as "no filtering — return everything").
+      #
+      # @param class_name [String] the Parse class name
+      # @return [Array<String>, nil] allowlist or nil
+      def field_allowlist(class_name)
+        klass = find_model_class(class_name)
+        return nil unless klass&.respond_to?(:agent_field_allowlist)
+        allowlist = klass.agent_field_allowlist
+        return nil if allowlist.empty?
+        allowlist.map(&:to_s) | ALWAYS_KEEP_FIELDS
+      end
+
+      # Enrich multiple schemas at once. Builds the relation graph exactly
+      # once and threads it through each per-schema enrichment so the
+      # combined call is O(classes) rather than O(classes^2).
       #
       # @param server_schemas [Array<Hash>] schemas from Parse Server
       # @param agent_permission [Symbol] the agent's permission level
       # @return [Array<Hash>] enriched schemas
       def enriched_schemas(server_schemas, agent_permission: :readonly)
+        edges = Parse::Agent::RelationGraph.build
         server_schemas.map do |schema|
-          enriched_schema(schema["className"], schema, agent_permission: agent_permission)
+          enriched_schema(schema["className"], schema, agent_permission: agent_permission, edges: edges)
         end
       end
 
@@ -194,6 +259,18 @@ module Parse
 
           result[name] = config
         end
+      end
+
+      # Compact a relation edge for inline schema embedding. Drops the
+      # `kind:` symbol (the `cardinality` already conveys belongs_to vs
+      # relation: `1:N` vs `N:M`) to keep the schema response short.
+      def edge_summary(edge)
+        {
+          "from" => edge[:from],
+          "to" => edge[:to],
+          "via" => edge[:via],
+          "cardinality" => edge[:cardinality],
+        }
       end
 
       # Format methods hash for schema output.

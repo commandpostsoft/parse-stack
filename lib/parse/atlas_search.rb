@@ -1,6 +1,7 @@
 # encoding: UTF-8
 # frozen_string_literal: true
 
+require_relative "pipeline_security"
 require_relative "atlas_search/index_manager"
 require_relative "atlas_search/search_builder"
 require_relative "atlas_search/result"
@@ -365,7 +366,13 @@ module Parse
       end
 
       def convert_filter_for_mongodb(filter, collection_name)
-        # For now, pass through as-is. Could integrate with Query's constraint conversion
+        # The filter hash is interpolated directly into a `$match` stage in
+        # the search pipeline. A caller forwarding a user-controlled filter
+        # (search UI, autocomplete endpoint) must not be able to inject
+        # `$where`, `$function`, `$accumulator`, `$out`, or `$merge` here.
+        # `Parse::PipelineSecurity.validate_filter!` recurses through the
+        # hash and refuses any of those operators at any depth.
+        Parse::PipelineSecurity.validate_filter!(filter) if filter
         filter
       end
 

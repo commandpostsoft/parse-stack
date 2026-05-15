@@ -47,9 +47,13 @@ module Parse
           fields = schema["fields"] || {}
           agent_methods = schema["agent_methods"] || []
 
+          # Subtract the four system fields (objectId, createdAt, updatedAt,
+          # ACL) when reporting a "user-meaningful" count, but never let the
+          # subtraction go negative — the allowlist filter in enriched_schema
+          # may have already trimmed system fields out.
           info = {
             name: class_name,
-            fields: fields.size - 4, # exclude objectId, createdAt, updatedAt, ACL
+            fields: [fields.size - 4, 0].max,
           }
 
           # Include description if present (compact)
@@ -92,12 +96,21 @@ module Parse
         # Include class description if present
         result[:description] = schema["description"] if schema["description"]
 
+        # Include analytics usage hint if present (separate from description)
+        result[:usage] = schema["usage"] if schema["usage"]
+
         result[:fields] = format_fields_detailed(fields)
         result[:indexes] = format_indexes(indexes)
         result[:permissions] = format_clp(clp)
 
         # Include agent methods if any
         result[:agent_methods] = agent_methods if agent_methods.any?
+
+        # Include relationship edges if any (set by MetadataRegistry)
+        if schema["relations"].is_a?(Hash) &&
+           (schema["relations"]["outgoing"].to_a.any? || schema["relations"]["incoming"].to_a.any?)
+          result[:relations] = schema["relations"]
+        end
 
         result
       end

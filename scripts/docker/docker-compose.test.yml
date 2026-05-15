@@ -21,6 +21,12 @@ services:
     container_name: parse-stack-test-server
     ports:
       - "2337:1337"
+    # `host.docker.internal` is needed so Parse Server can POST to the
+    # in-process WEBrick that backs webhook integration tests. Docker
+    # Desktop on Mac/Windows resolves this natively; on Linux we map it
+    # to host-gateway. Without this, end-to-end webhook tests are skipped.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       mongo:
         condition: service_started

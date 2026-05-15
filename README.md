@@ -156,7 +156,16 @@ result = Parse.call_function :myFunctionName, {param: value}
 
 ## What's New in 3.x
 
-**Current version: 3.3.0** | **Ruby 3.1+ required**
+**Current version: 4.0.0** | **Ruby 3.2+ required**
+
+### 4.0 - Security Hardening and Modernization
+- Minimum Ruby version bumped to 3.2 (Ruby 3.1 reached EOL March 2025)
+- Minimum Rails/ActiveSupport bumped to 6.1 (was unbounded at 5.x)
+- CI tests against Ruby 3.2, 3.3, 3.4, and 3.5
+- LiveQuery TLS hostname verification (`post_connection_check`)
+- Webhook endpoint fails closed when no key is configured (opt out via `Parse::Webhooks.allow_unauthenticated = true`)
+- `Parse::Error.new(code, message)` two-argument constructor with `#code` reader
+- `include`d pointer fields now auto-added to `keys` when a key allowlist is set
 
 ### 3.3 - Ruby Version Update
 - Minimum Ruby version bumped to 3.1 (Ruby 3.0 reached EOL March 2024)

@@ -351,6 +351,7 @@ module Parse
       @master_key = opts[:master_key] || ENV["PARSE_SERVER_MASTER_KEY"] || ENV["PARSE_MASTER_KEY"]
 
       @require_https = opts.fetch(:require_https, ENV["PARSE_REQUIRE_HTTPS"] == "true")
+      @allow_faraday_proxy = opts.fetch(:allow_faraday_proxy, false)
 
       # Security check for HTTP usage (except localhost/127.0.0.1 for development)
       if @server_url&.start_with?("http://") && !@server_url.match?(%r{^http://(localhost|127\.0\.0\.1)(:|/)})
@@ -400,10 +401,26 @@ module Parse
         raise Parse::Error::ConnectionError, "Please call Parse.setup(server_url:, application_id:, api_key:) to setup a client"
       end
       @server_url += "/" unless @server_url.ends_with?("/")
+
+      # Resolve timeouts. Defaults guard the calling thread against an
+      # unresponsive Parse Server (slowloris, hung dyno) which would
+      # otherwise tie up Puma/Sidekiq workers indefinitely.
+      open_timeout = opts.fetch(:open_timeout, (ENV["PARSE_OPEN_TIMEOUT"] || 5).to_i)
+      read_timeout = opts.fetch(:timeout, (ENV["PARSE_TIMEOUT"] || 30).to_i)
+
       #Configure Faraday
       opts[:faraday] ||= {}
+      # Guard against silent TLS downgrade or attacker-controlled proxy via
+      # opts[:faraday]. The require_https check earlier only inspects the URL
+      # scheme; without this guard a caller passing
+      #   faraday: { ssl: { verify: false }, proxy: "http://attacker" }
+      # would neuter TLS verification on an HTTPS connection.
+      validate_faraday_opts!(opts[:faraday])
       opts[:faraday].merge!(:url => @server_url)
       @conn = Faraday.new(opts[:faraday]) do |conn|
+        # Apply timeouts before any user-supplied middleware sees a request.
+        conn.options.timeout = read_timeout if read_timeout > 0
+        conn.options.open_timeout = open_timeout if open_timeout > 0
         #conn.request :json
 
         # Configure logging if enabled
@@ -498,6 +515,39 @@ module Parse
       # Configure LiveQuery if URL provided
       configure_live_query(opts)
     end
+
+    # Inspect `opts[:faraday]` for settings that would silently neuter
+    # transport security and reject them. Specifically:
+    #
+    # - `ssl: { verify: false }` on an HTTPS URL — would accept any cert
+    # - `proxy: "..."` — would route every request through an attacker-
+    #   controlled MITM unless explicitly allowlisted
+    #
+    # @api private
+    def validate_faraday_opts!(faraday_opts)
+      return unless faraday_opts.is_a?(Hash)
+
+      ssl = faraday_opts[:ssl] || faraday_opts["ssl"]
+      if ssl.is_a?(Hash)
+        verify = ssl.key?(:verify) ? ssl[:verify] : ssl["verify"]
+        if verify == false && @server_url.to_s.start_with?("https://")
+          raise ArgumentError,
+            "[Parse::Client] Refusing to disable TLS certificate verification " \
+            "(opts[:faraday][:ssl][:verify] = false) on an HTTPS server URL. " \
+            "Fix the server certificate or downgrade the URL to http:// " \
+            "(with require_https: false) for explicit local testing."
+        end
+      end
+
+      proxy = faraday_opts[:proxy] || faraday_opts["proxy"]
+      if proxy && !@allow_faraday_proxy
+        raise ArgumentError,
+          "[Parse::Client] Refusing opts[:faraday][:proxy] = #{proxy.inspect}. " \
+          "Routing requests through a proxy can be used to MITM credentials. " \
+          "Pass allow_faraday_proxy: true to explicitly opt in."
+      end
+    end
+    private :validate_faraday_opts!
 
     # Configure LiveQuery with the given options
     # @param opts [Hash] configuration options

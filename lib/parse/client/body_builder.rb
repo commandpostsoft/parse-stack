@@ -33,7 +33,11 @@ module Parse
       # Maximum url length for most server requests before HTTP Method Override is used.
       MAX_URL_LENGTH = 2_000.freeze
       # Fields that should be redacted from log output.
-      SENSITIVE_FIELDS = %w[password token sessionToken session_token access_token authData].freeze
+      SENSITIVE_FIELDS = %w[
+        password token sessionToken session_token access_token authData
+        masterKey master_key apiKey api_key clientKey client_key
+        javascriptKey javascript_key refreshToken refresh_token
+      ].freeze
       SENSITIVE_PATTERN = /(#{SENSITIVE_FIELDS.join("|")})(["']?\s*[=:>]\s*["']?)([^"&\s,}\]]+)/i
       # Request headers that must never be printed verbatim in debug logs.
       # Matched case-insensitively against Faraday header keys.

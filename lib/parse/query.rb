@@ -2,6 +2,7 @@
 # frozen_string_literal: true
 
 require_relative "client"
+require_relative "pipeline_security"
 require_relative "query/operation"
 require_relative "query/constraints"
 require_relative "query/ordering"
@@ -1098,7 +1099,7 @@ module Parse
 
       response = client.fetch_object(@table, object_id)
       if response.error?
-        raise Parse::Error.new(response.error_code, response.message)
+        raise Parse::Error.new(response.code, response.error)
       end
 
       Parse::Object.build(response.result, parse_class)
@@ -1743,6 +1744,11 @@ module Parse
     def build_direct_mongodb_pipeline
       pipeline = []
 
+      # Mirror the REST compile() behavior: ensure each top-level included field
+      # is also in @keys so the $project stage below does not strip the pointer
+      # that the $lookup stage is supposed to expand.
+      merge_includes_into_keys!
+
       # Compile the where clause and convert for direct MongoDB access
       compiled_where = compile_where
 
@@ -2266,7 +2272,10 @@ module Parse
     #   # With MongoDB direct (required for $inQuery constraints in aggregation)
     #   aggregation = Asset.query.aggregate(pipeline, mongo_direct: true)
     # Pipeline stages that are blocked to prevent data exfiltration or destructive operations.
-    BLOCKED_PIPELINE_STAGES = %w[$out $merge $planCacheSetFilter $planCacheClear $function $accumulator $collMod $createIndex $dropIndex].freeze
+    # @deprecated Retained for backwards compatibility. The canonical list now lives in
+    #   {Parse::PipelineSecurity::DENIED_OPERATORS} and is enforced recursively, not only
+    #   at the top-level stage.
+    BLOCKED_PIPELINE_STAGES = Parse::PipelineSecurity::DENIED_OPERATORS
 
     def aggregate(pipeline, verbose: nil, mongo_direct: nil)
       validate_pipeline!(pipeline)
@@ -2393,37 +2402,36 @@ module Parse
       Aggregation.new(self, complete_pipeline, verbose: verbose, mongo_direct: use_mongo_direct || false)
     end
 
-    # Validates that a pipeline does not contain blocked stages or dangerous operators.
+    # Validates that a pipeline does not contain dangerous operators. Uses the
+    # permissive mode of {Parse::PipelineSecurity} (recursive denylist for $where,
+    # $function, $accumulator, $out, $merge, $collMod, $createIndex, $dropIndex)
+    # so that user code passing uncommon-but-legitimate read stages like
+    # $densify or $fill continues to work. Strict allowlist validation is
+    # available via {Parse::PipelineSecurity.validate_pipeline!} for callers
+    # that want to opt in.
+    #
+    # @note Permissive mode does NOT block `$lookup`, `$graphLookup`, or
+    #   `$unionWith` — these are legitimate read stages but can cross
+    #   collection boundaries that Parse ACL/CLP does not enforce. Do not
+    #   pass raw attacker-controlled input into {#aggregate}; construct the
+    #   pipeline in SDK code and interpolate only validated values.
+    #
     # @param pipeline [Array<Hash>] the aggregation pipeline stages.
     # @raise [ArgumentError] if a blocked stage or dangerous operator is found.
     def validate_pipeline!(pipeline)
-      pipeline.each do |stage|
-        next unless stage.is_a?(Hash)
-        stage.each_key do |key|
-          if BLOCKED_PIPELINE_STAGES.include?(key.to_s)
-            raise ArgumentError, "Aggregation pipeline stage '#{key}' is blocked for security reasons"
-          end
-        end
-        # Block $where inside $match stages
-        if stage.key?("$match") && stage["$match"].is_a?(Hash)
-          validate_no_where_operator!(stage["$match"])
-        end
-      end
+      Parse::PipelineSecurity.validate_filter!(pipeline)
+    rescue Parse::PipelineSecurity::Error => e
+      raise ArgumentError, e.message
     end
 
-    # Recursively checks a hash for $where operators.
+    # @deprecated Retained for backwards compatibility. Use
+    #   {Parse::PipelineSecurity.validate_filter!} for new code.
     # @param hash [Hash] the hash to check.
-    # @raise [ArgumentError] if $where is found.
+    # @raise [ArgumentError] if $where (or any other denied operator) is found.
     def validate_no_where_operator!(hash)
-      hash.each do |key, value|
-        if key.to_s == "$where"
-          raise ArgumentError, "The $where operator is blocked for security reasons"
-        end
-        validate_no_where_operator!(value) if value.is_a?(Hash)
-        if value.is_a?(Array)
-          value.each { |v| validate_no_where_operator!(v) if v.is_a?(Hash) }
-        end
-      end
+      Parse::PipelineSecurity.validate_filter!(hash)
+    rescue Parse::PipelineSecurity::Error => e
+      raise ArgumentError, e.message
     end
 
     # Converts the current query into an aggregate pipeline and executes it.
@@ -2947,6 +2955,24 @@ module Parse
 
     private :validate_includes_vs_keys
 
+    # Ensures every top-level field referenced by an `include` is also present
+    # in `keys`. Only runs when `keys` has already been set — without a keys
+    # allowlist, all fields are returned and the merge is unnecessary.
+    # @!visibility private
+    def merge_includes_into_keys!
+      return if @keys.nil? || @keys.empty?
+      return if @includes.nil? || @includes.empty?
+
+      @includes.each do |inc|
+        top = inc.to_s.split(".", 2).first
+        next if top.nil? || top.empty?
+        sym = top.to_sym
+        @keys.push(sym) unless @keys.include?(sym)
+      end
+      @keys.uniq!
+    end
+    private :merge_includes_into_keys!
+
     # Builds Parse::Pointer objects based on the set of Parse JSON hashes in an array.
     # @param list [Array<Hash>] a list of Parse JSON hashes
     # @param field [Symbol, String, nil] optional field name for schema-based conversion
@@ -3010,6 +3036,12 @@ module Parse
     def compile(encode: true, includeClassName: false)
       # Validate includes vs keys before compiling
       validate_includes_vs_keys
+
+      # When a `keys` allowlist is set alongside `include`, the parent pointer
+      # field must also be in `keys` or Parse Server strips it before expanding
+      # the include. Auto-add the top-level segment of each include so partial
+      # fetches don't silently drop included pointers.
+      merge_includes_into_keys!
 
       run_callbacks :prepare do
         q = {} #query

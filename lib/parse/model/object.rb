@@ -32,6 +32,8 @@ require_relative "core/properties"
 require_relative "core/errors"
 require_relative "core/builder"
 require_relative "core/enhanced_change_tracking"
+require_relative "core/field_guards"
+require_relative "core/parse_reference"
 require_relative "validations"
 require_relative "associations/has_one"
 require_relative "associations/belongs_to"
@@ -133,6 +135,8 @@ module Parse
   class Object < Pointer
     include Properties
     include Core::EnhancedChangeTracking
+    include Core::FieldGuards
+    include Core::ParseReference
     include Associations::HasOne
     include Associations::BelongsTo
     include Associations::HasMany
@@ -516,6 +520,112 @@ module Parse
 
       alias_method :set_class_permission, :set_clp
 
+      # Lock every CLP operation to master-key access only. Use as a starting
+      # point when a class should be entirely hidden from clients; you can
+      # then selectively open specific operations with {set_clp} or
+      # {set_class_access} afterward.
+      #
+      # @example Hide a class entirely from clients
+      #   class AuditLog < Parse::Object
+      #     master_only_class!
+      #   end
+      #
+      # @example Hide everything, then open create+get for clients
+      #   class Invitation < Parse::Object
+      #     master_only_class!
+      #     set_clp :create, public: true
+      #     set_clp :get, public: true
+      #   end
+      #
+      # @return [void]
+      def master_only_class!
+        Parse::CLP::OPERATIONS.each { |op| set_clp(op) }
+        nil
+      end
+
+      # Restrict `find` and `count` to master-key only, leaving the other
+      # operations (`get`, `create`, `update`, `delete`, `addField`) at their
+      # current settings. This is the canonical "Installation-style" pattern:
+      # clients can interact with individual records but cannot enumerate or
+      # count them.
+      #
+      # @example Mirror _Installation semantics
+      #   class Invitation < Parse::Object
+      #     unlistable_class!
+      #     # clients can still get/create/update/delete by objectId
+      #   end
+      #
+      # @return [void]
+      def unlistable_class!
+        set_clp(:find)
+        set_clp(:count)
+        nil
+      end
+
+      # Set CLP for multiple operations in one call, choosing a coarse access
+      # mode per operation. Each value can be:
+      #
+      # * `:master` / `:master_only` / `nil` / `false` -- master key only
+      #   (Parse Server's empty `{}` permission for that op)
+      # * `:public` / `true`                            -- wildcard `*` access
+      # * `:authenticated`                              -- requiresAuthentication
+      # * a String or Symbol                            -- a single role name
+      #   (the `role:` prefix is added automatically)
+      # * an Array of Strings/Symbols                   -- multiple role names
+      #
+      # Operations not listed in the hash are left at their current setting.
+      # For finer control (mixed roles, users, pointer-fields,
+      # requires_authentication) use {set_clp} directly.
+      #
+      # @example The _Installation pattern -- get-by-id and create, but no listing
+      #   class Invitation < Parse::Object
+      #     set_class_access(
+      #       find:     :master,        # nobody can list
+      #       count:    :master,        # nobody can count
+      #       get:      :public,        # anyone with the id can fetch
+      #       create:   :authenticated, # logged-in users may create
+      #       update:   :master,        # only server may update
+      #       delete:   :master,        # only server may delete
+      #     )
+      #   end
+      #
+      # @example Admin-only writes, public reads
+      #   class Article < Parse::Object
+      #     set_class_access(
+      #       find: :public, get: :public,
+      #       create: "Admin", update: "Admin", delete: "Admin",
+      #     )
+      #   end
+      #
+      # @param ops_to_access [Hash{Symbol => Symbol,String,Array,Boolean,nil}]
+      # @return [void]
+      def set_class_access(**ops_to_access)
+        ops_to_access.each do |op, access|
+          op = op.to_sym
+          unless Parse::CLP::OPERATIONS.include?(op)
+            raise ArgumentError,
+                  "Unknown CLP operation #{op.inspect}. Allowed: #{Parse::CLP::OPERATIONS.inspect}"
+          end
+          case access
+          when :master, :master_only, nil, false
+            set_clp(op)
+          when :public, true
+            set_clp(op, public: true)
+          when :authenticated
+            set_clp(op, requires_authentication: true)
+          when Array
+            set_clp(op, roles: access.map(&:to_s))
+          when String, Symbol
+            set_clp(op, roles: [access.to_s])
+          else
+            raise ArgumentError,
+                  "Unknown class_access value for :#{op}: #{access.inspect}. " \
+                  "Use :master, :public, :authenticated, a role name, or an array of roles."
+          end
+        end
+        nil
+      end
+
       # Define protected fields that should be hidden from certain users/roles.
       # This is used to implement field-level security.
       #
@@ -592,6 +702,92 @@ module Parse
       end
 
       alias_method :set_protected_fields, :protect_fields
+
+      # Introspect the locally-configured access surface for this class.
+      # Combines the CLP operations, protectedFields read-side hiding, and
+      # the write-side protections installed via the field_guards DSL into
+      # a single hash, so it's easy to audit who can do what to which
+      # fields without reading three separate parts of the class body.
+      #
+      # The hash is built from the Parse-Stack model declarations only. It
+      # does NOT round-trip the Parse Server schema; if you've configured
+      # CLPs on the server side that haven't been mirrored locally, those
+      # won't appear here. Conversely, calling `update_clp!` pushes what
+      # this method reflects.
+      #
+      # @example
+      #   class Post < Parse::Object
+      #     property :title, :string
+      #     property :owner, :string
+      #     guard :owner, :master_only
+      #     parse_reference
+      #     set_class_access(find: :public, create: :authenticated, update: "Admin")
+      #   end
+      #
+      #   Post.describe_access
+      #   # =>
+      #   # {
+      #   #   operations: {
+      #   #     find:   { "*" => true },
+      #   #     create: { "requiresAuthentication" => true },
+      #   #     update: { "role:Admin" => true },
+      #   #     ...
+      #   #   },
+      #   #   read_user_fields:  [],
+      #   #   write_user_fields: [],
+      #   #   fields: {
+      #   #     title:           { write: :open,        read: :open },
+      #   #     owner:           { write: :master_only, read: :open },
+      #   #     parse_reference: { write: :set_once,    read: { hidden_from: ["*"] } },
+      #   #   },
+      #   # }
+      #
+      # @return [Hash]
+      def describe_access
+        perms = class_permissions
+        protected_by_pattern = perms.respond_to?(:protected_fields) ? perms.protected_fields : {}
+        guards_map = respond_to?(:field_guards) && field_guards ? field_guards : {}
+
+        # Per-field access summary. Iterate `field_map` (local -> remote)
+        # rather than `fields`, because `fields` redundantly stores BOTH
+        # the local key (e.g. :full_name) and the remote key (:fullName)
+        # for every property. That redundancy would cause multi-word
+        # properties to appear twice in the output.
+        per_field = {}
+        field_map.each do |local_sym, remote_sym|
+          local_sym = local_sym.to_sym
+          next if Parse::Properties::CORE_FIELDS.key?(local_sym)
+          data_type = fields[local_sym]
+          remote = remote_sym.to_s
+
+          # Read protection -- collect every protectedFields pattern that
+          # lists this field (under either its local or remote name).
+          hidden_from = protected_by_pattern.each_with_object([]) do |(pattern, hidden_fields), acc|
+            acc << pattern if hidden_fields.include?(remote) || hidden_fields.include?(local_sym.to_s)
+          end
+
+          per_field[local_sym] = {
+            write: guards_map[local_sym] || :open,
+            read:  hidden_from.empty? ? :open : { hidden_from: hidden_from },
+            type:  data_type,
+          }
+        end
+
+        # Deep-copy the operations hash so callers mutating the result
+        # don't accidentally mutate the live class_permissions state.
+        operations = if perms.respond_to?(:permissions)
+            perms.permissions.transform_values { |v| v.is_a?(Hash) ? v.dup : v }
+          else
+            {}
+          end
+
+        {
+          operations:        operations,
+          read_user_fields:  perms.respond_to?(:read_user_fields)  ? perms.read_user_fields  : [],
+          write_user_fields: perms.respond_to?(:write_user_fields) ? perms.write_user_fields : [],
+          fields:            per_field,
+        }
+      end
 
       # Fetch the current CLP from the Parse Server for this class.
       # @param client [Parse::Client] optional client to use
