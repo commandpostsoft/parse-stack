@@ -205,6 +205,18 @@ module Parse
         klass&.respond_to?(:has_agent_metadata?) && klass.has_agent_metadata?
       end
 
+      # Check whether COLLSCANs are explicitly permitted for the given class.
+      # Returns true when the model declares `agent_allow_collscan true`, false
+      # otherwise (including when no model class is registered).
+      #
+      # @param class_name [String] the Parse class name
+      # @return [Boolean]
+      def allow_collscan?(class_name)
+        klass = find_model_class(class_name)
+        return false unless klass&.respond_to?(:agent_allow_collscan?)
+        klass.agent_allow_collscan?
+      end
+
       private
 
       # Find the Ruby model class for a Parse class name.

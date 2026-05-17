@@ -1324,14 +1324,18 @@ module Parse
     #
     # @param raw [Boolean] if true, returns raw MongoDB documents converted to Parse format
     #   instead of Parse::Object instances (default: false)
+    # @param max_time_ms [Integer, nil] optional server-side time limit in milliseconds.
+    #   When provided, MongoDB will cancel the aggregation if it exceeds this budget and
+    #   {Parse::MongoDB::ExecutionTimeout} is raised. Pass +nil+ (the default) for no cap.
     # @yield a block to iterate for each object that matched the query
     # @return [Array<Parse::Object>] if raw is false, a list of Parse::Object subclasses
     # @return [Array<Hash>] if raw is true, Parse-formatted JSON hashes
     # @raise [Parse::MongoDB::GemNotAvailable] if mongo gem is not installed
     # @raise [Parse::MongoDB::NotEnabled] if direct MongoDB is not configured
+    # @raise [Parse::MongoDB::ExecutionTimeout] if the query exceeds max_time_ms
     # @note This is a read-only operation. Direct MongoDB queries cannot modify data.
     # @see Parse::MongoDB.configure
-    def results_direct(raw: false, &block)
+    def results_direct(raw: false, max_time_ms: nil, &block)
       require_relative "mongodb"
       Parse::MongoDB.require_gem!
 
@@ -1345,7 +1349,7 @@ module Parse
       pipeline = build_direct_mongodb_pipeline
 
       # Execute the aggregation directly on MongoDB
-      raw_results = Parse::MongoDB.aggregate(@table, pipeline)
+      raw_results = Parse::MongoDB.aggregate(@table, pipeline, max_time_ms: max_time_ms)
 
       # Convert MongoDB documents to Parse format
       parse_results = Parse::MongoDB.convert_documents_to_parse(raw_results, @table)
@@ -4500,11 +4504,14 @@ module Parse
     # @param pipeline [Array<Hash>] the MongoDB aggregation pipeline stages
     # @param verbose [Boolean, nil] whether to print verbose output (nil means use query's setting)
     # @param mongo_direct [Boolean] if true, uses MongoDB directly bypassing Parse Server (required for $literal)
-    def initialize(query, pipeline, verbose: nil, mongo_direct: false)
+    # @param max_time_ms [Integer, nil] optional server-side time limit in milliseconds passed to
+    #   {Parse::MongoDB.aggregate} when mongo_direct is true. Pass +nil+ (the default) for no cap.
+    def initialize(query, pipeline, verbose: nil, mongo_direct: false, max_time_ms: nil)
       @query = query
       @pipeline = pipeline
       @cached_response = nil
       @mongo_direct = mongo_direct
+      @max_time_ms = max_time_ms
       # Use provided verbose setting, or fall back to query's verbose_aggregate setting
       @verbose = verbose.nil? ? @query.instance_variable_get(:@verbose_aggregate) : verbose
     end
@@ -4545,10 +4552,12 @@ module Parse
     end
 
     # Execute aggregation directly on MongoDB
+    # @param max_time_ms [Integer, nil] optional server-side time limit (milliseconds).
+    #   Defaults to the value passed to {#initialize} via the +max_time_ms:+ keyword.
     # @return [Array<Hash>] raw MongoDB results
-    def execute_direct!
+    def execute_direct!(max_time_ms: @max_time_ms)
       table = @query.instance_variable_get(:@table)
-      Parse::MongoDB.aggregate(table, @pipeline)
+      Parse::MongoDB.aggregate(table, @pipeline, max_time_ms: max_time_ms)
     end
 
     # Returns processed results from the aggregation.
@@ -4562,10 +4571,14 @@ module Parse
       response = execute!
 
       if @mongo_direct && defined?(Parse::MongoDB) && Parse::MongoDB.enabled?
-        # For MongoDB direct, convert raw results to Parse objects or AggregationResult
+        # For MongoDB direct, branch per-row on the *raw* document: real Parse
+        # docs always carry _created_at / _updated_at, while $group rows reuse
+        # _id as the group key. We must not feed group rows through
+        # convert_document_to_parse, which would rename _id → objectId and
+        # fool the Parse-document heuristic.
         return [] if response.nil? || response.empty?
-        converted = Parse::MongoDB.convert_documents_to_parse(response, @query.instance_variable_get(:@table))
-        items = converted.map { |item| convert_aggregation_item(item) }
+        table = @query.instance_variable_get(:@table)
+        items = response.map { |raw| convert_direct_aggregation_item(raw, table) }
       else
         return [] if response.error?
         items = response.result.map { |item| convert_aggregation_item(item) }
@@ -4586,6 +4599,32 @@ module Parse
       else
         AggregationResult.new(item)
       end
+    end
+
+    # Convert a raw MongoDB aggregation row from the mongo_direct path. Decides
+    # based on the presence of Parse-document markers in the *raw* document.
+    # @param raw [Hash] the raw MongoDB document (with _id, _created_at, etc.)
+    # @param table [String] the Parse class name
+    # @return [Parse::Object, AggregationResult]
+    def convert_direct_aggregation_item(raw, table)
+      if raw_is_parse_document?(raw)
+        parse_doc = Parse::MongoDB.convert_document_to_parse(raw, table)
+        @query.send(:decode, [parse_doc]).first
+      else
+        AggregationResult.new(Parse::MongoDB.convert_aggregation_document(raw))
+      end
+    end
+
+    # A raw MongoDB document is a real Parse object only if it carries the
+    # internal timestamp fields Parse Server enforces on every row. $group /
+    # $project rows that drop these are aggregation results, regardless of
+    # whether _id is present.
+    # @param raw [Hash] the raw MongoDB document
+    # @return [Boolean]
+    def raw_is_parse_document?(raw)
+      return false unless raw.is_a?(Hash)
+      raw.key?("_created_at") || raw.key?(:_created_at) ||
+        raw.key?("_updated_at") || raw.key?(:_updated_at)
     end
 
     # Check if a hash looks like a standard Parse document

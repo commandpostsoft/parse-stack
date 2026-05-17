@@ -305,7 +305,7 @@ class PipelineSecurityTest < Minitest::Test
     end.new
     fake_collection = Class.new do
       def initialize(c); @c = c end
-      def aggregate(_p); @c end
+      def aggregate(_p, _opts = {}); @c end
     end.new(fake_cursor)
 
     Parse::MongoDB.stub(:collection, ->(_name) { fake_collection }) do

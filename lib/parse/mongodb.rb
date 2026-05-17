@@ -82,6 +82,33 @@ module Parse
     # $accumulator, which all execute server-side JavaScript.
     class DeniedOperator < StandardError; end
 
+    # Error raised when MongoDB cancels a query because it exceeded the
+    # requested maxTimeMS budget (MongoDB error code 50 / MaxTimeMSExpired).
+    # This is the DB-side counterpart to {Parse::Agent::ToolTimeoutError} and
+    # is raised by {Parse::MongoDB.aggregate} / {Parse::MongoDB.find} when the
+    # driver reports code 50.
+    #
+    # @example Handling a DB-level timeout
+    #   begin
+    #     Parse::MongoDB.aggregate("Song", pipeline, max_time_ms: 5000)
+    #   rescue Parse::MongoDB::ExecutionTimeout => e
+    #     puts "#{e.collection_name} timed out after #{e.max_time_ms}ms"
+    #   end
+    class ExecutionTimeout < StandardError
+      # @return [Integer] the maxTimeMS budget that was exceeded
+      attr_reader :max_time_ms
+      # @return [String] the collection that was being queried
+      attr_reader :collection_name
+
+      # @param collection_name [String] the MongoDB collection
+      # @param max_time_ms [Integer] the budget in milliseconds that was exceeded
+      def initialize(collection_name:, max_time_ms:)
+        @max_time_ms = max_time_ms
+        @collection_name = collection_name
+        super("Query on '#{collection_name}' exceeded max_time_ms=#{max_time_ms}ms — narrow filter or add index")
+      end
+    end
+
     # Threshold above which `Parse::MongoDB.find` emits a deprecation warning
     # when called without an explicit `:limit` option. A future major release
     # will enforce this as a hard default limit. Callers should pass an
@@ -199,26 +226,41 @@ module Parse
       # Execute an aggregation pipeline directly on MongoDB
       # @param collection_name [String] the collection name
       # @param pipeline [Array<Hash>] the aggregation pipeline stages
+      # @param max_time_ms [Integer, nil] optional server-side time limit in milliseconds.
+      #   When provided, MongoDB will cancel the query if it exceeds this budget and
+      #   the driver error is translated to {Parse::MongoDB::ExecutionTimeout}.
+      #   Pass +nil+ (the default) for no cap.
       # @return [Array<Hash>] the raw results from MongoDB
       # @raise [Parse::MongoDB::DeniedOperator] if the pipeline contains
       #   a server-side JS or data-mutating operator at any depth.
-      def aggregate(collection_name, pipeline)
+      # @raise [Parse::MongoDB::ExecutionTimeout] if the query exceeds max_time_ms
+      def aggregate(collection_name, pipeline, max_time_ms: nil)
         assert_no_denied_operators!(pipeline)
-        collection(collection_name).aggregate(pipeline).to_a
+        agg_opts = {}
+        agg_opts[:max_time_ms] = max_time_ms if max_time_ms
+        collection(collection_name).aggregate(pipeline, agg_opts).to_a
+      rescue => e
+        raise_if_timeout!(e, collection_name, max_time_ms)
+        raise
       end
 
       # Execute a find query directly on MongoDB
       # @param collection_name [String] the collection name
       # @param filter [Hash] the query filter
-      # @param options [Hash] additional options (limit, skip, sort, projection).
+      # @param options [Hash] additional options (limit, skip, sort, projection, max_time_ms).
       #   When :limit is omitted, DEFAULT_FIND_LIMIT is applied before the
       #   cursor is materialized and a warning is emitted if the cap is hit.
       #   Pass `limit: 0` to explicitly request unbounded behavior.
+      #   When :max_time_ms is provided, MongoDB will cancel the query if it
+      #   exceeds the budget; the driver error is translated to
+      #   {Parse::MongoDB::ExecutionTimeout}.
       # @return [Array<Hash>] the raw results from MongoDB
       # @raise [Parse::MongoDB::DeniedOperator] if the filter contains
       #   $where, $function, or $accumulator at any depth.
+      # @raise [Parse::MongoDB::ExecutionTimeout] if the query exceeds max_time_ms
       def find(collection_name, filter = {}, **options)
         assert_no_denied_operators!(filter)
+        max_time_ms = options.delete(:max_time_ms)
         cursor = collection(collection_name).find(filter)
         explicit_limit = options.key?(:limit)
         applied_default_limit = false
@@ -236,6 +278,7 @@ module Parse
         cursor = cursor.skip(options[:skip]) if options[:skip]
         cursor = cursor.sort(options[:sort]) if options[:sort]
         cursor = cursor.projection(options[:projection]) if options[:projection]
+        cursor = cursor.max_time_ms(max_time_ms) if max_time_ms
         results = cursor.to_a
 
         if applied_default_limit && results.size > DEFAULT_FIND_LIMIT
@@ -249,6 +292,9 @@ module Parse
         end
 
         results
+      rescue => e
+        raise_if_timeout!(e, collection_name, max_time_ms)
+        raise
       end
 
       # List Atlas Search indexes for a collection
@@ -346,6 +392,22 @@ module Parse
         docs.map { |doc| convert_document_to_parse(doc, class_name) }
       end
 
+      # Convert a raw MongoDB aggregation row, coercing values (BSON ObjectIds,
+      # dates, nested documents) but preserving all field names including +_id+.
+      # Unlike {.convert_document_to_parse}, this does NOT rename +_id+ to
+      # +objectId+, because aggregation +$group+ stages reuse +_id+ as the
+      # group key (e.g. a pointer string like +"Team$abc"+) rather than as a
+      # Parse object identifier.
+      #
+      # @param doc [Hash] a raw MongoDB aggregation result row
+      # @return [Hash] the coerced hash with stringified keys
+      def convert_aggregation_document(doc)
+        return nil unless doc.is_a?(Hash)
+        doc.each_with_object({}) do |(key, value), result|
+          result[key.to_s] = convert_value_to_parse(value)
+        end
+      end
+
       # Convert a date value to a UTC Time object suitable for MongoDB queries.
       # MongoDB stores all dates in UTC, so this helper ensures consistent date handling
       # when building aggregation pipelines or direct queries.
@@ -412,6 +474,29 @@ module Parse
       end
 
       private
+
+      # MongoDB error code for MaxTimeMSExpired
+      MONGO_MAX_TIME_MS_EXPIRED_CODE = 50
+
+      # Inspect a driver exception and raise {ExecutionTimeout} if it carries
+      # error code 50 (MaxTimeMSExpired). Otherwise, the original exception is
+      # re-raised by the caller.
+      #
+      # @param err [StandardError] the exception to inspect
+      # @param collection_name [String] the collection name (for the timeout error)
+      # @param max_time_ms [Integer, nil] the budget that was exceeded (may be nil)
+      # @return [void]
+      # @raise [Parse::MongoDB::ExecutionTimeout] when code == 50
+      def raise_if_timeout!(err, collection_name, max_time_ms)
+        return unless defined?(::Mongo::Error::OperationFailure)
+        return unless err.is_a?(::Mongo::Error::OperationFailure)
+        return unless err.respond_to?(:code) && err.code == MONGO_MAX_TIME_MS_EXPIRED_CODE
+
+        raise ExecutionTimeout.new(
+          collection_name: collection_name.to_s,
+          max_time_ms: max_time_ms,
+        )
+      end
 
       def extract_database_from_uri(uri)
         return nil unless uri

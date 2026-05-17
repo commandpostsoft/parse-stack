@@ -11,8 +11,25 @@ module Parse
     #
     # Tools are divided into categories:
     # - **Schema tools**: get_all_schemas, get_schema
-    # - **Query tools**: query_class, count_objects, get_object, get_sample_objects
+    # - **Query tools**: query_class, count_objects, get_object, get_sample_objects, get_objects
     # - **Analysis tools**: aggregate, explain_query
+    #
+    # == Custom Tool Registration
+    #
+    # Third-party apps may register additional tools:
+    #
+    #   Parse::Agent::Tools.register(
+    #     name:        :breakdown_captures,
+    #     description: "Count captures grouped by user/...",
+    #     parameters:  { type: "object", properties: {...}, required: [...] },
+    #     permission:  :readonly,
+    #     timeout:     30,
+    #     handler:     ->(agent, **args) { { result: "..." } }
+    #   )
+    #
+    # Registering a name that matches an existing registration replaces it
+    # (idempotent on name). Call reset_registry! to clear all registrations
+    # (useful in test suites).
     #
     module Tools
       extend self
@@ -33,7 +50,9 @@ module Parse
       # Default timeout for tool operations (seconds)
       DEFAULT_TIMEOUT = 30
 
-      # Per-tool timeout overrides for long-running operations
+      # Per-tool timeout overrides for long-running operations.
+      # Frozen — do not mutate. Use Tools.timeout_for(name) to resolve
+      # timeouts that overlay registered-tool values on top of this table.
       TOOL_TIMEOUTS = {
         aggregate: 60,
         query_class: 30,
@@ -43,8 +62,27 @@ module Parse
         get_schema: 10,
         count_objects: 20,
         get_object: 10,
+        get_objects: 20,
         get_sample_objects: 15,
       }.freeze
+
+      # Derive a MongoDB maxTimeMS budget for a given tool name.
+      # Subtracts a 5-second buffer from the tool's Ruby-level timeout so the
+      # database cancels the query before the outer {with_timeout} fires,
+      # turning the unsafe {Timeout.timeout} into an unreachable fallback.
+      #
+      # @param tool_name [Symbol] the tool name key (matches {TOOL_TIMEOUTS})
+      # @return [Integer] budget in milliseconds (never below 5_000)
+      #
+      # @example
+      #   Tools.max_time_ms_for(:aggregate)    # => 55_000 (60s - 5s)
+      #   Tools.max_time_ms_for(:query_class)  # => 25_000 (30s - 5s)
+      #   Tools.max_time_ms_for(:nonexistent)  # => 25_000 (DEFAULT_TIMEOUT 30s - 5s)
+      def max_time_ms_for(tool_name)
+        secs = TOOL_TIMEOUTS[tool_name] || DEFAULT_TIMEOUT
+        budget = [secs - 5, 5].max
+        budget * 1000
+      end
 
       # Tool definitions in OpenAI function calling format
       # Optimized for token efficiency - LLMs understand from context
@@ -112,6 +150,20 @@ module Parse
           },
         },
 
+        get_objects: {
+          name: "get_objects",
+          description: "Batch-fetch multiple Parse objects by id in a single query. Use this instead of multiple get_object calls when dereferencing pointers.",
+          parameters: {
+            type: "object",
+            properties: {
+              class_name: { type: "string", description: "Parse class name" },
+              ids: { type: "array", items: { type: "string" }, description: "Array of objectId values (max 50, dedup'd)" },
+              include: { type: "array", items: { type: "string" }, description: "Pointer fields to include/resolve" },
+            },
+            required: ["class_name", "ids"],
+          },
+        },
+
         get_sample_objects: {
           name: "get_sample_objects",
           description: "Sample objects from class",
@@ -167,14 +219,145 @@ module Parse
         },
       }.freeze
 
-      # Get tool definitions for allowed tools
+      # ============================================================
+      # CUSTOM TOOL REGISTRY (Feature 1)
+      # ============================================================
+
+      # Thread-safety for the mutable registry. Private constant to
+      # avoid leaking mutex into public API surface.
+      REGISTRY_MUTEX = Mutex.new
+      private_constant :REGISTRY_MUTEX
+
+      # Mutable registry of custom tools: Symbol name => registration Hash
+      # Each entry: { definition:, permission:, timeout:, handler: }
+      @registry = {}
+
+      class << self
+        # Register a custom tool. Thread-safe. Idempotent on name (replaces).
+        #
+        # @param name [Symbol] unique tool name (required)
+        # @param description [String] human-readable description (required)
+        # @param parameters [Hash] JSON Schema object definition (required)
+        # @param permission [Symbol] :readonly, :write, or :admin (required)
+        # @param timeout [Integer] seconds before ToolTimeoutError (default: 30)
+        # @param handler [Proc] lambda(agent, **args) -> Hash (required)
+        # @raise [ArgumentError] when required kwargs are missing or permission is invalid
+        def register(name:, description:, parameters:, permission:, handler:, timeout: DEFAULT_TIMEOUT)
+          unless %i[readonly write admin].include?(permission)
+            raise ArgumentError, "permission must be :readonly, :write, or :admin (got #{permission.inspect})"
+          end
+          raise ArgumentError, "handler must be a callable (Proc/lambda)" unless handler.respond_to?(:call)
+          raise ArgumentError, "name is required" if name.nil?
+          raise ArgumentError, "description is required" if description.nil? || description.to_s.empty?
+          raise ArgumentError, "parameters is required" if parameters.nil?
+
+          sym = name.to_sym
+          definition = {
+            name: sym.to_s,
+            description: description.to_s,
+            parameters: parameters,
+          }
+
+          REGISTRY_MUTEX.synchronize do
+            @registry[sym] = {
+              definition: definition,
+              permission: permission,
+              timeout: timeout.to_i,
+              handler: handler,
+            }
+          end
+          nil
+        end
+
+        # Clear all custom registrations, restoring builtins-only state.
+        # Intended for test suites.
+        def reset_registry!
+          REGISTRY_MUTEX.synchronize { @registry.clear }
+          nil
+        end
+
+        # Dispatch a tool call. Registered tools take precedence over builtins
+        # only when both share a name; otherwise each path is exclusive.
+        #
+        # @param agent [Parse::Agent] the agent instance
+        # @param name [Symbol, String] tool name
+        # @param kwargs [Hash] keyword arguments forwarded to handler or builtin
+        def invoke(agent, name, **kwargs)
+          sym = name.to_sym
+          entry = REGISTRY_MUTEX.synchronize { @registry[sym] }
+
+          if entry
+            entry[:handler].call(agent, **kwargs)
+          else
+            Tools.send(sym, agent, **kwargs)
+          end
+        end
+
+        # Resolve the permission level for a tool (builtin or registered).
+        #
+        # @param name [Symbol, String] tool name
+        # @return [Symbol] :readonly, :write, :admin, or :unknown
+        def permission_for(name)
+          sym = name.to_sym
+          entry = REGISTRY_MUTEX.synchronize { @registry[sym] }
+          return entry[:permission] if entry
+
+          Parse::Agent::PERMISSION_LEVELS.each do |level, tools|
+            return level if tools.include?(sym)
+          end
+          :unknown
+        end
+
+        # Resolve the timeout for a tool (registered overlay wins over builtin table).
+        #
+        # @param name [Symbol, String] tool name
+        # @return [Integer] seconds
+        def timeout_for(name)
+          sym = name.to_sym
+          entry = REGISTRY_MUTEX.synchronize { @registry[sym] }
+          return entry[:timeout] if entry
+          TOOL_TIMEOUTS[sym] || DEFAULT_TIMEOUT
+        end
+
+        # Returns all tool names: builtins + registered.
+        #
+        # @return [Array<Symbol>]
+        def all_tool_names
+          builtin = TOOL_DEFINITIONS.keys
+          registered = REGISTRY_MUTEX.synchronize { @registry.keys }
+          (builtin + registered).uniq
+        end
+
+        # Returns registered tool names that are accessible at the given permission level.
+        #
+        # @param permission [Symbol] :readonly, :write, or :admin
+        # @return [Array<Symbol>]
+        def registered_tools_for(permission)
+          hierarchy = { readonly: 0, write: 1, admin: 2 }
+          agent_level = hierarchy[permission] || 0
+          REGISTRY_MUTEX.synchronize do
+            @registry.select { |_name, entry|
+              required = hierarchy[entry[:permission]] || 0
+              agent_level >= required
+            }.keys
+          end
+        end
+      end
+
+      # Get tool definitions for allowed tools, merging registered definitions.
       #
       # @param allowed_tools [Array<Symbol>] list of tool names to include
       # @param format [Symbol] output format (:openai or :mcp)
       # @return [Array<Hash>] tool definitions
       def definitions(allowed_tools, format: :openai)
+        # Build a merged definition map: builtins first, registered on top
+        registered_defs = REGISTRY_MUTEX.synchronize do
+          @registry.transform_values { |entry| entry[:definition] }
+        end
+
         defs = allowed_tools.filter_map do |tool_name|
-          TOOL_DEFINITIONS[tool_name]
+          sym = tool_name.to_sym
+          registered_defs[sym] || TOOL_DEFINITIONS[sym]
         end
 
         case format
@@ -250,11 +433,22 @@ module Parse
       # @param order [String] sort field (prefix with '-' for desc)
       # @param keys [Array<String>] fields to select
       # @param include [Array<String>] pointer fields to include
-      # @return [Hash] query results
+      # @return [Hash] query results, or a refusal hash if COLLSCAN detected
       # @raise [ConstraintTranslator::ConstraintSecurityError] if blocked operators are used
       def query_class(agent, class_name:, where: nil, limit: nil, skip: nil,
                              order: nil, keys: nil, include: nil, **_kwargs)
         limit = [limit || Agent::DEFAULT_LIMIT, Agent::MAX_LIMIT].min
+
+        # COLLSCAN pre-flight check (Feature 3):
+        # Only runs when refuse_collscan is enabled globally AND the class has
+        # not opted out via agent_allow_collscan, AND where is non-empty.
+        if where && !where.empty? &&
+           Parse::Agent.refuse_collscan? &&
+           !MetadataRegistry.allow_collscan?(class_name)
+
+          refusal = collscan_preflight(agent, class_name, where)
+          return refusal if refusal
+        end
 
         # Build query hash
         query = {}
@@ -319,6 +513,7 @@ module Parse
       # @param object_id [String] the objectId
       # @param include [Array<String>] pointer fields to include
       # @return [Hash] the object data
+      # @raise [Parse::Agent::ValidationError] for invalid class_name or object_id
       def get_object(agent, class_name:, object_id:, include: nil, **_kwargs)
         query = {}
         query[:include] = include.join(",") if include&.any?
@@ -337,6 +532,95 @@ module Parse
         end
 
         ResultFormatter.format_object(class_name, response.result)
+      end
+
+      # Batch-fetch multiple Parse objects by id in a single query.
+      # Prefer this over multiple get_object calls when dereferencing pointers.
+      #
+      # @param agent [Parse::Agent] the agent instance
+      # @param class_name [String] the Parse class name
+      # @param ids [Array<String>] objectId values to fetch (max 50, dedup'd)
+      # @param include [Array<String>] pointer fields to include/resolve
+      # @return [Hash] { class_name:, objects:, missing:, requested:, found: }
+      # @raise [Parse::Agent::ValidationError] if class_name invalid, ids not an Array,
+      #   any id has invalid format, or more than 50 unique ids are requested
+      def get_objects(agent, class_name:, ids: nil, include: [], **_kwargs)
+        # Validate class_name
+        unless class_name.to_s.match?(/\A[A-Za-z_][A-Za-z0-9_]{0,127}\z/)
+          raise Parse::Agent::ValidationError,
+                "class_name must match identifier pattern (got: #{class_name.inspect})"
+        end
+
+        # nil ids is an error (required parameter); empty array is a valid empty result
+        if ids.nil?
+          raise Parse::Agent::ValidationError, "ids is required"
+        end
+
+        unless ids.is_a?(Array)
+          raise Parse::Agent::ValidationError, "ids must be an Array of Strings"
+        end
+
+        # Short-circuit on empty array — no query needed
+        if ids.empty?
+          return {
+            class_name: class_name,
+            objects: {},
+            missing: [],
+            requested: 0,
+            found: 0,
+          }
+        end
+
+        unique_ids = ids.uniq
+
+        if unique_ids.size > 50
+          raise Parse::Agent::ValidationError,
+                "ids exceeds the 50-object limit (#{unique_ids.size} unique ids). " \
+                "For larger sets use query_class with an $in constraint."
+        end
+
+        # Validate each id format
+        unique_ids.each do |id|
+          unless id.is_a?(String) && id.match?(/\A[A-Za-z0-9]{1,32}\z/)
+            raise Parse::Agent::ValidationError,
+                  "each id must match /\\A[A-Za-z0-9]{1,32}\\z/ (got: #{id.inspect})"
+          end
+        end
+
+        # Build query
+        query = {
+          where: { "objectId" => { "$in" => unique_ids } }.to_json,
+          limit: unique_ids.size,
+        }
+        query[:include] = include.join(",") if include&.any?
+
+        # Apply agent_fields allowlist as keys projection
+        allowlist = MetadataRegistry.field_allowlist(class_name)
+        query[:keys] = allowlist.join(",") if allowlist&.any?
+
+        with_timeout(:get_objects) do
+          response = agent.client.find_objects(class_name, query, **agent.request_opts)
+
+          unless response.success?
+            raise "Batch fetch failed: #{response.error}"
+          end
+
+          results = response.results
+          objects_by_id = results.each_with_object({}) do |obj, h|
+            oid = obj.is_a?(Hash) ? (obj["objectId"] || obj[:objectId]) : obj.id
+            h[oid] = obj
+          end
+
+          missing = unique_ids.reject { |id| objects_by_id.key?(id) }
+
+          {
+            class_name: class_name,
+            objects: objects_by_id,
+            missing: missing,
+            requested: unique_ids.size,
+            found: objects_by_id.size,
+          }
+        end
       end
 
       # Get sample objects from a class
@@ -382,12 +666,24 @@ module Parse
       # @param agent [Parse::Agent] the agent instance
       # @param class_name [String] the Parse class name
       # @param pipeline [Array<Hash>] MongoDB aggregation pipeline
-      # @return [Hash] aggregation results
+      # @return [Hash] aggregation results, or a refusal hash if COLLSCAN detected
       # @raise [PipelineValidator::PipelineSecurityError] if pipeline contains blocked stages
       def aggregate(agent, class_name:, pipeline:, **_kwargs)
         # SECURITY: Validate pipeline BEFORE execution
         # This blocks dangerous stages like $out, $merge, $function
         PipelineValidator.validate!(pipeline)
+
+        # COLLSCAN pre-flight check (Feature 3):
+        # Extract a leading $match stage as the implicit "where" for aggregations.
+        # If the pipeline doesn't begin with $match, skip pre-flight — the caller
+        # is doing a deliberate scan-then-reduce and refusing would be hostile.
+        if Parse::Agent.refuse_collscan? &&
+           !MetadataRegistry.allow_collscan?(class_name) &&
+           (match_stage = pipeline.first&.dig("$match"))&.any?
+
+          refusal = collscan_preflight(agent, class_name, match_stage)
+          return refusal if refusal
+        end
 
         with_timeout(:aggregate) do
           response = agent.client.aggregate_pipeline(class_name, pipeline, **agent.request_opts)
@@ -491,15 +787,95 @@ module Parse
 
       private
 
-      # Execute a block with a timeout
+      # Execute a block with a timeout.
+      # Resolves timeout via Tools.timeout_for so registered-tool overrides are honoured.
       # @param tool_name [Symbol] the tool being executed (for error messages)
       # @yield the block to execute with timeout
       # @raise [Agent::ToolTimeoutError] if timeout is exceeded
       def with_timeout(tool_name)
-        timeout = TOOL_TIMEOUTS[tool_name] || DEFAULT_TIMEOUT
+        timeout = Tools.timeout_for(tool_name)
         Timeout.timeout(timeout) { yield }
       rescue Timeout::Error
         raise Agent::ToolTimeoutError.new(tool_name, timeout)
+      end
+
+      # ============================================================
+      # COLLSCAN pre-flight helpers (Feature 3)
+      # ============================================================
+
+      # Run a cheap explain pre-flight on the given where clause.
+      # Returns a refusal hash if COLLSCAN is detected, nil if safe to proceed.
+      #
+      # @param agent [Parse::Agent] the agent instance
+      # @param class_name [String] Parse class name
+      # @param where [Hash] raw (untranslated) where constraints
+      # @return [Hash, nil] refusal hash or nil
+      def collscan_preflight(agent, class_name, where)
+        explain_result = run_explain(agent, class_name, where)
+        return nil unless explain_result
+
+        winning_plan = explain_result.dig("queryPlanner", "winningPlan") ||
+                       explain_result["winningPlan"] ||
+                       explain_result
+
+        if collscan?(winning_plan)
+          plan_summary = summarize_plan(winning_plan)
+          {
+            refused: true,
+            reason: "COLLSCAN on #{class_name}",
+            suggestion: "Add a filter on an indexed field, or call explain_query directly to inspect the plan.",
+            winning_plan: plan_summary,
+          }
+        else
+          nil
+        end
+      end
+
+      # Detect COLLSCAN in a query plan node. Recursively walks inputStage/inputStages.
+      #
+      # @param plan [Hash, nil] winning plan node
+      # @return [Boolean]
+      def collscan?(plan)
+        return false unless plan.is_a?(Hash)
+        return true if plan["stage"] == "COLLSCAN"
+
+        # Recurse into nested inputStage
+        return true if collscan?(plan["inputStage"])
+
+        # Recurse into parallel inputStages array (OR_STAGE, etc.)
+        if plan["inputStages"].is_a?(Array)
+          return true if plan["inputStages"].any? { |s| collscan?(s) }
+        end
+
+        false
+      end
+
+      # Run an explain query on the given where hash, returning the parsed result hash.
+      # Translates constraints for security. Returns nil on any failure (fail open).
+      #
+      # @param agent [Parse::Agent] the agent instance
+      # @param class_name [String] Parse class name
+      # @param where [Hash] raw where constraints
+      # @return [Hash, nil]
+      def run_explain(agent, class_name, where)
+        query = { explain: true, limit: 1 }
+        query[:where] = ConstraintTranslator.translate(where).to_json
+        response = agent.client.find_objects(class_name, query, **agent.request_opts)
+        return nil unless response.success?
+        response.result
+      rescue StandardError
+        nil
+      end
+
+      # Produce a compact, human-readable summary of a plan node.
+      #
+      # @param plan [Hash, nil]
+      # @return [String]
+      def summarize_plan(plan)
+        return "unknown" unless plan.is_a?(Hash)
+        stage = plan["stage"] || "unknown"
+        filter = plan["filter"] ? " filter=#{plan["filter"].inspect}" : ""
+        "#{stage}#{filter}"
       end
 
       # Call a method with arguments using parameter introspection.

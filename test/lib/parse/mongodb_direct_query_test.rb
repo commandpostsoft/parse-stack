@@ -168,6 +168,40 @@ class MongoDBDirectQueryTest < Minitest::Test
     assert_equal "Song", results[0]["className"]
   end
 
+  def test_convert_aggregation_document_preserves_id_and_extra_fields
+    require "parse/mongodb"
+
+    # Simulates a $group row: _id is the group key (a pointer string), not a Parse objectId
+    row = { "_id" => "Team$abc123", "count" => 5, "total" => 250 }
+    result = Parse::MongoDB.convert_aggregation_document(row)
+
+    assert_equal "Team$abc123", result["_id"], "_id must be preserved verbatim (group key)"
+    assert_equal 5, result["count"]
+    assert_equal 250, result["total"]
+    refute result.key?("objectId"), "convert_aggregation_document must NOT introduce objectId"
+    refute result.key?("className"), "convert_aggregation_document must NOT introduce className"
+  end
+
+  def test_convert_aggregation_document_handles_nil_and_non_hash
+    require "parse/mongodb"
+
+    assert_nil Parse::MongoDB.convert_aggregation_document(nil)
+    assert_nil Parse::MongoDB.convert_aggregation_document("not a hash")
+    assert_equal({}, Parse::MongoDB.convert_aggregation_document({}))
+  end
+
+  def test_convert_aggregation_document_with_nil_id
+    require "parse/mongodb"
+
+    # $group with "_id" => nil produces a nil _id field on the row
+    row = { "_id" => nil, "total" => 100 }
+    result = Parse::MongoDB.convert_aggregation_document(row)
+
+    assert result.key?("_id"), "_id key must be preserved even when nil"
+    assert_nil result["_id"]
+    assert_equal 100, result["total"]
+  end
+
   # ==========================================================================
   # Query Direct Method Tests (without mongo gem)
   # ==========================================================================

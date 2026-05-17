@@ -103,6 +103,28 @@ module Parse
           @agent_field_allowlist || []
         end
 
+        # Opt this class out of the global COLLSCAN refusal check.
+        # Intended for small lookup tables (Roles, Config) where full scans
+        # are acceptable and an index is not needed.
+        #
+        # @example
+        #   class AppConfig < Parse::Object
+        #     agent_allow_collscan true
+        #   end
+        #
+        # @param value [Boolean] true to allow COLLSCANs for this class
+        # @return [Boolean] the current setting
+        def agent_allow_collscan(value = nil)
+          return @agent_allow_collscan if value.nil?
+          @agent_allow_collscan = value == true
+        end
+
+        # Check whether COLLSCANs are explicitly permitted for this class.
+        # @return [Boolean]
+        def agent_allow_collscan?
+          @agent_allow_collscan == true
+        end
+
         # Class-level analytics usage hint, surfaced inside agent schema output.
         # Distinct from `agent_description` (a short human summary): use this for
         # specific guidance the LLM needs to query the class well — enum values,

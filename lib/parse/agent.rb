@@ -1,6 +1,9 @@
 # encoding: UTF-8
 # frozen_string_literal: true
 
+require "active_support/notifications"
+require_relative "mongodb"
+require_relative "agent/errors"
 require_relative "agent/metadata_dsl"
 require_relative "agent/metadata_registry"
 require_relative "agent/relation_graph"
@@ -44,33 +47,21 @@ module Parse
   #   Parse::Agent.enable_mcp!(port: 3001)
   #
   class Agent
-    # Error hierarchy for agent operations
-    # Provides granular exception handling for different failure modes.
-
-    # Base error class for all agent errors
-    class AgentError < StandardError; end
-
-    # Security-related errors (blocked operations, injection attempts)
-    # These should NEVER be swallowed - always re-raise
-    class SecurityError < AgentError; end
-
-    # Validation errors for invalid input
-    class ValidationError < AgentError; end
-
-    # Timeout errors for long-running operations
-    class ToolTimeoutError < AgentError
-      attr_reader :tool_name, :timeout
-
-      def initialize(tool_name, timeout)
-        @tool_name = tool_name
-        @timeout = timeout
-        super("Tool '#{tool_name}' timed out after #{timeout} seconds")
-      end
-    end
+    # Top-level alias for RateLimiter::RateLimitExceeded so external rate
+    # limiters (Redis-backed, etc.) can reference a stable constant without
+    # depending on the bundled in-process limiter class. The original
+    # nested constant remains for back-compat.
+    RateLimitExceeded = RateLimiter::RateLimitExceeded
 
     # Global configuration for MCP server feature
     # Must be explicitly enabled before using MCP server
     @mcp_enabled = false
+
+    # Global configuration for COLLSCAN refusal (Feature 3).
+    # When true, query_class and aggregate will run a cheap explain pre-flight
+    # on non-empty where clauses and refuse execution if a COLLSCAN is detected.
+    # Default: false (opt-in).
+    @refuse_collscan = false
 
     class << self
       # @!attribute [rw] mcp_enabled
@@ -78,6 +69,19 @@ module Parse
       #   Must be set to true before requiring 'parse/agent/mcp_server'.
       #   @return [Boolean] true if MCP server is enabled (default: false)
       attr_accessor :mcp_enabled
+
+      # @!attribute [rw] refuse_collscan
+      #   When true, query_class and aggregate pre-flight non-empty where clauses
+      #   with an explain call and refuse execution if a COLLSCAN is detected.
+      #   Individual model classes may opt out via `agent_allow_collscan true`.
+      #   @return [Boolean] true if COLLSCAN refusal is active (default: false)
+      attr_accessor :refuse_collscan
+
+      # Check whether COLLSCAN refusal is active.
+      # @return [Boolean]
+      def refuse_collscan?
+        @refuse_collscan == true
+      end
 
       # Check if MCP server feature is enabled
       # @return [Boolean]
@@ -158,6 +162,24 @@ module Parse
       def mcp_remote_api?
         Parse.mcp_remote_api_configured?
       end
+
+      # Convenience constructor for the Rack-mountable MCP adapter.
+      # Loads Parse::Agent::MCPRackApp on demand and forwards the block
+      # (or agent_factory: kwarg) plus any other keyword arguments to it.
+      #
+      # @example Rails routes.rb
+      #   mount Parse::Agent.rack_app { |env|
+      #     token = env["HTTP_AUTHORIZATION"].to_s.delete_prefix("Bearer ")
+      #     user  = MyAuth.verify!(token)  # raises Parse::Agent::Unauthorized on bad token
+      #     Parse::Agent.new(permissions: :readonly, session_token: user.session_token)
+      #   }, at: "/mcp"
+      #
+      # @see Parse::Agent::MCPRackApp#initialize for accepted keyword arguments
+      # @return [Parse::Agent::MCPRackApp]
+      def rack_app(**kwargs, &block)
+        require_relative "agent/mcp_rack_app"
+        MCPRackApp.new(**kwargs, &block)
+      end
     end
 
     # Available permission levels
@@ -168,6 +190,7 @@ module Parse
         query_class
         count_objects
         get_object
+        get_objects
         get_sample_objects
         aggregate
         explain_query
@@ -297,6 +320,7 @@ module Parse
     #
     def initialize(permissions: :readonly, session_token: nil, client: :default,
                    rate_limit: DEFAULT_RATE_LIMIT, rate_window: DEFAULT_RATE_WINDOW,
+                   rate_limiter: nil,
                    max_log_size: DEFAULT_MAX_LOG_SIZE,
                    system_prompt: nil, system_prompt_suffix: nil, pricing: nil)
       @permissions = permissions
@@ -304,7 +328,15 @@ module Parse
       @client = client.is_a?(Parse::Client) ? client : Parse::Client.client(client)
       @operation_log = []
       @max_log_size = max_log_size
-      @rate_limiter = RateLimiter.new(limit: rate_limit, window: rate_window)
+      # Accept an externally-managed limiter (Redis-backed, etc.) so per-request
+      # Agent instances behind a shared MCP transport don't silently reset the
+      # window on every request. Must respond to #check! and raise
+      # Parse::Agent::RateLimitExceeded (or the back-compat nested constant)
+      # when the budget is exhausted.
+      if rate_limiter && !rate_limiter.respond_to?(:check!)
+        raise ArgumentError, "rate_limiter must respond to #check!"
+      end
+      @rate_limiter = rate_limiter || RateLimiter.new(limit: rate_limit, window: rate_window)
       @conversation_history = []
       @total_prompt_tokens = 0
       @total_completion_tokens = 0
@@ -332,20 +364,25 @@ module Parse
       allowed_tools.include?(tool_name.to_sym)
     end
 
-    # Get the list of tools allowed under current permissions
+    # Get the list of tools allowed under current permissions.
+    # Includes both builtin tools and any registered custom tools whose
+    # permission level is <= the current agent permission level.
     #
     # @return [Array<Symbol>] list of allowed tool names
     def allowed_tools
-      case @permissions
-      when :readonly
-        PERMISSION_LEVELS[:readonly]
-      when :write
-        PERMISSION_LEVELS[:readonly] + PERMISSION_LEVELS[:write]
-      when :admin
-        PERMISSION_LEVELS[:readonly] + PERMISSION_LEVELS[:write] + PERMISSION_LEVELS[:admin]
-      else
-        PERMISSION_LEVELS[:readonly]
-      end
+      builtin = case @permissions
+        when :readonly
+          PERMISSION_LEVELS[:readonly]
+        when :write
+          PERMISSION_LEVELS[:readonly] + PERMISSION_LEVELS[:write]
+        when :admin
+          PERMISSION_LEVELS[:readonly] + PERMISSION_LEVELS[:write] + PERMISSION_LEVELS[:admin]
+        else
+          PERMISSION_LEVELS[:readonly]
+        end
+
+      registered = Parse::Agent::Tools.registered_tools_for(@permissions)
+      (builtin + registered).uniq
     end
 
     # Execute a tool by name with the given arguments.
@@ -374,8 +411,28 @@ module Parse
     def execute(tool_name, **kwargs)
       tool_name = tool_name.to_sym
 
-      # Check rate limit FIRST - before any processing
-      @rate_limiter.check!
+      # Check rate limit FIRST - before any processing.
+      # Externally-injected limiters (Redis, etc.) may raise transport errors
+      # (Redis::ConnectionError, etc.) that would otherwise leak backend
+      # topology through the MCP error echo path. Translate any non-
+      # RateLimitExceeded failure into a generic RateLimitExceeded so the
+      # client sees a uniform rate-limit signal regardless of whether the
+      # limiter is in-process or backed by a remote service.
+      begin
+        @rate_limiter.check!
+      rescue RateLimitExceeded
+        raise
+      rescue StandardError => e
+        warn "[Parse::Agent] rate limiter failure: #{e.class}: #{e.message}"
+        # Randomize within the same shape as a real limiter so the fail-closed
+        # branch isn't a distinguishable oracle ("Redis is down" vs "real rate
+        # limit"). Borrow the configured limit/window when the injected
+        # limiter exposes them; otherwise fall back to non-zero defaults.
+        retry_after = (1.0 + rand * 4.0).round(2)
+        l = @rate_limiter.respond_to?(:limit)  ? @rate_limiter.limit  : RateLimiter::DEFAULT_LIMIT
+        w = @rate_limiter.respond_to?(:window) ? @rate_limiter.window : RateLimiter::DEFAULT_WINDOW
+        raise RateLimitExceeded.new(retry_after: retry_after, limit: l, window: w)
+      end
 
       unless tool_allowed?(tool_name)
         return error_response(
@@ -388,54 +445,115 @@ module Parse
       # Trigger before_tool_call callbacks
       trigger_callbacks(:before_tool_call, tool_name, kwargs)
 
-      begin
-        result = Parse::Agent::Tools.send(tool_name, self, **kwargs)
-        log_operation(tool_name, kwargs, result)
-        response = success_response(result)
+      # AS::Notifications payload — subscribers see the final mutated state at
+      # block exit. `args_keys` is the set of caller-supplied argument names
+      # with SENSITIVE_LOG_KEYS (where:, pipeline:, session_token:, etc.)
+      # stripped, so payload contains no PII / query bodies / credentials.
+      payload = {
+        tool: tool_name,
+        args_keys: (kwargs.keys - SENSITIVE_LOG_KEYS).map(&:to_sym),
+        auth_type: auth_context[:type],
+        using_master_key: auth_context[:using_master_key],
+        permissions: @permissions,
+      }
 
-        # Trigger after_tool_call callbacks
-        trigger_callbacks(:after_tool_call, tool_name, kwargs, response)
+      ActiveSupport::Notifications.instrument("parse.agent.tool_call", payload) do
+        response = nil
+        begin
+          result = Parse::Agent::Tools.invoke(self, tool_name, **kwargs)
+          log_operation(tool_name, kwargs, result)
+          response = success_response(result)
 
+          payload[:success] = true
+          payload[:result_size] = (JSON.generate(result).bytesize rescue nil)
+
+          # Trigger after_tool_call callbacks
+          trigger_callbacks(:after_tool_call, tool_name, kwargs, response)
+
+          # Security errors - NEVER swallow, always re-raise
+        rescue PipelineValidator::PipelineSecurityError,
+               ConstraintTranslator::ConstraintSecurityError => e
+          log_security_event(tool_name, kwargs, e)
+          trigger_callbacks(:on_error, e, { tool: tool_name, args: kwargs })
+          payload[:success]     = false
+          payload[:error_class] = e.class.name
+          payload[:error_code]  = :security_blocked
+          raise  # Re-raise security errors to caller
+
+          # Validation errors (e.g. from registered tool handlers or get_objects)
+        rescue Parse::Agent::ValidationError => e
+          trigger_callbacks(:on_error, e, { tool: tool_name, args: kwargs })
+          payload[:success]     = false
+          payload[:error_class] = e.class.name
+          payload[:error_code]  = :invalid_argument
+          response = error_response("Invalid arguments: #{e.message}", error_code: :invalid_argument)
+
+          # Validation errors - return structured error response
+        rescue ConstraintTranslator::InvalidOperatorError => e
+          trigger_callbacks(:on_error, e, { tool: tool_name, args: kwargs })
+          payload[:success]     = false
+          payload[:error_class] = e.class.name
+          payload[:error_code]  = :invalid_query
+          response = error_response(e.message, error_code: :invalid_query)
+
+          # Timeout errors
+        rescue ToolTimeoutError => e
+          trigger_callbacks(:on_error, e, { tool: tool_name, args: kwargs })
+          payload[:success]     = false
+          payload[:error_class] = e.class.name
+          payload[:error_code]  = :timeout
+          response = error_response(e.message, error_code: :timeout)
+
+          # Rate limit errors (raised by the built-in limiter or by external
+          # injected limiters that re-raise the same constant).
+        rescue RateLimitExceeded => e
+          trigger_callbacks(:on_error, e, { tool: tool_name, args: kwargs })
+          payload[:success]     = false
+          payload[:error_class] = e.class.name
+          payload[:error_code]  = :rate_limited
+          response = error_response(e.message, error_code: :rate_limited, retry_after: e.retry_after)
+
+          # Invalid arguments
+        rescue ArgumentError => e
+          trigger_callbacks(:on_error, e, { tool: tool_name, args: kwargs })
+          payload[:success]     = false
+          payload[:error_class] = e.class.name
+          payload[:error_code]  = :invalid_argument
+          response = error_response("Invalid arguments: #{e.message}", error_code: :invalid_argument)
+
+          # Parse API errors
+        rescue Parse::Error => e
+          trigger_callbacks(:on_error, e, { tool: tool_name, args: kwargs })
+          payload[:success]     = false
+          payload[:error_class] = e.class.name
+          payload[:error_code]  = :parse_error
+          response = error_response("Parse error: #{e.message}", error_code: :parse_error)
+
+          # MongoDB-level query timeout (maxTimeMS exceeded, code 50)
+          # Must come before the generic StandardError rescue so the structured
+          # response is returned rather than the opaque internal_error path.
+        rescue Parse::MongoDB::ExecutionTimeout => e
+          trigger_callbacks(:on_error, e, { tool: tool_name, args: kwargs })
+          payload[:success]     = false
+          payload[:error_class] = e.class.name
+          payload[:error_code]  = :timeout
+          response = error_response(
+            "Query timed out at the database (max_time_ms=#{e.max_time_ms}ms). " \
+            "Narrow the filter, add an index, or call explain_query to inspect the plan.",
+            error_code: :timeout,
+          )
+
+          # Unexpected errors - log with stack trace for debugging
+        rescue StandardError => e
+          warn "[Parse::Agent] Unexpected error in #{tool_name}: #{e.class} - #{e.message}"
+          warn e.backtrace.first(5).join("\n") if e.backtrace
+          trigger_callbacks(:on_error, e, { tool: tool_name, args: kwargs })
+          payload[:success]     = false
+          payload[:error_class] = e.class.name
+          payload[:error_code]  = :internal_error
+          response = error_response("#{tool_name} failed: #{e.message}", error_code: :internal_error)
+        end
         response
-
-        # Security errors - NEVER swallow, always re-raise
-      rescue PipelineValidator::PipelineSecurityError,
-             ConstraintTranslator::ConstraintSecurityError => e
-        log_security_event(tool_name, kwargs, e)
-        trigger_callbacks(:on_error, e, { tool: tool_name, args: kwargs })
-        raise  # Re-raise security errors to caller
-
-        # Validation errors - return structured error response
-      rescue ConstraintTranslator::InvalidOperatorError => e
-        trigger_callbacks(:on_error, e, { tool: tool_name, args: kwargs })
-        error_response(e.message, error_code: :invalid_query)
-
-        # Timeout errors
-      rescue ToolTimeoutError => e
-        trigger_callbacks(:on_error, e, { tool: tool_name, args: kwargs })
-        error_response(e.message, error_code: :timeout)
-
-        # Rate limit errors (should be caught above, but handle just in case)
-      rescue RateLimiter::RateLimitExceeded => e
-        trigger_callbacks(:on_error, e, { tool: tool_name, args: kwargs })
-        error_response(e.message, error_code: :rate_limited, retry_after: e.retry_after)
-
-        # Invalid arguments
-      rescue ArgumentError => e
-        trigger_callbacks(:on_error, e, { tool: tool_name, args: kwargs })
-        error_response("Invalid arguments: #{e.message}", error_code: :invalid_argument)
-
-        # Parse API errors
-      rescue Parse::Error => e
-        trigger_callbacks(:on_error, e, { tool: tool_name, args: kwargs })
-        error_response("Parse error: #{e.message}", error_code: :parse_error)
-
-        # Unexpected errors - log with stack trace for debugging
-      rescue StandardError => e
-        warn "[Parse::Agent] Unexpected error in #{tool_name}: #{e.class} - #{e.message}"
-        warn e.backtrace.first(5).join("\n") if e.backtrace
-        trigger_callbacks(:on_error, e, { tool: tool_name, args: kwargs })
-        error_response("#{tool_name} failed: #{e.message}", error_code: :internal_error)
       end
     end
 
@@ -1022,10 +1140,7 @@ module Parse
     end
 
     def required_permission_for(tool_name)
-      PERMISSION_LEVELS.each do |level, tools|
-        return level if tools.include?(tool_name)
-      end
-      :unknown
+      Parse::Agent::Tools.permission_for(tool_name)
     end
 
     # Get the current authentication context

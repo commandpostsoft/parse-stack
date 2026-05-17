@@ -1822,6 +1822,54 @@ class MongoDBDirectIntegrationTest < Minitest::Test
     end
   end
 
+  # Regression: $group with a non-nil _id (e.g. group by a real field) used to
+  # be decoded as a Parse::Object because convert_documents_to_parse renamed
+  # _id → objectId and the heuristic only checked for a non-nil objectId. The
+  # row must come back as an AggregationResult with the group key accessible
+  # via _id and the accumulator fields preserved.
+  def test_aggregate_group_by_genre_returns_aggregation_result
+    skip "Docker integration tests require PARSE_TEST_USE_DOCKER=true" unless ENV["PARSE_TEST_USE_DOCKER"] == "true"
+
+    with_parse_server do
+      skip "MongoDB direct tests require mongo gem" unless setup_mongodb_direct
+
+      with_timeout(30, "aggregate group-by regression test") do
+        data = [
+          { title: "GB1", artist: "GroupBy Artist", genre: "Rock", plays: 10 },
+          { title: "GB2", artist: "GroupBy Artist", genre: "Rock", plays: 30 },
+          { title: "GB3", artist: "GroupBy Artist", genre: "Pop",  plays: 20 },
+        ]
+        data.each { |s| assert MongoDirectSong.new(s).save }
+        sleep 0.5
+
+        pipeline = [
+          { "$group" => { "_id" => "$genre", "count" => { "$sum" => 1 }, "total" => { "$sum" => "$plays" } } },
+        ]
+
+        direct_results = MongoDirectSong.query(:artist => "GroupBy Artist")
+                                        .aggregate(pipeline, mongo_direct: true)
+                                        .results
+
+        assert_equal 2, direct_results.length, "should return one row per genre"
+        direct_results.each do |row|
+          assert_kind_of Parse::AggregationResult, row,
+                         "group rows must be wrapped as AggregationResult, not decoded as Parse::Object"
+          refute_nil row["_id"], "_id (group key) must be preserved"
+          assert ["Rock", "Pop"].include?(row["_id"]), "_id should be a genre value"
+        end
+
+        rock = direct_results.find { |r| r["_id"] == "Rock" }
+        pop  = direct_results.find { |r| r["_id"] == "Pop" }
+        assert_equal 2, rock["count"], "Rock count must survive the conversion"
+        assert_equal 40, rock["total"], "Rock total must survive the conversion"
+        assert_equal 1, pop["count"]
+        assert_equal 20, pop["total"]
+      end
+
+      teardown_mongodb_direct
+    end
+  end
+
   # ==========================================================================
   # TEST BATCH 18: Aggregate Pipeline - Group Min/Max
   # (From Parse Server spec: group min/max query)

@@ -44,3 +44,4 @@ bin/config.json
 /bin/parse-dashboard-config.json
 logs
 *.md
+!docs/mcp_guide.md
